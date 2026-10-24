@@ -1,0 +1,2170 @@
+{
+  "uid": "ocp-cluster-risk-overview",
+  "title": "OCP 叢集風險總覽（找出危險 Workload 與 Node）",
+  "tags": [
+    "ocp",
+    "loadtest",
+    "capacity",
+    "overview"
+  ],
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 1,
+  "editable": true,
+  "graphTooltip": 1,
+  "refresh": "1m",
+  "time": {
+    "from": "now-3h",
+    "to": "now"
+  },
+  "links": [
+    {
+      "title": "單一 Workload 細節（OCP 壓測影響評估）",
+      "type": "link",
+      "icon": "dashboard",
+      "url": "/d/ocp-loadtest-impact/?var-datasource=${datasource}",
+      "keepTime": true,
+      "targetBlank": false
+    }
+  ],
+  "templating": {
+    "list": [
+      {
+        "type": "datasource",
+        "name": "datasource",
+        "label": "資料來源（叢集）",
+        "query": "prometheus",
+        "regex": "/^Prometheus.*OCP$/",
+        "current": {},
+        "hide": 0,
+        "refresh": 1
+      },
+      {
+        "type": "query",
+        "name": "namespace",
+        "label": "Namespace",
+        "datasource": {
+          "type": "prometheus",
+          "uid": "${datasource}"
+        },
+        "query": "label_values(kube_pod_info, namespace)",
+        "definition": "label_values(kube_pod_info, namespace)",
+        "refresh": 2,
+        "sort": 1,
+        "multi": true,
+        "includeAll": true,
+        "allValue": ".*",
+        "current": {
+          "text": "All",
+          "value": "$__all"
+        },
+        "hide": 0
+      },
+      {
+        "type": "textbox",
+        "name": "exclude",
+        "label": "排除的 Namespace（regex）",
+        "query": "openshift.*|kube-.*",
+        "current": {
+          "text": "openshift.*|kube-.*",
+          "value": "openshift.*|kube-.*"
+        },
+        "hide": 0
+      }
+    ]
+  },
+  "annotations": {
+    "list": [
+      {
+        "builtIn": 1,
+        "datasource": {
+          "type": "grafana",
+          "uid": "-- Grafana --"
+        },
+        "enable": true,
+        "hide": true,
+        "iconColor": "rgba(0, 211, 255, 1)",
+        "name": "Annotations & Alerts",
+        "type": "dashboard"
+      }
+    ]
+  },
+  "panels": [
+    {
+      "id": 1,
+      "type": "text",
+      "title": "",
+      "options": {
+        "mode": "markdown",
+        "content": "### 叢集風險總覽：先找出嫌疑對象，再進細節 Dashboard 查證\n一個資料來源 = 一個 OCP 叢集。上方切換資料來源就是切換叢集。\n\n**建議流程**\n1. **第 1 區【Node】**：先看哪幾台 Node 正在變吃緊（conntrack、磁碟延遲、網路丟包、iowait）。\n2. **第 2 區【Workload】風險排行**：表頭可點擊排序，每欄右側的漏斗可以篩選。紅色、黃色格子就是要注意的地方。\n3. **點表格中的 `workload` 名稱**：會帶著 namespace、workload 與目前時間範圍，開啟「OCP 壓測影響評估」細節 Dashboard，查他所在 Node 有沒有被拖慢（細節 Dashboard 目前只支援 Deployment）。\n4. **第 3、4 區 Top 10 趨勢**：看是誰在什麼時間點飆起來，對照第 1 區 Node 變吃緊的時間。\n\n**注意**：表格是時間範圍**結束前 5 分鐘**的快照，要看壓測當下，請把時間範圍的結束點拉到壓測期間。用量排名高只代表是大戶，不代表造成影響，要進細節 Dashboard 對照 Node 壓力的時間點。預設排除 `openshift*`、`kube-*` 系統 namespace，可在上方「排除的 Namespace」清空。"
+      },
+      "gridPos": {
+        "h": 10,
+        "w": 24,
+        "x": 0,
+        "y": 0
+      }
+    },
+    {
+      "id": 2,
+      "type": "row",
+      "title": "1. 【Node】叢集各 Node 狀態：哪台機器正在變吃緊",
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 10
+      },
+      "panels": []
+    },
+    {
+      "id": 3,
+      "type": "table",
+      "title": "【Node】各 Node 狀態（時間範圍結束前 5 分鐘）",
+      "description": "**視角**：叢集內每一台 Node（該 Node 上所有 Pod 加總）\n\n**這是什麼**：每台 Node 共用資源的目前狀態。conntrack、磁碟、網卡都是每台 Node 一份，所有 Pod 共用。\n\n**怎麼看**：紅色、黃色就是正在吃緊的 Node。記下 Node 名稱，再到第 2 區找跑在上面的大戶，或進細節 Dashboard 看該 Node 的 Top 10 鄰居。",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${datasource}"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "expr": "max by (instance) (label_replace(count by (node) (kube_pod_info{node!=\"\"}), \"instance\", \"$1\", \"node\", \"(.*)\"))",
+          "legendFormat": "",
+          "range": false,
+          "instant": true,
+          "format": "table"
+        },
+        {
+          "refId": "B",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "expr": "1 - avg by (instance) (rate(node_cpu_seconds_total{mode=\"idle\"}[5m]))",
+          "legendFormat": "",
+          "range": false,
+          "instant": true,
+          "format": "table"
+        },
+        {
+          "refId": "C",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "expr": "max by (instance) (node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes)",
+          "legendFormat": "",
+          "range": false,
+          "instant": true,
+          "format": "table"
+        },
+        {
+          "refId": "D",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "expr": "max by (instance) (node_nf_conntrack_entries / node_nf_conntrack_entries_limit)",
+          "legendFormat": "",
+          "range": false,
+          "instant": true,
+          "format": "table"
+        },
+        {
+          "refId": "E",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "expr": "max by (instance) ((rate(node_disk_read_time_seconds_total{device=~\"sd[a-z]+|nvme[0-9]+n[0-9]+|vd[a-z]+|xvd[a-z]+\"}[5m]) + rate(node_disk_write_time_seconds_total{device=~\"sd[a-z]+|nvme[0-9]+n[0-9]+|vd[a-z]+|xvd[a-z]+\"}[5m])) / (rate(node_disk_reads_completed_total{device=~\"sd[a-z]+|nvme[0-9]+n[0-9]+|vd[a-z]+|xvd[a-z]+\"}[5m]) + rate(node_disk_writes_completed_total{device=~\"sd[a-z]+|nvme[0-9]+n[0-9]+|vd[a-z]+|xvd[a-z]+\"}[5m])))",
+          "legendFormat": "",
+          "range": false,
+          "instant": true,
+          "format": "table"
+        },
+        {
+          "refId": "F",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "expr": "max by (instance) (1 - node_filesystem_avail_bytes{mountpoint=~\"/sysroot|/var|/\", fstype!~\"tmpfs|overlay|squashfs\"} / node_filesystem_size_bytes{mountpoint=~\"/sysroot|/var|/\", fstype!~\"tmpfs|overlay|squashfs\"})",
+          "legendFormat": "",
+          "range": false,
+          "instant": true,
+          "format": "table"
+        },
+        {
+          "refId": "G",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "expr": "sum by (instance) (rate(node_network_receive_drop_total{device=~\"(ens|eth|eno|enp|bond)[a-z0-9]*\"}[5m]) + rate(node_network_transmit_drop_total{device=~\"(ens|eth|eno|enp|bond)[a-z0-9]*\"}[5m]))",
+          "legendFormat": "",
+          "range": false,
+          "instant": true,
+          "format": "table"
+        },
+        {
+          "refId": "H",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "expr": "avg by (instance) (rate(node_cpu_seconds_total{mode=\"iowait\"}[5m]))",
+          "legendFormat": "",
+          "range": false,
+          "instant": true,
+          "format": "table"
+        },
+        {
+          "refId": "I",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "expr": "max by (instance) (label_replace(kube_node_status_condition{condition=~\"DiskPressure|MemoryPressure|PIDPressure\", status=\"true\"}, \"instance\", \"$1\", \"node\", \"(.*)\"))",
+          "legendFormat": "",
+          "range": false,
+          "instant": true,
+          "format": "table"
+        }
+      ],
+      "transformations": [
+        {
+          "id": "merge",
+          "options": {}
+        },
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": {
+              "Time": true
+            },
+            "renameByName": {
+              "Value #A": "Pod 數",
+              "Value #B": "CPU 使用率",
+              "Value #C": "可用記憶體",
+              "Value #D": "conntrack 使用率",
+              "Value #E": "磁碟延遲（最慢的磁碟）",
+              "Value #F": "檔案系統使用率（最高）",
+              "Value #G": "網路丟包",
+              "Value #H": "iowait",
+              "Value #I": "Node 壓力狀態",
+              "instance": "Node"
+            },
+            "indexByName": {
+              "instance": 0,
+              "Value #A": 1,
+              "Value #B": 2,
+              "Value #C": 3,
+              "Value #D": 4,
+              "Value #E": 5,
+              "Value #F": 6,
+              "Value #G": 7,
+              "Value #H": 8,
+              "Value #I": 9
+            }
+          }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "filterable": true,
+            "align": "auto"
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Pod 數"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "none"
+              },
+              {
+                "id": "decimals",
+                "value": 0
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "CPU 使用率"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "percentunit"
+              },
+              {
+                "id": "decimals",
+                "value": 1
+              },
+              {
+                "id": "thresholds",
+                "value": {
+                  "mode": "absolute",
+                  "steps": [
+                    {
+                      "color": "green",
+                      "value": null
+                    },
+                    {
+                      "color": "yellow",
+                      "value": 0.8
+                    },
+                    {
+                      "color": "red",
+                      "value": 0.9
+                    }
+                  ]
+                }
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "thresholds"
+                }
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-background",
+                  "mode": "basic"
+                }
+              },
+              {
+                "id": "custom.displayMode",
+                "value": "color-background"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "可用記憶體"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "percentunit"
+              },
+              {
+                "id": "decimals",
+                "value": 1
+              },
+              {
+                "id": "thresholds",
+                "value": {
+                  "mode": "absolute",
+                  "steps": [
+                    {
+                      "color": "red",
+                      "value": null
+                    },
+                    {
+                      "color": "yellow",
+                      "value": 0.1
+                    },
+                    {
+                      "color": "green",
+                      "value": 0.2
+                    }
+                  ]
+                }
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "thresholds"
+                }
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-background",
+                  "mode": "basic"
+                }
+              },
+              {
+                "id": "custom.displayMode",
+                "value": "color-background"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "conntrack 使用率"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "percentunit"
+              },
+              {
+                "id": "decimals",
+                "value": 1
+              },
+              {
+                "id": "thresholds",
+                "value": {
+                  "mode": "absolute",
+                  "steps": [
+                    {
+                      "color": "green",
+                      "value": null
+                    },
+                    {
+                      "color": "yellow",
+                      "value": 0.5
+                    },
+                    {
+                      "color": "red",
+                      "value": 0.7
+                    }
+                  ]
+                }
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "thresholds"
+                }
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-background",
+                  "mode": "basic"
+                }
+              },
+              {
+                "id": "custom.displayMode",
+                "value": "color-background"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "磁碟延遲（最慢的磁碟）"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "s"
+              },
+              {
+                "id": "thresholds",
+                "value": {
+                  "mode": "absolute",
+                  "steps": [
+                    {
+                      "color": "green",
+                      "value": null
+                    },
+                    {
+                      "color": "yellow",
+                      "value": 0.01
+                    },
+                    {
+                      "color": "red",
+                      "value": 0.02
+                    }
+                  ]
+                }
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "thresholds"
+                }
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-background",
+                  "mode": "basic"
+                }
+              },
+              {
+                "id": "custom.displayMode",
+                "value": "color-background"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "檔案系統使用率（最高）"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "percentunit"
+              },
+              {
+                "id": "decimals",
+                "value": 1
+              },
+              {
+                "id": "thresholds",
+                "value": {
+                  "mode": "absolute",
+                  "steps": [
+                    {
+                      "color": "green",
+                      "value": null
+                    },
+                    {
+                      "color": "yellow",
+                      "value": 0.8
+                    },
+                    {
+                      "color": "red",
+                      "value": 0.85
+                    }
+                  ]
+                }
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "thresholds"
+                }
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-background",
+                  "mode": "basic"
+                }
+              },
+              {
+                "id": "custom.displayMode",
+                "value": "color-background"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "網路丟包"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "pps"
+              },
+              {
+                "id": "decimals",
+                "value": 1
+              },
+              {
+                "id": "thresholds",
+                "value": {
+                  "mode": "absolute",
+                  "steps": [
+                    {
+                      "color": "green",
+                      "value": null
+                    },
+                    {
+                      "color": "yellow",
+                      "value": 1
+                    },
+                    {
+                      "color": "red",
+                      "value": 50
+                    }
+                  ]
+                }
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "thresholds"
+                }
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-background",
+                  "mode": "basic"
+                }
+              },
+              {
+                "id": "custom.displayMode",
+                "value": "color-background"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "iowait"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "percentunit"
+              },
+              {
+                "id": "decimals",
+                "value": 1
+              },
+              {
+                "id": "thresholds",
+                "value": {
+                  "mode": "absolute",
+                  "steps": [
+                    {
+                      "color": "green",
+                      "value": null
+                    },
+                    {
+                      "color": "yellow",
+                      "value": 0.05
+                    },
+                    {
+                      "color": "red",
+                      "value": 0.1
+                    }
+                  ]
+                }
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "thresholds"
+                }
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-background",
+                  "mode": "basic"
+                }
+              },
+              {
+                "id": "custom.displayMode",
+                "value": "color-background"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Node 壓力狀態"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "none"
+              },
+              {
+                "id": "decimals",
+                "value": 0
+              },
+              {
+                "id": "thresholds",
+                "value": {
+                  "mode": "absolute",
+                  "steps": [
+                    {
+                      "color": "green",
+                      "value": null
+                    },
+                    {
+                      "color": "red",
+                      "value": 1
+                    }
+                  ]
+                }
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "thresholds"
+                }
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-background",
+                  "mode": "basic"
+                }
+              },
+              {
+                "id": "custom.displayMode",
+                "value": "color-background"
+              },
+              {
+                "id": "mappings",
+                "value": [
+                  {
+                    "type": "value",
+                    "options": {
+                      "0": {
+                        "text": "正常"
+                      },
+                      "1": {
+                        "text": "發生中"
+                      }
+                    }
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "showHeader": true,
+        "sortBy": [
+          {
+            "displayName": "conntrack 使用率",
+            "desc": true
+          }
+        ],
+        "footer": {
+          "show": false
+        }
+      },
+      "gridPos": {
+        "h": 10,
+        "w": 24,
+        "x": 0,
+        "y": 11
+      }
+    },
+    {
+      "id": 4,
+      "type": "timeseries",
+      "title": "【Node】conntrack 使用率 Top 10",
+      "description": "**視角**：叢集內每一台 Node（該 Node 上所有 Pod 加總）\n\n**這是什麼**：連線追蹤表用了幾成。滿了之後該 Node 所有 Pod 的新連線都會被丟掉。\n\n**怎麼看**：看哪台 Node 在什麼時間往上飆，再對照第 4 區 Workload 的 Top 10 趨勢，找同一時間上升的是誰。",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${datasource}"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "expr": "topk(10, max by (instance) (node_nf_conntrack_entries / node_nf_conntrack_entries_limit))",
+          "legendFormat": "{{instance}}",
+          "range": true,
+          "instant": false
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "min": 0,
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 1,
+            "fillOpacity": 10,
+            "showPoints": "never",
+            "spanNulls": true
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "right",
+          "calcs": [
+            "max"
+          ],
+          "sortBy": "Max",
+          "sortDesc": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 0,
+        "y": 21
+      }
+    },
+    {
+      "id": 5,
+      "type": "timeseries",
+      "title": "【Node】磁碟延遲 Top 10",
+      "description": "**視角**：叢集內每一台 Node（該 Node 上所有 Pod 加總）\n\n**這是什麼**：Node 本機磁碟每次讀寫平均要等多久，所有 Pod 共用。\n\n**怎麼看**：看哪台 Node 在什麼時間往上飆，再對照第 4 區 Workload 的 Top 10 趨勢，找同一時間上升的是誰。",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${datasource}"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "expr": "topk(10, max by (instance) ((rate(node_disk_read_time_seconds_total{device=~\"sd[a-z]+|nvme[0-9]+n[0-9]+|vd[a-z]+|xvd[a-z]+\"}[$__rate_interval]) + rate(node_disk_write_time_seconds_total{device=~\"sd[a-z]+|nvme[0-9]+n[0-9]+|vd[a-z]+|xvd[a-z]+\"}[$__rate_interval])) / (rate(node_disk_reads_completed_total{device=~\"sd[a-z]+|nvme[0-9]+n[0-9]+|vd[a-z]+|xvd[a-z]+\"}[$__rate_interval]) + rate(node_disk_writes_completed_total{device=~\"sd[a-z]+|nvme[0-9]+n[0-9]+|vd[a-z]+|xvd[a-z]+\"}[$__rate_interval]))))",
+          "legendFormat": "{{instance}}",
+          "range": true,
+          "instant": false
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "min": 0,
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 1,
+            "fillOpacity": 10,
+            "showPoints": "never",
+            "spanNulls": true
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "right",
+          "calcs": [
+            "max"
+          ],
+          "sortBy": "Max",
+          "sortDesc": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 8,
+        "y": 21
+      }
+    },
+    {
+      "id": 6,
+      "type": "timeseries",
+      "title": "【Node】網路丟包 Top 10",
+      "description": "**視角**：叢集內每一台 Node（該 Node 上所有 Pod 加總）\n\n**這是什麼**：實體網卡每秒丟掉的封包數，正常應接近 0。\n\n**怎麼看**：看哪台 Node 在什麼時間往上飆，再對照第 4 區 Workload 的 Top 10 趨勢，找同一時間上升的是誰。",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${datasource}"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "expr": "topk(10, sum by (instance) (rate(node_network_receive_drop_total{device=~\"(ens|eth|eno|enp|bond)[a-z0-9]*\"}[$__rate_interval]) + rate(node_network_transmit_drop_total{device=~\"(ens|eth|eno|enp|bond)[a-z0-9]*\"}[$__rate_interval])))",
+          "legendFormat": "{{instance}}",
+          "range": true,
+          "instant": false
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "pps",
+          "min": 0,
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 1,
+            "fillOpacity": 10,
+            "showPoints": "never",
+            "spanNulls": true
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "right",
+          "calcs": [
+            "max"
+          ],
+          "sortBy": "Max",
+          "sortDesc": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 16,
+        "y": 21
+      }
+    },
+    {
+      "id": 7,
+      "type": "timeseries",
+      "title": "【Node】iowait Top 10",
+      "description": "**視角**：叢集內每一台 Node（該 Node 上所有 Pod 加總）\n\n**這是什麼**：CPU 閒著在等磁碟的時間比例，往上飆代表磁碟變慢。\n\n**怎麼看**：看哪台 Node 在什麼時間往上飆，再對照第 4 區 Workload 的 Top 10 趨勢，找同一時間上升的是誰。",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${datasource}"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "expr": "topk(10, avg by (instance) (rate(node_cpu_seconds_total{mode=\"iowait\"}[$__rate_interval])))",
+          "legendFormat": "{{instance}}",
+          "range": true,
+          "instant": false
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "min": 0,
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 1,
+            "fillOpacity": 10,
+            "showPoints": "never",
+            "spanNulls": true
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "right",
+          "calcs": [
+            "max"
+          ],
+          "sortBy": "Max",
+          "sortDesc": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 0,
+        "y": 29
+      }
+    },
+    {
+      "id": 8,
+      "type": "timeseries",
+      "title": "【Node】檔案系統使用率 Top 10",
+      "description": "**視角**：叢集內每一台 Node（該 Node 上所有 Pod 加總）\n\n**這是什麼**：Node 本機磁碟空間用了幾成，太高會觸發 DiskPressure 驅逐 Pod。\n\n**怎麼看**：看哪台 Node 在什麼時間往上飆，再對照第 4 區 Workload 的 Top 10 趨勢，找同一時間上升的是誰。",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${datasource}"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "expr": "topk(10, max by (instance) (1 - node_filesystem_avail_bytes{mountpoint=~\"/sysroot|/var|/\", fstype!~\"tmpfs|overlay|squashfs\"} / node_filesystem_size_bytes{mountpoint=~\"/sysroot|/var|/\", fstype!~\"tmpfs|overlay|squashfs\"}))",
+          "legendFormat": "{{instance}}",
+          "range": true,
+          "instant": false
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "min": 0,
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 1,
+            "fillOpacity": 10,
+            "showPoints": "never",
+            "spanNulls": true
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "right",
+          "calcs": [
+            "max"
+          ],
+          "sortBy": "Max",
+          "sortDesc": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 8,
+        "y": 29
+      }
+    },
+    {
+      "id": 9,
+      "type": "timeseries",
+      "title": "【Node】CPU 使用率 Top 10",
+      "description": "**視角**：叢集內每一台 Node（該 Node 上所有 Pod 加總）\n\n**這是什麼**：整台 Node 的 CPU 有多少時間在工作。\n\n**怎麼看**：看哪台 Node 在什麼時間往上飆，再對照第 4 區 Workload 的 Top 10 趨勢，找同一時間上升的是誰。",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${datasource}"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "expr": "topk(10, 1 - avg by (instance) (rate(node_cpu_seconds_total{mode=\"idle\"}[$__rate_interval])))",
+          "legendFormat": "{{instance}}",
+          "range": true,
+          "instant": false
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "min": 0,
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 1,
+            "fillOpacity": 10,
+            "showPoints": "never",
+            "spanNulls": true
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "right",
+          "calcs": [
+            "max"
+          ],
+          "sortBy": "Max",
+          "sortDesc": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 16,
+        "y": 29
+      }
+    },
+    {
+      "id": 10,
+      "type": "row",
+      "title": "2. 【Workload】風險排行：點 workload 名稱進細節 Dashboard",
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 37
+      },
+      "panels": []
+    },
+    {
+      "id": 11,
+      "type": "table",
+      "title": "【Workload】風險排行（時間範圍結束前 5 分鐘）",
+      "description": "**視角**：叢集內每一個 Workload（該 Workload 所有 Pod 合計）\n\n**這是什麼**：全叢集每個 Deployment / StatefulSet / DaemonSet 的用量與風險指標。\n\n**怎麼看**：點表頭排序找出前幾名；紅色、黃色格子要注意。CPU 用量 / Request 超過 100% 代表在借用 Node 的共用 CPU；網路丟包、磁碟寫入、可寫層用量是 limit 管不到、會影響同 Node 鄰居的資源。點 workload 名稱進細節 Dashboard 查證。",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${datasource}"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "expr": "count by (namespace, workload, workload_type) (max by (namespace, pod, workload, workload_type) (label_replace(label_replace(label_replace(kube_pod_owner{owner_kind=\"ReplicaSet\", namespace=~\"$namespace\", namespace!~\"$exclude\"}, \"replicaset\", \"$1\", \"owner_name\", \"(.*)\") * on (namespace, replicaset) group_left (owner_deploy) max by (namespace, replicaset, owner_deploy) (label_replace(kube_replicaset_owner{owner_kind=\"Deployment\", namespace=~\"$namespace\", namespace!~\"$exclude\"}, \"owner_deploy\", \"$1\", \"owner_name\", \"(.*)\")), \"workload\", \"$1\", \"owner_deploy\", \"(.*)\"), \"workload_type\", \"Deployment\", \"namespace\", \".*\") or label_replace(label_replace(kube_pod_owner{owner_kind=~\"StatefulSet|DaemonSet\", namespace=~\"$namespace\", namespace!~\"$exclude\"}, \"workload\", \"$1\", \"owner_name\", \"(.*)\"), \"workload_type\", \"$1\", \"owner_kind\", \"(.*)\")))",
+          "legendFormat": "",
+          "range": false,
+          "instant": true,
+          "format": "table"
+        },
+        {
+          "refId": "B",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "expr": "sum by (namespace, workload, workload_type) (sum by (namespace, pod) (rate(container_cpu_usage_seconds_total{container!=\"\", container!=\"POD\", namespace=~\"$namespace\", namespace!~\"$exclude\"}[5m])) * on (namespace, pod) group_left (workload, workload_type) max by (namespace, pod, workload, workload_type) (label_replace(label_replace(label_replace(kube_pod_owner{owner_kind=\"ReplicaSet\", namespace=~\"$namespace\", namespace!~\"$exclude\"}, \"replicaset\", \"$1\", \"owner_name\", \"(.*)\") * on (namespace, replicaset) group_left (owner_deploy) max by (namespace, replicaset, owner_deploy) (label_replace(kube_replicaset_owner{owner_kind=\"Deployment\", namespace=~\"$namespace\", namespace!~\"$exclude\"}, \"owner_deploy\", \"$1\", \"owner_name\", \"(.*)\")), \"workload\", \"$1\", \"owner_deploy\", \"(.*)\"), \"workload_type\", \"Deployment\", \"namespace\", \".*\") or label_replace(label_replace(kube_pod_owner{owner_kind=~\"StatefulSet|DaemonSet\", namespace=~\"$namespace\", namespace!~\"$exclude\"}, \"workload\", \"$1\", \"owner_name\", \"(.*)\"), \"workload_type\", \"$1\", \"owner_kind\", \"(.*)\")))",
+          "legendFormat": "",
+          "range": false,
+          "instant": true,
+          "format": "table"
+        },
+        {
+          "refId": "C",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "expr": "sum by (namespace, workload, workload_type) (sum by (namespace, pod) (rate(container_cpu_usage_seconds_total{container!=\"\", container!=\"POD\", namespace=~\"$namespace\", namespace!~\"$exclude\"}[5m])) * on (namespace, pod) group_left (workload, workload_type) max by (namespace, pod, workload, workload_type) (label_replace(label_replace(label_replace(kube_pod_owner{owner_kind=\"ReplicaSet\", namespace=~\"$namespace\", namespace!~\"$exclude\"}, \"replicaset\", \"$1\", \"owner_name\", \"(.*)\") * on (namespace, replicaset) group_left (owner_deploy) max by (namespace, replicaset, owner_deploy) (label_replace(kube_replicaset_owner{owner_kind=\"Deployment\", namespace=~\"$namespace\", namespace!~\"$exclude\"}, \"owner_deploy\", \"$1\", \"owner_name\", \"(.*)\")), \"workload\", \"$1\", \"owner_deploy\", \"(.*)\"), \"workload_type\", \"Deployment\", \"namespace\", \".*\") or label_replace(label_replace(kube_pod_owner{owner_kind=~\"StatefulSet|DaemonSet\", namespace=~\"$namespace\", namespace!~\"$exclude\"}, \"workload\", \"$1\", \"owner_name\", \"(.*)\"), \"workload_type\", \"$1\", \"owner_kind\", \"(.*)\"))) / sum by (namespace, workload, workload_type) (sum by (namespace, pod) (kube_pod_container_resource_requests{resource=\"cpu\", namespace=~\"$namespace\", namespace!~\"$exclude\"}) * on (namespace, pod) group_left (workload, workload_type) max by (namespace, pod, workload, workload_type) (label_replace(label_replace(label_replace(kube_pod_owner{owner_kind=\"ReplicaSet\", namespace=~\"$namespace\", namespace!~\"$exclude\"}, \"replicaset\", \"$1\", \"owner_name\", \"(.*)\") * on (namespace, replicaset) group_left (owner_deploy) max by (namespace, replicaset, owner_deploy) (label_replace(kube_replicaset_owner{owner_kind=\"Deployment\", namespace=~\"$namespace\", namespace!~\"$exclude\"}, \"owner_deploy\", \"$1\", \"owner_name\", \"(.*)\")), \"workload\", \"$1\", \"owner_deploy\", \"(.*)\"), \"workload_type\", \"Deployment\", \"namespace\", \".*\") or label_replace(label_replace(kube_pod_owner{owner_kind=~\"StatefulSet|DaemonSet\", namespace=~\"$namespace\", namespace!~\"$exclude\"}, \"workload\", \"$1\", \"owner_name\", \"(.*)\"), \"workload_type\", \"$1\", \"owner_kind\", \"(.*)\")))",
+          "legendFormat": "",
+          "range": false,
+          "instant": true,
+          "format": "table"
+        },
+        {
+          "refId": "D",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "expr": "max by (namespace, workload, workload_type) ((sum by (namespace, pod) (rate(container_cpu_cfs_throttled_periods_total{container!=\"\", namespace=~\"$namespace\", namespace!~\"$exclude\"}[5m])) / sum by (namespace, pod) (rate(container_cpu_cfs_periods_total{container!=\"\", namespace=~\"$namespace\", namespace!~\"$exclude\"}[5m]))) * on (namespace, pod) group_left (workload, workload_type) max by (namespace, pod, workload, workload_type) (label_replace(label_replace(label_replace(kube_pod_owner{owner_kind=\"ReplicaSet\", namespace=~\"$namespace\", namespace!~\"$exclude\"}, \"replicaset\", \"$1\", \"owner_name\", \"(.*)\") * on (namespace, replicaset) group_left (owner_deploy) max by (namespace, replicaset, owner_deploy) (label_replace(kube_replicaset_owner{owner_kind=\"Deployment\", namespace=~\"$namespace\", namespace!~\"$exclude\"}, \"owner_deploy\", \"$1\", \"owner_name\", \"(.*)\")), \"workload\", \"$1\", \"owner_deploy\", \"(.*)\"), \"workload_type\", \"Deployment\", \"namespace\", \".*\") or label_replace(label_replace(kube_pod_owner{owner_kind=~\"StatefulSet|DaemonSet\", namespace=~\"$namespace\", namespace!~\"$exclude\"}, \"workload\", \"$1\", \"owner_name\", \"(.*)\"), \"workload_type\", \"$1\", \"owner_kind\", \"(.*)\")))",
+          "legendFormat": "",
+          "range": false,
+          "instant": true,
+          "format": "table"
+        },
+        {
+          "refId": "E",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "expr": "max by (namespace, workload, workload_type) (max by (namespace, pod) (container_memory_working_set_bytes{container!=\"\", container!=\"POD\", namespace=~\"$namespace\", namespace!~\"$exclude\"} / on (namespace, pod, container) max by (namespace, pod, container) (kube_pod_container_resource_limits{resource=\"memory\", namespace=~\"$namespace\", namespace!~\"$exclude\"})) * on (namespace, pod) group_left (workload, workload_type) max by (namespace, pod, workload, workload_type) (label_replace(label_replace(label_replace(kube_pod_owner{owner_kind=\"ReplicaSet\", namespace=~\"$namespace\", namespace!~\"$exclude\"}, \"replicaset\", \"$1\", \"owner_name\", \"(.*)\") * on (namespace, replicaset) group_left (owner_deploy) max by (namespace, replicaset, owner_deploy) (label_replace(kube_replicaset_owner{owner_kind=\"Deployment\", namespace=~\"$namespace\", namespace!~\"$exclude\"}, \"owner_deploy\", \"$1\", \"owner_name\", \"(.*)\")), \"workload\", \"$1\", \"owner_deploy\", \"(.*)\"), \"workload_type\", \"Deployment\", \"namespace\", \".*\") or label_replace(label_replace(kube_pod_owner{owner_kind=~\"StatefulSet|DaemonSet\", namespace=~\"$namespace\", namespace!~\"$exclude\"}, \"workload\", \"$1\", \"owner_name\", \"(.*)\"), \"workload_type\", \"$1\", \"owner_kind\", \"(.*)\")))",
+          "legendFormat": "",
+          "range": false,
+          "instant": true,
+          "format": "table"
+        },
+        {
+          "refId": "F",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "expr": "sum by (namespace, workload, workload_type) (sum by (namespace, pod) (increase(kube_pod_container_status_restarts_total{namespace=~\"$namespace\", namespace!~\"$exclude\"}[1h])) * on (namespace, pod) group_left (workload, workload_type) max by (namespace, pod, workload, workload_type) (label_replace(label_replace(label_replace(kube_pod_owner{owner_kind=\"ReplicaSet\", namespace=~\"$namespace\", namespace!~\"$exclude\"}, \"replicaset\", \"$1\", \"owner_name\", \"(.*)\") * on (namespace, replicaset) group_left (owner_deploy) max by (namespace, replicaset, owner_deploy) (label_replace(kube_replicaset_owner{owner_kind=\"Deployment\", namespace=~\"$namespace\", namespace!~\"$exclude\"}, \"owner_deploy\", \"$1\", \"owner_name\", \"(.*)\")), \"workload\", \"$1\", \"owner_deploy\", \"(.*)\"), \"workload_type\", \"Deployment\", \"namespace\", \".*\") or label_replace(label_replace(kube_pod_owner{owner_kind=~\"StatefulSet|DaemonSet\", namespace=~\"$namespace\", namespace!~\"$exclude\"}, \"workload\", \"$1\", \"owner_name\", \"(.*)\"), \"workload_type\", \"$1\", \"owner_kind\", \"(.*)\")))",
+          "legendFormat": "",
+          "range": false,
+          "instant": true,
+          "format": "table"
+        },
+        {
+          "refId": "G",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "expr": "sum by (namespace, workload, workload_type) ((sum by (namespace, pod) (rate(container_network_transmit_bytes_total{namespace=~\"$namespace\", namespace!~\"$exclude\"}[5m])) + sum by (namespace, pod) (rate(container_network_receive_bytes_total{namespace=~\"$namespace\", namespace!~\"$exclude\"}[5m]))) * on (namespace, pod) group_left (workload, workload_type) max by (namespace, pod, workload, workload_type) (label_replace(label_replace(label_replace(kube_pod_owner{owner_kind=\"ReplicaSet\", namespace=~\"$namespace\", namespace!~\"$exclude\"}, \"replicaset\", \"$1\", \"owner_name\", \"(.*)\") * on (namespace, replicaset) group_left (owner_deploy) max by (namespace, replicaset, owner_deploy) (label_replace(kube_replicaset_owner{owner_kind=\"Deployment\", namespace=~\"$namespace\", namespace!~\"$exclude\"}, \"owner_deploy\", \"$1\", \"owner_name\", \"(.*)\")), \"workload\", \"$1\", \"owner_deploy\", \"(.*)\"), \"workload_type\", \"Deployment\", \"namespace\", \".*\") or label_replace(label_replace(kube_pod_owner{owner_kind=~\"StatefulSet|DaemonSet\", namespace=~\"$namespace\", namespace!~\"$exclude\"}, \"workload\", \"$1\", \"owner_name\", \"(.*)\"), \"workload_type\", \"$1\", \"owner_kind\", \"(.*)\")))",
+          "legendFormat": "",
+          "range": false,
+          "instant": true,
+          "format": "table"
+        },
+        {
+          "refId": "H",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "expr": "sum by (namespace, workload, workload_type) ((sum by (namespace, pod) (rate(container_network_transmit_packets_dropped_total{namespace=~\"$namespace\", namespace!~\"$exclude\"}[5m])) + sum by (namespace, pod) (rate(container_network_receive_packets_dropped_total{namespace=~\"$namespace\", namespace!~\"$exclude\"}[5m]))) * on (namespace, pod) group_left (workload, workload_type) max by (namespace, pod, workload, workload_type) (label_replace(label_replace(label_replace(kube_pod_owner{owner_kind=\"ReplicaSet\", namespace=~\"$namespace\", namespace!~\"$exclude\"}, \"replicaset\", \"$1\", \"owner_name\", \"(.*)\") * on (namespace, replicaset) group_left (owner_deploy) max by (namespace, replicaset, owner_deploy) (label_replace(kube_replicaset_owner{owner_kind=\"Deployment\", namespace=~\"$namespace\", namespace!~\"$exclude\"}, \"owner_deploy\", \"$1\", \"owner_name\", \"(.*)\")), \"workload\", \"$1\", \"owner_deploy\", \"(.*)\"), \"workload_type\", \"Deployment\", \"namespace\", \".*\") or label_replace(label_replace(kube_pod_owner{owner_kind=~\"StatefulSet|DaemonSet\", namespace=~\"$namespace\", namespace!~\"$exclude\"}, \"workload\", \"$1\", \"owner_name\", \"(.*)\"), \"workload_type\", \"$1\", \"owner_kind\", \"(.*)\")))",
+          "legendFormat": "",
+          "range": false,
+          "instant": true,
+          "format": "table"
+        },
+        {
+          "refId": "I",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "expr": "sum by (namespace, workload, workload_type) ((sum by (namespace, pod) (rate(container_fs_writes_bytes_total{namespace=~\"$namespace\", namespace!~\"$exclude\", container!=\"\", container!=\"POD\"}[5m])) or sum by (namespace, pod) (rate(container_fs_writes_bytes_total{namespace=~\"$namespace\", namespace!~\"$exclude\", container=\"\", pod!=\"\"}[5m])) or sum by (namespace, pod) (rate(container_blkio_device_usage_total{namespace=~\"$namespace\", namespace!~\"$exclude\", operation=\"Write\", container=\"\", pod!=\"\"}[5m]))) * on (namespace, pod) group_left (workload, workload_type) max by (namespace, pod, workload, workload_type) (label_replace(label_replace(label_replace(kube_pod_owner{owner_kind=\"ReplicaSet\", namespace=~\"$namespace\", namespace!~\"$exclude\"}, \"replicaset\", \"$1\", \"owner_name\", \"(.*)\") * on (namespace, replicaset) group_left (owner_deploy) max by (namespace, replicaset, owner_deploy) (label_replace(kube_replicaset_owner{owner_kind=\"Deployment\", namespace=~\"$namespace\", namespace!~\"$exclude\"}, \"owner_deploy\", \"$1\", \"owner_name\", \"(.*)\")), \"workload\", \"$1\", \"owner_deploy\", \"(.*)\"), \"workload_type\", \"Deployment\", \"namespace\", \".*\") or label_replace(label_replace(kube_pod_owner{owner_kind=~\"StatefulSet|DaemonSet\", namespace=~\"$namespace\", namespace!~\"$exclude\"}, \"workload\", \"$1\", \"owner_name\", \"(.*)\"), \"workload_type\", \"$1\", \"owner_kind\", \"(.*)\")))",
+          "legendFormat": "",
+          "range": false,
+          "instant": true,
+          "format": "table"
+        },
+        {
+          "refId": "J",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "expr": "sum by (namespace, workload, workload_type) (sum by (namespace, pod) (container_fs_usage_bytes{container!=\"\", container!=\"POD\", namespace=~\"$namespace\", namespace!~\"$exclude\"}) * on (namespace, pod) group_left (workload, workload_type) max by (namespace, pod, workload, workload_type) (label_replace(label_replace(label_replace(kube_pod_owner{owner_kind=\"ReplicaSet\", namespace=~\"$namespace\", namespace!~\"$exclude\"}, \"replicaset\", \"$1\", \"owner_name\", \"(.*)\") * on (namespace, replicaset) group_left (owner_deploy) max by (namespace, replicaset, owner_deploy) (label_replace(kube_replicaset_owner{owner_kind=\"Deployment\", namespace=~\"$namespace\", namespace!~\"$exclude\"}, \"owner_deploy\", \"$1\", \"owner_name\", \"(.*)\")), \"workload\", \"$1\", \"owner_deploy\", \"(.*)\"), \"workload_type\", \"Deployment\", \"namespace\", \".*\") or label_replace(label_replace(kube_pod_owner{owner_kind=~\"StatefulSet|DaemonSet\", namespace=~\"$namespace\", namespace!~\"$exclude\"}, \"workload\", \"$1\", \"owner_name\", \"(.*)\"), \"workload_type\", \"$1\", \"owner_kind\", \"(.*)\")))",
+          "legendFormat": "",
+          "range": false,
+          "instant": true,
+          "format": "table"
+        }
+      ],
+      "transformations": [
+        {
+          "id": "merge",
+          "options": {}
+        },
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": {
+              "Time": true
+            },
+            "renameByName": {
+              "Value #A": "Pod 數",
+              "Value #B": "CPU 用量（核）",
+              "Value #C": "CPU 用量 / Request",
+              "Value #D": "最高 CPU throttling",
+              "Value #E": "最高 記憶體 / Limit",
+              "Value #F": "重啟（1 小時）",
+              "Value #G": "網路流量",
+              "Value #H": "網路丟包",
+              "Value #I": "磁碟寫入",
+              "Value #J": "可寫層用量"
+            },
+            "indexByName": {
+              "namespace": 0,
+              "workload": 1,
+              "workload_type": 2,
+              "Value #A": 3,
+              "Value #B": 4,
+              "Value #C": 5,
+              "Value #D": 6,
+              "Value #E": 7,
+              "Value #F": 8,
+              "Value #G": 9,
+              "Value #H": 10,
+              "Value #I": 11,
+              "Value #J": 12
+            }
+          }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "filterable": true,
+            "align": "auto"
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Pod 數"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "none"
+              },
+              {
+                "id": "decimals",
+                "value": 0
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "CPU 用量（核）"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "none"
+              },
+              {
+                "id": "decimals",
+                "value": 2
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "CPU 用量 / Request"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "percentunit"
+              },
+              {
+                "id": "decimals",
+                "value": 0
+              },
+              {
+                "id": "thresholds",
+                "value": {
+                  "mode": "absolute",
+                  "steps": [
+                    {
+                      "color": "green",
+                      "value": null
+                    },
+                    {
+                      "color": "yellow",
+                      "value": 1.0
+                    },
+                    {
+                      "color": "red",
+                      "value": 1.5
+                    }
+                  ]
+                }
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "thresholds"
+                }
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-background",
+                  "mode": "basic"
+                }
+              },
+              {
+                "id": "custom.displayMode",
+                "value": "color-background"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "最高 CPU throttling"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "percentunit"
+              },
+              {
+                "id": "decimals",
+                "value": 0
+              },
+              {
+                "id": "thresholds",
+                "value": {
+                  "mode": "absolute",
+                  "steps": [
+                    {
+                      "color": "green",
+                      "value": null
+                    },
+                    {
+                      "color": "yellow",
+                      "value": 0.25
+                    },
+                    {
+                      "color": "red",
+                      "value": 0.5
+                    }
+                  ]
+                }
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "thresholds"
+                }
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-background",
+                  "mode": "basic"
+                }
+              },
+              {
+                "id": "custom.displayMode",
+                "value": "color-background"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "最高 記憶體 / Limit"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "percentunit"
+              },
+              {
+                "id": "decimals",
+                "value": 0
+              },
+              {
+                "id": "thresholds",
+                "value": {
+                  "mode": "absolute",
+                  "steps": [
+                    {
+                      "color": "green",
+                      "value": null
+                    },
+                    {
+                      "color": "yellow",
+                      "value": 0.8
+                    },
+                    {
+                      "color": "red",
+                      "value": 0.9
+                    }
+                  ]
+                }
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "thresholds"
+                }
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-background",
+                  "mode": "basic"
+                }
+              },
+              {
+                "id": "custom.displayMode",
+                "value": "color-background"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "重啟（1 小時）"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "none"
+              },
+              {
+                "id": "decimals",
+                "value": 0
+              },
+              {
+                "id": "thresholds",
+                "value": {
+                  "mode": "absolute",
+                  "steps": [
+                    {
+                      "color": "green",
+                      "value": null
+                    },
+                    {
+                      "color": "yellow",
+                      "value": 1
+                    },
+                    {
+                      "color": "red",
+                      "value": 5
+                    }
+                  ]
+                }
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "thresholds"
+                }
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-background",
+                  "mode": "basic"
+                }
+              },
+              {
+                "id": "custom.displayMode",
+                "value": "color-background"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "網路流量"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "Bps"
+              },
+              {
+                "id": "decimals",
+                "value": 1
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "網路丟包"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "pps"
+              },
+              {
+                "id": "decimals",
+                "value": 1
+              },
+              {
+                "id": "thresholds",
+                "value": {
+                  "mode": "absolute",
+                  "steps": [
+                    {
+                      "color": "green",
+                      "value": null
+                    },
+                    {
+                      "color": "yellow",
+                      "value": 1
+                    },
+                    {
+                      "color": "red",
+                      "value": 50
+                    }
+                  ]
+                }
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "thresholds"
+                }
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-background",
+                  "mode": "basic"
+                }
+              },
+              {
+                "id": "custom.displayMode",
+                "value": "color-background"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "磁碟寫入"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "Bps"
+              },
+              {
+                "id": "decimals",
+                "value": 1
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "可寫層用量"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "bytes"
+              },
+              {
+                "id": "decimals",
+                "value": 1
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "workload"
+            },
+            "properties": [
+              {
+                "id": "links",
+                "value": [
+                  {
+                    "title": "開啟此 Workload 的細節 Dashboard",
+                    "url": "/d/ocp-loadtest-impact/?var-datasource=${datasource}&var-namespace=${__data.fields.namespace}&var-workload=${__data.fields.workload}&${__url_time_range}"
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "showHeader": true,
+        "sortBy": [
+          {
+            "displayName": "CPU 用量 / Request",
+            "desc": true
+          }
+        ],
+        "footer": {
+          "show": false
+        }
+      },
+      "gridPos": {
+        "h": 14,
+        "w": 24,
+        "x": 0,
+        "y": 38
+      }
+    },
+    {
+      "id": 12,
+      "type": "row",
+      "title": "3. 【Workload】limit 相關 Top 10 趨勢（主要影響他自己）",
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 52
+      },
+      "panels": []
+    },
+    {
+      "id": 13,
+      "type": "timeseries",
+      "title": "【Workload】CPU 用量 / Request Top 10",
+      "description": "**視角**：叢集內每一個 Workload（該 Workload 所有 Pod 合計）\n\n**這是什麼**：CPU 用量占保證額度的比例。超過 100% 代表在借用 Node 的閒置 CPU。\n\n**怎麼看**：看誰在什麼時間往上飆，對照第 1 區 Node 變吃緊的時間點；右側圖例依最大值排序。",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${datasource}"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "expr": "topk(10, sum by (namespace, workload, workload_type) (sum by (namespace, pod) (rate(container_cpu_usage_seconds_total{container!=\"\", container!=\"POD\", namespace=~\"$namespace\", namespace!~\"$exclude\"}[$__rate_interval])) * on (namespace, pod) group_left (workload, workload_type) max by (namespace, pod, workload, workload_type) (label_replace(label_replace(label_replace(kube_pod_owner{owner_kind=\"ReplicaSet\", namespace=~\"$namespace\", namespace!~\"$exclude\"}, \"replicaset\", \"$1\", \"owner_name\", \"(.*)\") * on (namespace, replicaset) group_left (owner_deploy) max by (namespace, replicaset, owner_deploy) (label_replace(kube_replicaset_owner{owner_kind=\"Deployment\", namespace=~\"$namespace\", namespace!~\"$exclude\"}, \"owner_deploy\", \"$1\", \"owner_name\", \"(.*)\")), \"workload\", \"$1\", \"owner_deploy\", \"(.*)\"), \"workload_type\", \"Deployment\", \"namespace\", \".*\") or label_replace(label_replace(kube_pod_owner{owner_kind=~\"StatefulSet|DaemonSet\", namespace=~\"$namespace\", namespace!~\"$exclude\"}, \"workload\", \"$1\", \"owner_name\", \"(.*)\"), \"workload_type\", \"$1\", \"owner_kind\", \"(.*)\"))) / sum by (namespace, workload, workload_type) (sum by (namespace, pod) (kube_pod_container_resource_requests{resource=\"cpu\", namespace=~\"$namespace\", namespace!~\"$exclude\"}) * on (namespace, pod) group_left (workload, workload_type) max by (namespace, pod, workload, workload_type) (label_replace(label_replace(label_replace(kube_pod_owner{owner_kind=\"ReplicaSet\", namespace=~\"$namespace\", namespace!~\"$exclude\"}, \"replicaset\", \"$1\", \"owner_name\", \"(.*)\") * on (namespace, replicaset) group_left (owner_deploy) max by (namespace, replicaset, owner_deploy) (label_replace(kube_replicaset_owner{owner_kind=\"Deployment\", namespace=~\"$namespace\", namespace!~\"$exclude\"}, \"owner_deploy\", \"$1\", \"owner_name\", \"(.*)\")), \"workload\", \"$1\", \"owner_deploy\", \"(.*)\"), \"workload_type\", \"Deployment\", \"namespace\", \".*\") or label_replace(label_replace(kube_pod_owner{owner_kind=~\"StatefulSet|DaemonSet\", namespace=~\"$namespace\", namespace!~\"$exclude\"}, \"workload\", \"$1\", \"owner_name\", \"(.*)\"), \"workload_type\", \"$1\", \"owner_kind\", \"(.*)\"))))",
+          "legendFormat": "{{namespace}}/{{workload}}",
+          "range": true,
+          "instant": false
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "min": 0,
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 1,
+            "fillOpacity": 10,
+            "showPoints": "never",
+            "spanNulls": true
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "right",
+          "calcs": [
+            "max"
+          ],
+          "sortBy": "Max",
+          "sortDesc": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 53
+      }
+    },
+    {
+      "id": 14,
+      "type": "timeseries",
+      "title": "【Workload】最高 CPU throttling Top 10",
+      "description": "**視角**：叢集內每一個 Workload（該 Workload 所有 Pod 合計）\n\n**這是什麼**：該 Workload 中被 limit 擋最多的 Pod 的節流比例。只影響他自己。\n\n**怎麼看**：看誰在什麼時間往上飆，對照第 1 區 Node 變吃緊的時間點；右側圖例依最大值排序。",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${datasource}"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "expr": "topk(10, max by (namespace, workload, workload_type) ((sum by (namespace, pod) (rate(container_cpu_cfs_throttled_periods_total{container!=\"\", namespace=~\"$namespace\", namespace!~\"$exclude\"}[$__rate_interval])) / sum by (namespace, pod) (rate(container_cpu_cfs_periods_total{container!=\"\", namespace=~\"$namespace\", namespace!~\"$exclude\"}[$__rate_interval]))) * on (namespace, pod) group_left (workload, workload_type) max by (namespace, pod, workload, workload_type) (label_replace(label_replace(label_replace(kube_pod_owner{owner_kind=\"ReplicaSet\", namespace=~\"$namespace\", namespace!~\"$exclude\"}, \"replicaset\", \"$1\", \"owner_name\", \"(.*)\") * on (namespace, replicaset) group_left (owner_deploy) max by (namespace, replicaset, owner_deploy) (label_replace(kube_replicaset_owner{owner_kind=\"Deployment\", namespace=~\"$namespace\", namespace!~\"$exclude\"}, \"owner_deploy\", \"$1\", \"owner_name\", \"(.*)\")), \"workload\", \"$1\", \"owner_deploy\", \"(.*)\"), \"workload_type\", \"Deployment\", \"namespace\", \".*\") or label_replace(label_replace(kube_pod_owner{owner_kind=~\"StatefulSet|DaemonSet\", namespace=~\"$namespace\", namespace!~\"$exclude\"}, \"workload\", \"$1\", \"owner_name\", \"(.*)\"), \"workload_type\", \"$1\", \"owner_kind\", \"(.*)\"))))",
+          "legendFormat": "{{namespace}}/{{workload}}",
+          "range": true,
+          "instant": false
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "min": 0,
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 1,
+            "fillOpacity": 10,
+            "showPoints": "never",
+            "spanNulls": true
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "right",
+          "calcs": [
+            "max"
+          ],
+          "sortBy": "Max",
+          "sortDesc": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 53
+      }
+    },
+    {
+      "id": 15,
+      "type": "timeseries",
+      "title": "【Workload】最高 記憶體 / Limit Top 10",
+      "description": "**視角**：叢集內每一個 Workload（該 Workload 所有 Pod 合計）\n\n**這是什麼**：最接近 memory limit 的容器的使用比例，到 100% 會被 OOMKilled。\n\n**怎麼看**：看誰在什麼時間往上飆，對照第 1 區 Node 變吃緊的時間點；右側圖例依最大值排序。",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${datasource}"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "expr": "topk(10, max by (namespace, workload, workload_type) (max by (namespace, pod) (container_memory_working_set_bytes{container!=\"\", container!=\"POD\", namespace=~\"$namespace\", namespace!~\"$exclude\"} / on (namespace, pod, container) max by (namespace, pod, container) (kube_pod_container_resource_limits{resource=\"memory\", namespace=~\"$namespace\", namespace!~\"$exclude\"})) * on (namespace, pod) group_left (workload, workload_type) max by (namespace, pod, workload, workload_type) (label_replace(label_replace(label_replace(kube_pod_owner{owner_kind=\"ReplicaSet\", namespace=~\"$namespace\", namespace!~\"$exclude\"}, \"replicaset\", \"$1\", \"owner_name\", \"(.*)\") * on (namespace, replicaset) group_left (owner_deploy) max by (namespace, replicaset, owner_deploy) (label_replace(kube_replicaset_owner{owner_kind=\"Deployment\", namespace=~\"$namespace\", namespace!~\"$exclude\"}, \"owner_deploy\", \"$1\", \"owner_name\", \"(.*)\")), \"workload\", \"$1\", \"owner_deploy\", \"(.*)\"), \"workload_type\", \"Deployment\", \"namespace\", \".*\") or label_replace(label_replace(kube_pod_owner{owner_kind=~\"StatefulSet|DaemonSet\", namespace=~\"$namespace\", namespace!~\"$exclude\"}, \"workload\", \"$1\", \"owner_name\", \"(.*)\"), \"workload_type\", \"$1\", \"owner_kind\", \"(.*)\"))))",
+          "legendFormat": "{{namespace}}/{{workload}}",
+          "range": true,
+          "instant": false
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "min": 0,
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 1,
+            "fillOpacity": 10,
+            "showPoints": "never",
+            "spanNulls": true
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "right",
+          "calcs": [
+            "max"
+          ],
+          "sortBy": "Max",
+          "sortDesc": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 61
+      }
+    },
+    {
+      "id": 16,
+      "type": "timeseries",
+      "title": "【Workload】重啟次數 Top 10（每 1 小時）",
+      "description": "**視角**：叢集內每一個 Workload（該 Workload 所有 Pod 合計）\n\n**這是什麼**：過去 1 小時的重啟次數。\n\n**怎麼看**：看誰在什麼時間往上飆，對照第 1 區 Node 變吃緊的時間點；右側圖例依最大值排序。",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${datasource}"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "expr": "topk(10, sum by (namespace, workload, workload_type) (sum by (namespace, pod) (increase(kube_pod_container_status_restarts_total{namespace=~\"$namespace\", namespace!~\"$exclude\"}[1h])) * on (namespace, pod) group_left (workload, workload_type) max by (namespace, pod, workload, workload_type) (label_replace(label_replace(label_replace(kube_pod_owner{owner_kind=\"ReplicaSet\", namespace=~\"$namespace\", namespace!~\"$exclude\"}, \"replicaset\", \"$1\", \"owner_name\", \"(.*)\") * on (namespace, replicaset) group_left (owner_deploy) max by (namespace, replicaset, owner_deploy) (label_replace(kube_replicaset_owner{owner_kind=\"Deployment\", namespace=~\"$namespace\", namespace!~\"$exclude\"}, \"owner_deploy\", \"$1\", \"owner_name\", \"(.*)\")), \"workload\", \"$1\", \"owner_deploy\", \"(.*)\"), \"workload_type\", \"Deployment\", \"namespace\", \".*\") or label_replace(label_replace(kube_pod_owner{owner_kind=~\"StatefulSet|DaemonSet\", namespace=~\"$namespace\", namespace!~\"$exclude\"}, \"workload\", \"$1\", \"owner_name\", \"(.*)\"), \"workload_type\", \"$1\", \"owner_kind\", \"(.*)\"))))",
+          "legendFormat": "{{namespace}}/{{workload}}",
+          "range": true,
+          "instant": false
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "min": 0,
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 1,
+            "fillOpacity": 10,
+            "showPoints": "never",
+            "spanNulls": true
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "right",
+          "calcs": [
+            "max"
+          ],
+          "sortBy": "Max",
+          "sortDesc": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 61
+      }
+    },
+    {
+      "id": 17,
+      "type": "row",
+      "title": "4. 【Workload】共用資源 Top 10 趨勢（limit 管不到，會影響同 Node 鄰居）",
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 69
+      },
+      "panels": []
+    },
+    {
+      "id": 18,
+      "type": "timeseries",
+      "title": "【Workload】網路流量 Top 10",
+      "description": "**視角**：叢集內每一個 Workload（該 Workload 所有 Pod 合計）\n\n**這是什麼**：送出加接收的網路流量，所在 Node 的網卡由所有 Pod 共用。\n\n**怎麼看**：看誰在什麼時間往上飆，對照第 1 區 Node 變吃緊的時間點；右側圖例依最大值排序。",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${datasource}"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "expr": "topk(10, sum by (namespace, workload, workload_type) ((sum by (namespace, pod) (rate(container_network_transmit_bytes_total{namespace=~\"$namespace\", namespace!~\"$exclude\"}[$__rate_interval])) + sum by (namespace, pod) (rate(container_network_receive_bytes_total{namespace=~\"$namespace\", namespace!~\"$exclude\"}[$__rate_interval]))) * on (namespace, pod) group_left (workload, workload_type) max by (namespace, pod, workload, workload_type) (label_replace(label_replace(label_replace(kube_pod_owner{owner_kind=\"ReplicaSet\", namespace=~\"$namespace\", namespace!~\"$exclude\"}, \"replicaset\", \"$1\", \"owner_name\", \"(.*)\") * on (namespace, replicaset) group_left (owner_deploy) max by (namespace, replicaset, owner_deploy) (label_replace(kube_replicaset_owner{owner_kind=\"Deployment\", namespace=~\"$namespace\", namespace!~\"$exclude\"}, \"owner_deploy\", \"$1\", \"owner_name\", \"(.*)\")), \"workload\", \"$1\", \"owner_deploy\", \"(.*)\"), \"workload_type\", \"Deployment\", \"namespace\", \".*\") or label_replace(label_replace(kube_pod_owner{owner_kind=~\"StatefulSet|DaemonSet\", namespace=~\"$namespace\", namespace!~\"$exclude\"}, \"workload\", \"$1\", \"owner_name\", \"(.*)\"), \"workload_type\", \"$1\", \"owner_kind\", \"(.*)\"))))",
+          "legendFormat": "{{namespace}}/{{workload}}",
+          "range": true,
+          "instant": false
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "Bps",
+          "min": 0,
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 1,
+            "fillOpacity": 10,
+            "showPoints": "never",
+            "spanNulls": true
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "right",
+          "calcs": [
+            "max"
+          ],
+          "sortBy": "Max",
+          "sortDesc": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 70
+      }
+    },
+    {
+      "id": 19,
+      "type": "timeseries",
+      "title": "【Workload】網路丟包 Top 10",
+      "description": "**視角**：叢集內每一個 Workload（該 Workload 所有 Pod 合計）\n\n**這是什麼**：Pod 網路介面上每秒丟掉的封包數，正常應接近 0。\n\n**怎麼看**：看誰在什麼時間往上飆，對照第 1 區 Node 變吃緊的時間點；右側圖例依最大值排序。",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${datasource}"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "expr": "topk(10, sum by (namespace, workload, workload_type) ((sum by (namespace, pod) (rate(container_network_transmit_packets_dropped_total{namespace=~\"$namespace\", namespace!~\"$exclude\"}[$__rate_interval])) + sum by (namespace, pod) (rate(container_network_receive_packets_dropped_total{namespace=~\"$namespace\", namespace!~\"$exclude\"}[$__rate_interval]))) * on (namespace, pod) group_left (workload, workload_type) max by (namespace, pod, workload, workload_type) (label_replace(label_replace(label_replace(kube_pod_owner{owner_kind=\"ReplicaSet\", namespace=~\"$namespace\", namespace!~\"$exclude\"}, \"replicaset\", \"$1\", \"owner_name\", \"(.*)\") * on (namespace, replicaset) group_left (owner_deploy) max by (namespace, replicaset, owner_deploy) (label_replace(kube_replicaset_owner{owner_kind=\"Deployment\", namespace=~\"$namespace\", namespace!~\"$exclude\"}, \"owner_deploy\", \"$1\", \"owner_name\", \"(.*)\")), \"workload\", \"$1\", \"owner_deploy\", \"(.*)\"), \"workload_type\", \"Deployment\", \"namespace\", \".*\") or label_replace(label_replace(kube_pod_owner{owner_kind=~\"StatefulSet|DaemonSet\", namespace=~\"$namespace\", namespace!~\"$exclude\"}, \"workload\", \"$1\", \"owner_name\", \"(.*)\"), \"workload_type\", \"$1\", \"owner_kind\", \"(.*)\"))))",
+          "legendFormat": "{{namespace}}/{{workload}}",
+          "range": true,
+          "instant": false
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "pps",
+          "min": 0,
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 1,
+            "fillOpacity": 10,
+            "showPoints": "never",
+            "spanNulls": true
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "right",
+          "calcs": [
+            "max"
+          ],
+          "sortBy": "Max",
+          "sortDesc": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 70
+      }
+    },
+    {
+      "id": 20,
+      "type": "timeseries",
+      "title": "【Workload】磁碟寫入 Top 10",
+      "description": "**視角**：叢集內每一個 Workload（該 Workload 所有 Pod 合計）\n\n**這是什麼**：寫入 Node 本機磁碟的量（log、暫存檔、容器內寫檔）。沒資料代表叢集沒有收集 Pod 層級磁碟 IO。\n\n**怎麼看**：看誰在什麼時間往上飆，對照第 1 區 Node 變吃緊的時間點；右側圖例依最大值排序。",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${datasource}"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "expr": "topk(10, sum by (namespace, workload, workload_type) ((sum by (namespace, pod) (rate(container_fs_writes_bytes_total{namespace=~\"$namespace\", namespace!~\"$exclude\", container!=\"\", container!=\"POD\"}[$__rate_interval])) or sum by (namespace, pod) (rate(container_fs_writes_bytes_total{namespace=~\"$namespace\", namespace!~\"$exclude\", container=\"\", pod!=\"\"}[$__rate_interval])) or sum by (namespace, pod) (rate(container_blkio_device_usage_total{namespace=~\"$namespace\", namespace!~\"$exclude\", operation=\"Write\", container=\"\", pod!=\"\"}[$__rate_interval]))) * on (namespace, pod) group_left (workload, workload_type) max by (namespace, pod, workload, workload_type) (label_replace(label_replace(label_replace(kube_pod_owner{owner_kind=\"ReplicaSet\", namespace=~\"$namespace\", namespace!~\"$exclude\"}, \"replicaset\", \"$1\", \"owner_name\", \"(.*)\") * on (namespace, replicaset) group_left (owner_deploy) max by (namespace, replicaset, owner_deploy) (label_replace(kube_replicaset_owner{owner_kind=\"Deployment\", namespace=~\"$namespace\", namespace!~\"$exclude\"}, \"owner_deploy\", \"$1\", \"owner_name\", \"(.*)\")), \"workload\", \"$1\", \"owner_deploy\", \"(.*)\"), \"workload_type\", \"Deployment\", \"namespace\", \".*\") or label_replace(label_replace(kube_pod_owner{owner_kind=~\"StatefulSet|DaemonSet\", namespace=~\"$namespace\", namespace!~\"$exclude\"}, \"workload\", \"$1\", \"owner_name\", \"(.*)\"), \"workload_type\", \"$1\", \"owner_kind\", \"(.*)\"))))",
+          "legendFormat": "{{namespace}}/{{workload}}",
+          "range": true,
+          "instant": false
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "Bps",
+          "min": 0,
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 1,
+            "fillOpacity": 10,
+            "showPoints": "never",
+            "spanNulls": true
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "right",
+          "calcs": [
+            "max"
+          ],
+          "sortBy": "Max",
+          "sortDesc": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 78
+      }
+    },
+    {
+      "id": 21,
+      "type": "timeseries",
+      "title": "【Workload】可寫層用量 Top 10",
+      "description": "**視角**：叢集內每一個 Workload（該 Workload 所有 Pod 合計）\n\n**這是什麼**：容器在 Node 本機磁碟上佔用的空間，持續成長可能把 Node 磁碟寫滿。\n\n**怎麼看**：看誰在什麼時間往上飆，對照第 1 區 Node 變吃緊的時間點；右側圖例依最大值排序。",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${datasource}"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "expr": "topk(10, sum by (namespace, workload, workload_type) (sum by (namespace, pod) (container_fs_usage_bytes{container!=\"\", container!=\"POD\", namespace=~\"$namespace\", namespace!~\"$exclude\"}) * on (namespace, pod) group_left (workload, workload_type) max by (namespace, pod, workload, workload_type) (label_replace(label_replace(label_replace(kube_pod_owner{owner_kind=\"ReplicaSet\", namespace=~\"$namespace\", namespace!~\"$exclude\"}, \"replicaset\", \"$1\", \"owner_name\", \"(.*)\") * on (namespace, replicaset) group_left (owner_deploy) max by (namespace, replicaset, owner_deploy) (label_replace(kube_replicaset_owner{owner_kind=\"Deployment\", namespace=~\"$namespace\", namespace!~\"$exclude\"}, \"owner_deploy\", \"$1\", \"owner_name\", \"(.*)\")), \"workload\", \"$1\", \"owner_deploy\", \"(.*)\"), \"workload_type\", \"Deployment\", \"namespace\", \".*\") or label_replace(label_replace(kube_pod_owner{owner_kind=~\"StatefulSet|DaemonSet\", namespace=~\"$namespace\", namespace!~\"$exclude\"}, \"workload\", \"$1\", \"owner_name\", \"(.*)\"), \"workload_type\", \"$1\", \"owner_kind\", \"(.*)\"))))",
+          "legendFormat": "{{namespace}}/{{workload}}",
+          "range": true,
+          "instant": false
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "bytes",
+          "min": 0,
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 1,
+            "fillOpacity": 10,
+            "showPoints": "never",
+            "spanNulls": true
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "right",
+          "calcs": [
+            "max"
+          ],
+          "sortBy": "Max",
+          "sortDesc": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 78
+      }
+    }
+  ]
+}

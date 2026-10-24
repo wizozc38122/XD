@@ -8,7 +8,7 @@
   ],
   "timezone": "browser",
   "schemaVersion": 39,
-  "version": 3,
+  "version": 4,
   "editable": true,
   "graphTooltip": 1,
   "refresh": "30s",
@@ -16,6 +16,16 @@
     "from": "now-3h",
     "to": "now"
   },
+  "links": [
+    {
+      "title": "回到叢集風險總覽",
+      "type": "link",
+      "icon": "dashboard",
+      "url": "/d/ocp-cluster-risk-overview/?var-datasource=${datasource}",
+      "keepTime": true,
+      "targetBlank": false
+    }
+  ],
   "templating": {
     "list": [
       {

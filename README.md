@@ -9,16 +9,45 @@ Pod 已經有 CPU / 記憶體 limit，但下面這些是**整台 Node 共用、l
 - 網卡頻寬與封包處理
 - conntrack 連線追蹤表
 
+## 兩個 Dashboard 的分工
+
+| Dashboard | 用途 |
+|---|---|
+| **OCP 叢集風險總覽** | 全叢集每台 Node、每個 Workload 的排行，先找出嫌疑對象 |
+| **OCP 壓測影響評估** | 針對單一 Deployment，查證它有沒有拖慢所在 Node 上的其他服務 |
+
+使用流程：在總覽看哪台 Node 變吃緊、哪個 Workload 排名前面 → 點表格中的 `workload` 名稱 → 自動帶著 namespace、workload 與時間範圍開啟細節 Dashboard。細節 Dashboard 右上角也有連結可以回到總覽。
+
 ## 檔案
 
 | 檔案 | 說明 |
 |---|---|
-| `ocp-loadtest-impact-dashboard.json` | 匯入 Grafana 用的 Dashboard |
-| `gen_dashboard.py` | 產生上面 JSON 的腳本。要改面板就改這裡，再執行 `python gen_dashboard.py` 重新產生 |
+| `ocp-cluster-risk-overview-dashboard.json` | 叢集風險總覽 |
+| `ocp-loadtest-impact-dashboard.json` | 單一 Workload 細節 |
+| `gen_overview_dashboard.py`、`gen_dashboard.py` | 產生上面兩個 JSON 的腳本。要改面板就改腳本，再執行 `python <腳本>` 重新產生 |
+
+## 叢集風險總覽
+
+一個資料來源對應一個 OCP 叢集，切換「資料來源（叢集）」就是切換叢集。
+
+| 區塊 | 內容 |
+|---|---|
+| 1.【Node】各 Node 狀態 | 每台 Node 的 CPU、可用記憶體、conntrack、磁碟延遲、檔案系統、網路丟包、iowait、壓力狀態，加上各項 Top 10 趨勢 |
+| 2.【Workload】風險排行 | 每個 Deployment / StatefulSet / DaemonSet 的 Pod 數、CPU 用量與 ÷ Request、throttling、記憶體 ÷ Limit、重啟、網路流量與丟包、磁碟寫入、可寫層用量 |
+| 3.【Workload】limit 相關 Top 10 | 主要影響他自己的指標隨時間的變化 |
+| 4.【Workload】共用資源 Top 10 | limit 管不到、會影響同 Node 鄰居的指標隨時間的變化 |
+
+注意事項：
+
+- **表格是快照**：表格取的是時間範圍**結束前 5 分鐘**。要看壓測當下的排名，把時間範圍的結束點拉到壓測期間；Top 10 趨勢圖則會顯示整段時間。
+- **排名高不等於造成影響**：只代表是大戶，要進細節 Dashboard 對照 Node 壓力的時間點。
+- **預設排除系統 namespace**：`openshift.*|kube-.*`，可在上方「排除的 Namespace」修改或清空。
+- **點擊跳轉只支援 Deployment**：細節 Dashboard 以 Pod 名稱規則對應 Deployment，StatefulSet、DaemonSet 點進去會沒有資料。
+- **使用 hostNetwork 的 Pod**：網路指標會是整台 Node 的流量，排名可能偏高。
 
 ## 匯入
 
-1. Grafana → Dashboards → New → Import → 上傳 `ocp-loadtest-impact-dashboard.json`。
+1. Grafana → Dashboards → New → Import，分別上傳兩個 JSON。兩個都要匯入，互相跳轉的連結才會有效。
 2. 上方變數依序選：
    - **資料來源**：只會列出名稱符合 `Prometheus.*OCP`（開頭 `Prometheus`、結尾 `OCP`）的 Prometheus 資料來源。要改規則，修改 `gen_dashboard.py` 裡 datasource 變數的 `regex`。
    - **Namespace**、**Deployment**：要壓測的服務。
