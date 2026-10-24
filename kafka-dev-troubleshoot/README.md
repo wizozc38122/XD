@@ -47,11 +47,14 @@ python gen_dashboard.py kafka-dev-troubleshoot-dashboard.json "Prometheus-(SIT|U
 ## 幾個容易誤會的數字
 
 - **還落後、追上需要**：用「速度取樣」區間的平均速度算。區間短反應快但跳動大；消費只比寫入快一點點時，追上需要會很不穩，超過 1 天會顯示「> 1 天（幾乎持平）」。
-- **Lag 佔保留量**：最落後的 partition 裡，還沒讀的訊息佔 Kafka 目前保留量的比例（用訊息筆數算）。
-  - **100%**：retention 的清除已經追到 consumer 讀到的位置。
-  - **超過 100%**：沒讀的資料已經被刪了，consumer 會收到 `OFFSET_OUT_OF_RANGE`，之後從哪讀看 `auto.offset.reset`。
-  - 不管 retention 是依大小還是依時間，算法都一樣。
-  - topic 設定多少：`kafka-configs --describe --entity-type topics --entity-name <topic>`。
+  - **還落後**顯示「沒有新寫入」：取樣區間內沒有寫入，算不出來。
+  - **追上需要**依序判斷：沒有 lag 或還落後不到 30 秒 → 已跟上；有 lag 但沒有 consumer → 沒人在讀；消費比寫入快 → 算出時間；都不是 → 追不上。
+- **Lag 佔保留量** = 還沒讀的筆數 ÷ Kafka 這個 partition 現在還留著的筆數（取最糟的 partition）。
+  - 只用 offset 算（kafka-exporter），不是 segment，也跟 retention 是依時間還是大小無關，不需要 jmx。
+  - 例：還留著 1,000 筆、其中 950 筆沒讀 = 95%，再刪一點就會刪到沒讀的。
+  - **已掉資料**（超過 100%）：沒讀的資料已經被刪了，救不回來。consumer 會收到 `OFFSET_OUT_OF_RANGE`，之後從哪讀看 `auto.offset.reset`（earliest = 跳到最舊還留著的、latest = 跳到最新、none = 報錯）。
+  - Kafka 的資料是整個 topic 共用一份，被刪的那段所有 group（包括之後新訂閱的）都讀不到；百分比是每個 group 各自算，已經追上的 group 不受影響。
+  - topic 的 retention 設多少，dashboard 看不到，要用 `kafka-configs --describe --entity-type topics --entity-name <topic>` 查。
 - **讀取延遲約 500 ms**：是正常的。沒有新資料時，broker 會等滿 `fetch.max.wait.ms`（預設 500 ms）才回應。
 
 ## jmx exporter 設定
