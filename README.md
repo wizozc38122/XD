@@ -245,6 +245,7 @@ working set 是 Linux 判斷要不要 OOM 的記憶體用量。碰到自己的 m
 | 磁碟相關面板沒資料 | 磁碟名稱不是 `sd* / nvme* / vd* / xvd*`，修改 `gen_dashboard.py` 的 `DEV` |
 | 找不到 Deployment 的 Pod | 用 Pod 名稱規則 `<deployment>-<hash>-<id>` 對應，StatefulSet、DaemonSet 不適用 |
 | 3A 的網路 ÷ Node 目前網卡流量超過 100% | 同一台 Node 內 Pod 互傳不經過實體網卡，只當量級參考 |
+| 他的 CPU、記憶體看起來偏高 | 有些叢集會從 kubelet 兩個地方（`/metrics/cadvisor`、`/metrics/resource`）抓同一個容器指標，加總後變兩倍。所有容器指標查詢都已先「同一個容器只取一筆」再加總，所以不會重複計算。仍覺得偏高時，用 `oc adm top pod -n <namespace>` 的數字對照：兩邊接近，就是真的用這麼多 |
 | 磁碟數字對不太上 | 容器層（cAdvisor）與 Node 層的統計方式不同，寫到 PVC 的量也不算在 Node 本機磁碟，只當量級參考 |
 | Router 面板沒資料 | 服務不經過 Router，或沒有權限查詢 Router 指標 |
 

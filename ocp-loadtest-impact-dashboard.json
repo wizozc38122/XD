@@ -8,7 +8,7 @@
   ],
   "timezone": "browser",
   "schemaVersion": 39,
-  "version": 8,
+  "version": 9,
   "editable": true,
   "graphTooltip": 1,
   "refresh": "30s",
@@ -224,7 +224,7 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "sum(rate(container_cpu_usage_seconds_total{namespace=\"$namespace\", pod=~\"$workload-[a-z0-9]+-[a-z0-9]+\", container!=\"\", container!=\"POD\"}[$__rate_interval])) / sum(kube_pod_container_resource_requests{resource=\"cpu\", namespace=\"$namespace\", pod=~\"$workload-[a-z0-9]+-[a-z0-9]+\"})",
+          "expr": "sum(max by (namespace, pod, container) (rate(container_cpu_usage_seconds_total{namespace=\"$namespace\", pod=~\"$workload-[a-z0-9]+-[a-z0-9]+\", container!=\"\", container!=\"POD\"}[$__rate_interval]))) / sum(kube_pod_container_resource_requests{resource=\"cpu\", namespace=\"$namespace\", pod=~\"$workload-[a-z0-9]+-[a-z0-9]+\"})",
           "legendFormat": "",
           "range": true,
           "instant": false,
@@ -292,7 +292,7 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "max(container_memory_working_set_bytes{namespace=\"$namespace\", pod=~\"$workload-[a-z0-9]+-[a-z0-9]+\", container!=\"\", container!=\"POD\"} / on(namespace, pod, container) kube_pod_container_resource_limits{resource=\"memory\", namespace=\"$namespace\", pod=~\"$workload-[a-z0-9]+-[a-z0-9]+\"})",
+          "expr": "max(max by (namespace, pod, container) (container_memory_working_set_bytes{namespace=\"$namespace\", pod=~\"$workload-[a-z0-9]+-[a-z0-9]+\", container!=\"\", container!=\"POD\"}) / on (namespace, pod, container) max by (namespace, pod, container) (kube_pod_container_resource_limits{resource=\"memory\", namespace=\"$namespace\", pod=~\"$workload-[a-z0-9]+-[a-z0-9]+\"}))",
           "legendFormat": "",
           "range": true,
           "instant": false,
@@ -360,7 +360,7 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "max(sum by (pod) (rate(container_cpu_cfs_throttled_periods_total{namespace=\"$namespace\", pod=~\"$workload-[a-z0-9]+-[a-z0-9]+\", container!=\"\", container!=\"POD\"}[$__rate_interval])) / sum by (pod) (rate(container_cpu_cfs_periods_total{namespace=\"$namespace\", pod=~\"$workload-[a-z0-9]+-[a-z0-9]+\", container!=\"\", container!=\"POD\"}[$__rate_interval])))",
+          "expr": "max(sum by (pod) (max by (namespace, pod, container) (rate(container_cpu_cfs_throttled_periods_total{namespace=\"$namespace\", pod=~\"$workload-[a-z0-9]+-[a-z0-9]+\", container!=\"\", container!=\"POD\"}[$__rate_interval]))) / sum by (pod) (max by (namespace, pod, container) (rate(container_cpu_cfs_periods_total{namespace=\"$namespace\", pod=~\"$workload-[a-z0-9]+-[a-z0-9]+\", container!=\"\", container!=\"POD\"}[$__rate_interval]))))",
           "legendFormat": "",
           "range": true,
           "instant": false,
@@ -493,7 +493,7 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "sum(rate(container_cpu_usage_seconds_total{namespace=\"$namespace\", pod=~\"$workload-[a-z0-9]+-[a-z0-9]+\", container!=\"\", container!=\"POD\"}[$__rate_interval]) * on (namespace, pod) group_left () max by (namespace, pod) (kube_pod_info{node=~\"$node\"})) / count(node_cpu_seconds_total{mode=\"idle\", instance=~\"$node\"})",
+          "expr": "sum(max by (namespace, pod, container) (rate(container_cpu_usage_seconds_total{namespace=\"$namespace\", pod=~\"$workload-[a-z0-9]+-[a-z0-9]+\", container!=\"\", container!=\"POD\"}[$__rate_interval])) * on (namespace, pod) group_left () max by (namespace, pod) (kube_pod_info{node=~\"$node\"})) / count(node_cpu_seconds_total{mode=\"idle\", instance=~\"$node\"})",
           "legendFormat": "",
           "range": true,
           "instant": false,
@@ -676,7 +676,7 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "sum(rate(container_cpu_usage_seconds_total{namespace=\"$namespace\", pod=~\"$workload-[a-z0-9]+-[a-z0-9]+\", container!=\"\", container!=\"POD\"}[$__rate_interval]))",
+          "expr": "sum(max by (namespace, pod, container) (rate(container_cpu_usage_seconds_total{namespace=\"$namespace\", pod=~\"$workload-[a-z0-9]+-[a-z0-9]+\", container!=\"\", container!=\"POD\"}[$__rate_interval])))",
           "legendFormat": "用量",
           "range": true,
           "instant": false,
@@ -712,7 +712,7 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "sum(rate(container_cpu_usage_seconds_total{namespace=\"$namespace\", pod=~\"$workload-[a-z0-9]+-[a-z0-9]+\", container!=\"\", container!=\"POD\"}[$__rate_interval] offset 1d))",
+          "expr": "sum(max by (namespace, pod, container) (rate(container_cpu_usage_seconds_total{namespace=\"$namespace\", pod=~\"$workload-[a-z0-9]+-[a-z0-9]+\", container!=\"\", container!=\"POD\"}[$__rate_interval] offset 1d)))",
           "legendFormat": "昨天同時段",
           "range": true,
           "instant": false,
@@ -765,7 +765,7 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "sum(container_memory_working_set_bytes{namespace=\"$namespace\", pod=~\"$workload-[a-z0-9]+-[a-z0-9]+\", container!=\"\", container!=\"POD\"})",
+          "expr": "sum(max by (namespace, pod, container) (container_memory_working_set_bytes{namespace=\"$namespace\", pod=~\"$workload-[a-z0-9]+-[a-z0-9]+\", container!=\"\", container!=\"POD\"}))",
           "legendFormat": "working set",
           "range": true,
           "instant": false,
@@ -842,7 +842,7 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "sum by (pod) (rate(container_cpu_cfs_throttled_periods_total{namespace=\"$namespace\", pod=~\"$workload-[a-z0-9]+-[a-z0-9]+\", container!=\"\", container!=\"POD\"}[$__rate_interval])) / sum by (pod) (rate(container_cpu_cfs_periods_total{namespace=\"$namespace\", pod=~\"$workload-[a-z0-9]+-[a-z0-9]+\", container!=\"\", container!=\"POD\"}[$__rate_interval]))",
+          "expr": "sum by (pod) (max by (namespace, pod, container) (rate(container_cpu_cfs_throttled_periods_total{namespace=\"$namespace\", pod=~\"$workload-[a-z0-9]+-[a-z0-9]+\", container!=\"\", container!=\"POD\"}[$__rate_interval]))) / sum by (pod) (max by (namespace, pod, container) (rate(container_cpu_cfs_periods_total{namespace=\"$namespace\", pod=~\"$workload-[a-z0-9]+-[a-z0-9]+\", container!=\"\", container!=\"POD\"}[$__rate_interval])))",
           "legendFormat": "{{pod}}",
           "range": true,
           "instant": false,
@@ -896,7 +896,7 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "sum(rate(container_network_transmit_bytes_total{namespace=\"$namespace\", pod=~\"$workload-[a-z0-9]+-[a-z0-9]+\"}[$__rate_interval]))",
+          "expr": "sum(max by (namespace, pod, interface) (rate(container_network_transmit_bytes_total{namespace=\"$namespace\", pod=~\"$workload-[a-z0-9]+-[a-z0-9]+\"}[$__rate_interval])))",
           "legendFormat": "送出 TX",
           "range": true,
           "instant": false,
@@ -908,7 +908,7 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "sum(rate(container_network_receive_bytes_total{namespace=\"$namespace\", pod=~\"$workload-[a-z0-9]+-[a-z0-9]+\"}[$__rate_interval]))",
+          "expr": "sum(max by (namespace, pod, interface) (rate(container_network_receive_bytes_total{namespace=\"$namespace\", pod=~\"$workload-[a-z0-9]+-[a-z0-9]+\"}[$__rate_interval])))",
           "legendFormat": "接收 RX",
           "range": true,
           "instant": false,
@@ -961,7 +961,7 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "sum(rate(container_network_transmit_packets_dropped_total{namespace=\"$namespace\", pod=~\"$workload-[a-z0-9]+-[a-z0-9]+\"}[$__rate_interval]))",
+          "expr": "sum(max by (namespace, pod, interface) (rate(container_network_transmit_packets_dropped_total{namespace=\"$namespace\", pod=~\"$workload-[a-z0-9]+-[a-z0-9]+\"}[$__rate_interval])))",
           "legendFormat": "TX 丟包",
           "range": true,
           "instant": false,
@@ -973,7 +973,7 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "sum(rate(container_network_receive_packets_dropped_total{namespace=\"$namespace\", pod=~\"$workload-[a-z0-9]+-[a-z0-9]+\"}[$__rate_interval]))",
+          "expr": "sum(max by (namespace, pod, interface) (rate(container_network_receive_packets_dropped_total{namespace=\"$namespace\", pod=~\"$workload-[a-z0-9]+-[a-z0-9]+\"}[$__rate_interval])))",
           "legendFormat": "RX 丟包",
           "range": true,
           "instant": false,
@@ -985,7 +985,7 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "sum(rate(container_network_transmit_errors_total{namespace=\"$namespace\", pod=~\"$workload-[a-z0-9]+-[a-z0-9]+\"}[$__rate_interval]))",
+          "expr": "sum(max by (namespace, pod, interface) (rate(container_network_transmit_errors_total{namespace=\"$namespace\", pod=~\"$workload-[a-z0-9]+-[a-z0-9]+\"}[$__rate_interval])))",
           "legendFormat": "TX 錯誤",
           "range": true,
           "instant": false,
@@ -997,7 +997,7 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "sum(rate(container_network_receive_errors_total{namespace=\"$namespace\", pod=~\"$workload-[a-z0-9]+-[a-z0-9]+\"}[$__rate_interval]))",
+          "expr": "sum(max by (namespace, pod, interface) (rate(container_network_receive_errors_total{namespace=\"$namespace\", pod=~\"$workload-[a-z0-9]+-[a-z0-9]+\"}[$__rate_interval])))",
           "legendFormat": "RX 錯誤",
           "range": true,
           "instant": false,
@@ -1051,7 +1051,7 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "sum((sum by (namespace, pod) (rate(container_fs_writes_bytes_total{namespace=\"$namespace\", pod=~\"$workload-[a-z0-9]+-[a-z0-9]+\", container!=\"\", container!=\"POD\"}[$__rate_interval])) or sum by (namespace, pod) (rate(container_fs_writes_bytes_total{namespace=\"$namespace\", pod=~\"$workload-[a-z0-9]+-[a-z0-9]+\", container=\"\", pod!=\"\"}[$__rate_interval])) or sum by (namespace, pod) (rate(container_blkio_device_usage_total{namespace=\"$namespace\", pod=~\"$workload-[a-z0-9]+-[a-z0-9]+\", operation=\"Write\", container=\"\", pod!=\"\"}[$__rate_interval]))))",
+          "expr": "sum((sum by (namespace, pod) (max by (namespace, pod, container, device) (rate(container_fs_writes_bytes_total{namespace=\"$namespace\", pod=~\"$workload-[a-z0-9]+-[a-z0-9]+\", container!=\"\", container!=\"POD\"}[$__rate_interval]))) or sum by (namespace, pod) (max by (namespace, pod, container, device) (rate(container_fs_writes_bytes_total{namespace=\"$namespace\", pod=~\"$workload-[a-z0-9]+-[a-z0-9]+\", container=\"\", pod!=\"\"}[$__rate_interval]))) or sum by (namespace, pod) (max by (namespace, pod, device, operation) (rate(container_blkio_device_usage_total{namespace=\"$namespace\", pod=~\"$workload-[a-z0-9]+-[a-z0-9]+\", operation=\"Write\", container=\"\", pod!=\"\"}[$__rate_interval])))))",
           "legendFormat": "寫入",
           "range": true,
           "instant": false,
@@ -1063,7 +1063,7 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "sum((sum by (namespace, pod) (rate(container_fs_reads_bytes_total{namespace=\"$namespace\", pod=~\"$workload-[a-z0-9]+-[a-z0-9]+\", container!=\"\", container!=\"POD\"}[$__rate_interval])) or sum by (namespace, pod) (rate(container_fs_reads_bytes_total{namespace=\"$namespace\", pod=~\"$workload-[a-z0-9]+-[a-z0-9]+\", container=\"\", pod!=\"\"}[$__rate_interval])) or sum by (namespace, pod) (rate(container_blkio_device_usage_total{namespace=\"$namespace\", pod=~\"$workload-[a-z0-9]+-[a-z0-9]+\", operation=\"Read\", container=\"\", pod!=\"\"}[$__rate_interval]))))",
+          "expr": "sum((sum by (namespace, pod) (max by (namespace, pod, container, device) (rate(container_fs_reads_bytes_total{namespace=\"$namespace\", pod=~\"$workload-[a-z0-9]+-[a-z0-9]+\", container!=\"\", container!=\"POD\"}[$__rate_interval]))) or sum by (namespace, pod) (max by (namespace, pod, container, device) (rate(container_fs_reads_bytes_total{namespace=\"$namespace\", pod=~\"$workload-[a-z0-9]+-[a-z0-9]+\", container=\"\", pod!=\"\"}[$__rate_interval]))) or sum by (namespace, pod) (max by (namespace, pod, device, operation) (rate(container_blkio_device_usage_total{namespace=\"$namespace\", pod=~\"$workload-[a-z0-9]+-[a-z0-9]+\", operation=\"Read\", container=\"\", pod!=\"\"}[$__rate_interval])))))",
           "legendFormat": "讀取",
           "range": true,
           "instant": false,
@@ -1117,7 +1117,7 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "sum(container_fs_usage_bytes{namespace=\"$namespace\", pod=~\"$workload-[a-z0-9]+-[a-z0-9]+\", container!=\"\", container!=\"POD\"})",
+          "expr": "sum(max by (namespace, pod, container, device) (container_fs_usage_bytes{namespace=\"$namespace\", pod=~\"$workload-[a-z0-9]+-[a-z0-9]+\", container!=\"\", container!=\"POD\"}))",
           "legendFormat": "已使用",
           "range": true,
           "instant": false,
@@ -1264,7 +1264,7 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "sum by (node) (sum by (namespace, pod) (rate(container_cpu_usage_seconds_total{namespace=\"$namespace\", pod=~\"$workload-[a-z0-9]+-[a-z0-9]+\", container!=\"\", container!=\"POD\"}[$__rate_interval])) * on (namespace, pod) group_left (node) max by (namespace, pod, node) (kube_pod_info{node=~\"$node\"})) / on (node) max by (node) (label_replace(sum by (instance) (rate(node_cpu_seconds_total{mode!~\"idle|iowait\", instance=~\"$node\"}[$__rate_interval])), \"node\", \"$1\", \"instance\", \"(.*)\"))",
+          "expr": "sum by (node) (sum by (namespace, pod) (max by (namespace, pod, container) (rate(container_cpu_usage_seconds_total{namespace=\"$namespace\", pod=~\"$workload-[a-z0-9]+-[a-z0-9]+\", container!=\"\", container!=\"POD\"}[$__rate_interval]))) * on (namespace, pod) group_left (node) max by (namespace, pod, node) (kube_pod_info{node=~\"$node\"})) / on (node) max by (node) (label_replace(sum by (instance) (rate(node_cpu_seconds_total{mode!~\"idle|iowait\", instance=~\"$node\"}[$__rate_interval])), \"node\", \"$1\", \"instance\", \"(.*)\"))",
           "legendFormat": "{{node}}",
           "range": true,
           "instant": false,
@@ -1318,7 +1318,7 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "sum by (node) (sum by (namespace, pod) (container_memory_working_set_bytes{namespace=\"$namespace\", pod=~\"$workload-[a-z0-9]+-[a-z0-9]+\", container!=\"\", container!=\"POD\"}) * on (namespace, pod) group_left (node) max by (namespace, pod, node) (kube_pod_info{node=~\"$node\"})) / on (node) max by (node) (label_replace(max by (instance) (node_memory_MemTotal_bytes{instance=~\"$node\"} - node_memory_MemAvailable_bytes{instance=~\"$node\"}), \"node\", \"$1\", \"instance\", \"(.*)\"))",
+          "expr": "sum by (node) (sum by (namespace, pod) (max by (namespace, pod, container) (container_memory_working_set_bytes{namespace=\"$namespace\", pod=~\"$workload-[a-z0-9]+-[a-z0-9]+\", container!=\"\", container!=\"POD\"})) * on (namespace, pod) group_left (node) max by (namespace, pod, node) (kube_pod_info{node=~\"$node\"})) / on (node) max by (node) (label_replace(max by (instance) (node_memory_MemTotal_bytes{instance=~\"$node\"} - node_memory_MemAvailable_bytes{instance=~\"$node\"}), \"node\", \"$1\", \"instance\", \"(.*)\"))",
           "legendFormat": "{{node}}",
           "range": true,
           "instant": false,
@@ -1372,7 +1372,7 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "sum by (node) (sum by (namespace, pod) (rate(container_network_transmit_bytes_total{namespace=\"$namespace\", pod=~\"$workload-[a-z0-9]+-[a-z0-9]+\"}[$__rate_interval])) * on (namespace, pod) group_left (node) max by (namespace, pod, node) (kube_pod_info{node=~\"$node\"})) / on (node) max by (node) (label_replace(sum by (instance) (rate(node_network_transmit_bytes_total{instance=~\"$node\", device=~\"(ens|eth|eno|enp|bond)[a-z0-9]*\"}[$__rate_interval])), \"node\", \"$1\", \"instance\", \"(.*)\"))",
+          "expr": "sum by (node) (sum by (namespace, pod) (max by (namespace, pod, interface) (rate(container_network_transmit_bytes_total{namespace=\"$namespace\", pod=~\"$workload-[a-z0-9]+-[a-z0-9]+\"}[$__rate_interval]))) * on (namespace, pod) group_left (node) max by (namespace, pod, node) (kube_pod_info{node=~\"$node\"})) / on (node) max by (node) (label_replace(sum by (instance) (rate(node_network_transmit_bytes_total{instance=~\"$node\", device=~\"(ens|eth|eno|enp|bond)[a-z0-9]*\"}[$__rate_interval])), \"node\", \"$1\", \"instance\", \"(.*)\"))",
           "legendFormat": "{{node}} 送出 TX",
           "range": true,
           "instant": false,
@@ -1384,7 +1384,7 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "sum by (node) (sum by (namespace, pod) (rate(container_network_receive_bytes_total{namespace=\"$namespace\", pod=~\"$workload-[a-z0-9]+-[a-z0-9]+\"}[$__rate_interval])) * on (namespace, pod) group_left (node) max by (namespace, pod, node) (kube_pod_info{node=~\"$node\"})) / on (node) max by (node) (label_replace(sum by (instance) (rate(node_network_receive_bytes_total{instance=~\"$node\", device=~\"(ens|eth|eno|enp|bond)[a-z0-9]*\"}[$__rate_interval])), \"node\", \"$1\", \"instance\", \"(.*)\"))",
+          "expr": "sum by (node) (sum by (namespace, pod) (max by (namespace, pod, interface) (rate(container_network_receive_bytes_total{namespace=\"$namespace\", pod=~\"$workload-[a-z0-9]+-[a-z0-9]+\"}[$__rate_interval]))) * on (namespace, pod) group_left (node) max by (namespace, pod, node) (kube_pod_info{node=~\"$node\"})) / on (node) max by (node) (label_replace(sum by (instance) (rate(node_network_receive_bytes_total{instance=~\"$node\", device=~\"(ens|eth|eno|enp|bond)[a-z0-9]*\"}[$__rate_interval])), \"node\", \"$1\", \"instance\", \"(.*)\"))",
           "legendFormat": "{{node}} 接收 RX",
           "range": true,
           "instant": false,
@@ -1438,7 +1438,7 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "sum by (node) ((sum by (namespace, pod) (rate(container_fs_writes_bytes_total{namespace=\"$namespace\", pod=~\"$workload-[a-z0-9]+-[a-z0-9]+\", container!=\"\", container!=\"POD\"}[$__rate_interval])) or sum by (namespace, pod) (rate(container_fs_writes_bytes_total{namespace=\"$namespace\", pod=~\"$workload-[a-z0-9]+-[a-z0-9]+\", container=\"\", pod!=\"\"}[$__rate_interval])) or sum by (namespace, pod) (rate(container_blkio_device_usage_total{namespace=\"$namespace\", pod=~\"$workload-[a-z0-9]+-[a-z0-9]+\", operation=\"Write\", container=\"\", pod!=\"\"}[$__rate_interval]))) * on (namespace, pod) group_left (node) max by (namespace, pod, node) (kube_pod_info{node=~\"$node\"})) / on (node) max by (node) (label_replace(sum by (instance) (rate(node_disk_written_bytes_total{instance=~\"$node\", device=~\"sd[a-z]+|nvme[0-9]+n[0-9]+|vd[a-z]+|xvd[a-z]+\"}[$__rate_interval])), \"node\", \"$1\", \"instance\", \"(.*)\"))",
+          "expr": "sum by (node) ((sum by (namespace, pod) (max by (namespace, pod, container, device) (rate(container_fs_writes_bytes_total{namespace=\"$namespace\", pod=~\"$workload-[a-z0-9]+-[a-z0-9]+\", container!=\"\", container!=\"POD\"}[$__rate_interval]))) or sum by (namespace, pod) (max by (namespace, pod, container, device) (rate(container_fs_writes_bytes_total{namespace=\"$namespace\", pod=~\"$workload-[a-z0-9]+-[a-z0-9]+\", container=\"\", pod!=\"\"}[$__rate_interval]))) or sum by (namespace, pod) (max by (namespace, pod, device, operation) (rate(container_blkio_device_usage_total{namespace=\"$namespace\", pod=~\"$workload-[a-z0-9]+-[a-z0-9]+\", operation=\"Write\", container=\"\", pod!=\"\"}[$__rate_interval])))) * on (namespace, pod) group_left (node) max by (namespace, pod, node) (kube_pod_info{node=~\"$node\"})) / on (node) max by (node) (label_replace(sum by (instance) (rate(node_disk_written_bytes_total{instance=~\"$node\", device=~\"sd[a-z]+|nvme[0-9]+n[0-9]+|vd[a-z]+|xvd[a-z]+\"}[$__rate_interval])), \"node\", \"$1\", \"instance\", \"(.*)\"))",
           "legendFormat": "{{node}}",
           "range": true,
           "instant": false,
@@ -1521,7 +1521,7 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "sum by (node) (sum by (namespace, pod) (rate(container_cpu_usage_seconds_total{namespace=\"$namespace\", pod=~\"$workload-[a-z0-9]+-[a-z0-9]+\", container!=\"\", container!=\"POD\"}[$__rate_interval])) * on (namespace, pod) group_left (node) max by (namespace, pod, node) (kube_pod_info{node=~\"$node\"})) / on (node) max by (node) (label_replace(count by (instance) (node_cpu_seconds_total{mode=\"idle\", instance=~\"$node\"}), \"node\", \"$1\", \"instance\", \"(.*)\"))",
+          "expr": "sum by (node) (sum by (namespace, pod) (max by (namespace, pod, container) (rate(container_cpu_usage_seconds_total{namespace=\"$namespace\", pod=~\"$workload-[a-z0-9]+-[a-z0-9]+\", container!=\"\", container!=\"POD\"}[$__rate_interval]))) * on (namespace, pod) group_left (node) max by (namespace, pod, node) (kube_pod_info{node=~\"$node\"})) / on (node) max by (node) (label_replace(count by (instance) (node_cpu_seconds_total{mode=\"idle\", instance=~\"$node\"}), \"node\", \"$1\", \"instance\", \"(.*)\"))",
           "legendFormat": "{{node}}",
           "range": true,
           "instant": false,
@@ -1595,7 +1595,7 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "sum by (node) (sum by (namespace, pod) (container_memory_working_set_bytes{namespace=\"$namespace\", pod=~\"$workload-[a-z0-9]+-[a-z0-9]+\", container!=\"\", container!=\"POD\"}) * on (namespace, pod) group_left (node) max by (namespace, pod, node) (kube_pod_info{node=~\"$node\"})) / on (node) max by (node) (label_replace(max by (instance) (node_memory_MemTotal_bytes{instance=~\"$node\"}), \"node\", \"$1\", \"instance\", \"(.*)\"))",
+          "expr": "sum by (node) (sum by (namespace, pod) (max by (namespace, pod, container) (container_memory_working_set_bytes{namespace=\"$namespace\", pod=~\"$workload-[a-z0-9]+-[a-z0-9]+\", container!=\"\", container!=\"POD\"})) * on (namespace, pod) group_left (node) max by (namespace, pod, node) (kube_pod_info{node=~\"$node\"})) / on (node) max by (node) (label_replace(max by (instance) (node_memory_MemTotal_bytes{instance=~\"$node\"}), \"node\", \"$1\", \"instance\", \"(.*)\"))",
           "legendFormat": "{{node}}",
           "range": true,
           "instant": false,
@@ -1669,7 +1669,7 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "sum by (node) (sum by (namespace, pod) (rate(container_network_transmit_bytes_total{namespace=\"$namespace\", pod=~\"$workload-[a-z0-9]+-[a-z0-9]+\"}[$__rate_interval])) * on (namespace, pod) group_left (node) max by (namespace, pod, node) (kube_pod_info{node=~\"$node\"})) / on (node) max by (node) (label_replace((max by (instance) (node_uname_info{instance=~\"$node\"}) * 0 + $nic_mbps * 125000 > 0) or max by (instance) (node_network_speed_bytes{instance=~\"$node\", device=~\"(ens|eth|eno|enp|bond)[a-z0-9]*\"}), \"node\", \"$1\", \"instance\", \"(.*)\"))",
+          "expr": "sum by (node) (sum by (namespace, pod) (max by (namespace, pod, interface) (rate(container_network_transmit_bytes_total{namespace=\"$namespace\", pod=~\"$workload-[a-z0-9]+-[a-z0-9]+\"}[$__rate_interval]))) * on (namespace, pod) group_left (node) max by (namespace, pod, node) (kube_pod_info{node=~\"$node\"})) / on (node) max by (node) (label_replace((max by (instance) (node_uname_info{instance=~\"$node\"}) * 0 + $nic_mbps * 125000 > 0) or max by (instance) (node_network_speed_bytes{instance=~\"$node\", device=~\"(ens|eth|eno|enp|bond)[a-z0-9]*\"}), \"node\", \"$1\", \"instance\", \"(.*)\"))",
           "legendFormat": "{{node}} 送出 TX",
           "range": true,
           "instant": false,
@@ -1681,7 +1681,7 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "sum by (node) (sum by (namespace, pod) (rate(container_network_receive_bytes_total{namespace=\"$namespace\", pod=~\"$workload-[a-z0-9]+-[a-z0-9]+\"}[$__rate_interval])) * on (namespace, pod) group_left (node) max by (namespace, pod, node) (kube_pod_info{node=~\"$node\"})) / on (node) max by (node) (label_replace((max by (instance) (node_uname_info{instance=~\"$node\"}) * 0 + $nic_mbps * 125000 > 0) or max by (instance) (node_network_speed_bytes{instance=~\"$node\", device=~\"(ens|eth|eno|enp|bond)[a-z0-9]*\"}), \"node\", \"$1\", \"instance\", \"(.*)\"))",
+          "expr": "sum by (node) (sum by (namespace, pod) (max by (namespace, pod, interface) (rate(container_network_receive_bytes_total{namespace=\"$namespace\", pod=~\"$workload-[a-z0-9]+-[a-z0-9]+\"}[$__rate_interval]))) * on (namespace, pod) group_left (node) max by (namespace, pod, node) (kube_pod_info{node=~\"$node\"})) / on (node) max by (node) (label_replace((max by (instance) (node_uname_info{instance=~\"$node\"}) * 0 + $nic_mbps * 125000 > 0) or max by (instance) (node_network_speed_bytes{instance=~\"$node\", device=~\"(ens|eth|eno|enp|bond)[a-z0-9]*\"}), \"node\", \"$1\", \"instance\", \"(.*)\"))",
           "legendFormat": "{{node}} 接收 RX",
           "range": true,
           "instant": false,
@@ -1756,7 +1756,7 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "(sum by (node) ((sum by (namespace, pod) (rate(container_fs_writes_bytes_total{namespace=\"$namespace\", pod=~\"$workload-[a-z0-9]+-[a-z0-9]+\", container!=\"\", container!=\"POD\"}[$__rate_interval])) or sum by (namespace, pod) (rate(container_fs_writes_bytes_total{namespace=\"$namespace\", pod=~\"$workload-[a-z0-9]+-[a-z0-9]+\", container=\"\", pod!=\"\"}[$__rate_interval])) or sum by (namespace, pod) (rate(container_blkio_device_usage_total{namespace=\"$namespace\", pod=~\"$workload-[a-z0-9]+-[a-z0-9]+\", operation=\"Write\", container=\"\", pod!=\"\"}[$__rate_interval]))) + (sum by (namespace, pod) (rate(container_fs_reads_bytes_total{namespace=\"$namespace\", pod=~\"$workload-[a-z0-9]+-[a-z0-9]+\", container!=\"\", container!=\"POD\"}[$__rate_interval])) or sum by (namespace, pod) (rate(container_fs_reads_bytes_total{namespace=\"$namespace\", pod=~\"$workload-[a-z0-9]+-[a-z0-9]+\", container=\"\", pod!=\"\"}[$__rate_interval])) or sum by (namespace, pod) (rate(container_blkio_device_usage_total{namespace=\"$namespace\", pod=~\"$workload-[a-z0-9]+-[a-z0-9]+\", operation=\"Read\", container=\"\", pod!=\"\"}[$__rate_interval]))) * on (namespace, pod) group_left (node) max by (namespace, pod, node) (kube_pod_info{node=~\"$node\"})) / on (node) max by (node) (label_replace(sum by (instance) (rate(node_disk_read_bytes_total{instance=~\"$node\", device=~\"sd[a-z]+|nvme[0-9]+n[0-9]+|vd[a-z]+|xvd[a-z]+\"}[$__rate_interval]) + rate(node_disk_written_bytes_total{instance=~\"$node\", device=~\"sd[a-z]+|nvme[0-9]+n[0-9]+|vd[a-z]+|xvd[a-z]+\"}[$__rate_interval])), \"node\", \"$1\", \"instance\", \"(.*)\"))) * on (node) max by (node) (label_replace(max by (instance) (rate(node_disk_io_time_seconds_total{instance=~\"$node\", device=~\"sd[a-z]+|nvme[0-9]+n[0-9]+|vd[a-z]+|xvd[a-z]+\"}[$__rate_interval])), \"node\", \"$1\", \"instance\", \"(.*)\"))",
+          "expr": "(sum by (node) ((sum by (namespace, pod) (max by (namespace, pod, container, device) (rate(container_fs_writes_bytes_total{namespace=\"$namespace\", pod=~\"$workload-[a-z0-9]+-[a-z0-9]+\", container!=\"\", container!=\"POD\"}[$__rate_interval]))) or sum by (namespace, pod) (max by (namespace, pod, container, device) (rate(container_fs_writes_bytes_total{namespace=\"$namespace\", pod=~\"$workload-[a-z0-9]+-[a-z0-9]+\", container=\"\", pod!=\"\"}[$__rate_interval]))) or sum by (namespace, pod) (max by (namespace, pod, device, operation) (rate(container_blkio_device_usage_total{namespace=\"$namespace\", pod=~\"$workload-[a-z0-9]+-[a-z0-9]+\", operation=\"Write\", container=\"\", pod!=\"\"}[$__rate_interval])))) + (sum by (namespace, pod) (max by (namespace, pod, container, device) (rate(container_fs_reads_bytes_total{namespace=\"$namespace\", pod=~\"$workload-[a-z0-9]+-[a-z0-9]+\", container!=\"\", container!=\"POD\"}[$__rate_interval]))) or sum by (namespace, pod) (max by (namespace, pod, container, device) (rate(container_fs_reads_bytes_total{namespace=\"$namespace\", pod=~\"$workload-[a-z0-9]+-[a-z0-9]+\", container=\"\", pod!=\"\"}[$__rate_interval]))) or sum by (namespace, pod) (max by (namespace, pod, device, operation) (rate(container_blkio_device_usage_total{namespace=\"$namespace\", pod=~\"$workload-[a-z0-9]+-[a-z0-9]+\", operation=\"Read\", container=\"\", pod!=\"\"}[$__rate_interval])))) * on (namespace, pod) group_left (node) max by (namespace, pod, node) (kube_pod_info{node=~\"$node\"})) / on (node) max by (node) (label_replace(sum by (instance) (rate(node_disk_read_bytes_total{instance=~\"$node\", device=~\"sd[a-z]+|nvme[0-9]+n[0-9]+|vd[a-z]+|xvd[a-z]+\"}[$__rate_interval]) + rate(node_disk_written_bytes_total{instance=~\"$node\", device=~\"sd[a-z]+|nvme[0-9]+n[0-9]+|vd[a-z]+|xvd[a-z]+\"}[$__rate_interval])), \"node\", \"$1\", \"instance\", \"(.*)\"))) * on (node) max by (node) (label_replace(max by (instance) (rate(node_disk_io_time_seconds_total{instance=~\"$node\", device=~\"sd[a-z]+|nvme[0-9]+n[0-9]+|vd[a-z]+|xvd[a-z]+\"}[$__rate_interval])), \"node\", \"$1\", \"instance\", \"(.*)\"))",
           "legendFormat": "{{node}}",
           "range": true,
           "instant": false,
@@ -1831,7 +1831,7 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "sum by (node) (sum by (namespace, pod) (container_fs_usage_bytes{namespace=\"$namespace\", pod=~\"$workload-[a-z0-9]+-[a-z0-9]+\", container!=\"\", container!=\"POD\"}) * on (namespace, pod) group_left (node) max by (namespace, pod, node) (kube_pod_info{node=~\"$node\"})) / on (node) max by (node) (label_replace(max by (instance) (node_filesystem_size_bytes{instance=~\"$node\", mountpoint=~\"/sysroot|/var|/\", fstype!~\"tmpfs|overlay|squashfs\"}), \"node\", \"$1\", \"instance\", \"(.*)\"))",
+          "expr": "sum by (node) (sum by (namespace, pod) (max by (namespace, pod, container, device) (container_fs_usage_bytes{namespace=\"$namespace\", pod=~\"$workload-[a-z0-9]+-[a-z0-9]+\", container!=\"\", container!=\"POD\"})) * on (namespace, pod) group_left (node) max by (namespace, pod, node) (kube_pod_info{node=~\"$node\"})) / on (node) max by (node) (label_replace(max by (instance) (node_filesystem_size_bytes{instance=~\"$node\", mountpoint=~\"/sysroot|/var|/\", fstype!~\"tmpfs|overlay|squashfs\"}), \"node\", \"$1\", \"instance\", \"(.*)\"))",
           "legendFormat": "{{node}}",
           "range": true,
           "instant": false,
@@ -1933,7 +1933,7 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "sum(sum by (namespace, pod) (rate(container_cpu_usage_seconds_total{namespace=\"$namespace\", pod=~\"$workload-[a-z0-9]+-[a-z0-9]+\", container!=\"\", container!=\"POD\"}[$__rate_interval])))",
+          "expr": "sum(sum by (namespace, pod) (max by (namespace, pod, container) (rate(container_cpu_usage_seconds_total{namespace=\"$namespace\", pod=~\"$workload-[a-z0-9]+-[a-z0-9]+\", container!=\"\", container!=\"POD\"}[$__rate_interval]))))",
           "legendFormat": "他 目前",
           "range": true,
           "instant": false,
@@ -1945,7 +1945,7 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "max_over_time((sum(sum by (namespace, pod) (rate(container_cpu_usage_seconds_total{namespace=\"$namespace\", pod=~\"$workload-[a-z0-9]+-[a-z0-9]+\", container!=\"\", container!=\"POD\"}[5m]))))[7d:5m] @ start())",
+          "expr": "max_over_time((sum(sum by (namespace, pod) (max by (namespace, pod, container) (rate(container_cpu_usage_seconds_total{namespace=\"$namespace\", pod=~\"$workload-[a-z0-9]+-[a-z0-9]+\", container!=\"\", container!=\"POD\"}[5m])))))[7d:5m] @ start())",
           "legendFormat": "他 壓測前 7 天峰值",
           "range": true,
           "instant": false,
@@ -2026,7 +2026,7 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "sum(sum by (namespace, pod) (container_memory_working_set_bytes{namespace=\"$namespace\", pod=~\"$workload-[a-z0-9]+-[a-z0-9]+\", container!=\"\", container!=\"POD\"}))",
+          "expr": "sum(sum by (namespace, pod) (max by (namespace, pod, container) (container_memory_working_set_bytes{namespace=\"$namespace\", pod=~\"$workload-[a-z0-9]+-[a-z0-9]+\", container!=\"\", container!=\"POD\"})))",
           "legendFormat": "他 目前",
           "range": true,
           "instant": false,
@@ -2038,7 +2038,7 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "max_over_time((sum(sum by (namespace, pod) (container_memory_working_set_bytes{namespace=\"$namespace\", pod=~\"$workload-[a-z0-9]+-[a-z0-9]+\", container!=\"\", container!=\"POD\"})))[7d:5m] @ start())",
+          "expr": "max_over_time((sum(sum by (namespace, pod) (max by (namespace, pod, container) (container_memory_working_set_bytes{namespace=\"$namespace\", pod=~\"$workload-[a-z0-9]+-[a-z0-9]+\", container!=\"\", container!=\"POD\"}))))[7d:5m] @ start())",
           "legendFormat": "他 壓測前 7 天峰值",
           "range": true,
           "instant": false,
@@ -2119,7 +2119,7 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "8 * sum(sum by (namespace, pod) (rate(container_network_transmit_bytes_total{namespace=\"$namespace\", pod=~\"$workload-[a-z0-9]+-[a-z0-9]+\"}[$__rate_interval])))",
+          "expr": "8 * sum(sum by (namespace, pod) (max by (namespace, pod, interface) (rate(container_network_transmit_bytes_total{namespace=\"$namespace\", pod=~\"$workload-[a-z0-9]+-[a-z0-9]+\"}[$__rate_interval]))))",
           "legendFormat": "他 目前",
           "range": true,
           "instant": false,
@@ -2131,7 +2131,7 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "8 * max_over_time((sum(sum by (namespace, pod) (rate(container_network_transmit_bytes_total{namespace=\"$namespace\", pod=~\"$workload-[a-z0-9]+-[a-z0-9]+\"}[5m]))))[7d:5m] @ start())",
+          "expr": "8 * max_over_time((sum(sum by (namespace, pod) (max by (namespace, pod, interface) (rate(container_network_transmit_bytes_total{namespace=\"$namespace\", pod=~\"$workload-[a-z0-9]+-[a-z0-9]+\"}[5m])))))[7d:5m] @ start())",
           "legendFormat": "他 壓測前 7 天峰值",
           "range": true,
           "instant": false,
@@ -2212,7 +2212,7 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "8 * sum(sum by (namespace, pod) (rate(container_network_receive_bytes_total{namespace=\"$namespace\", pod=~\"$workload-[a-z0-9]+-[a-z0-9]+\"}[$__rate_interval])))",
+          "expr": "8 * sum(sum by (namespace, pod) (max by (namespace, pod, interface) (rate(container_network_receive_bytes_total{namespace=\"$namespace\", pod=~\"$workload-[a-z0-9]+-[a-z0-9]+\"}[$__rate_interval]))))",
           "legendFormat": "他 目前",
           "range": true,
           "instant": false,
@@ -2224,7 +2224,7 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "8 * max_over_time((sum(sum by (namespace, pod) (rate(container_network_receive_bytes_total{namespace=\"$namespace\", pod=~\"$workload-[a-z0-9]+-[a-z0-9]+\"}[5m]))))[7d:5m] @ start())",
+          "expr": "8 * max_over_time((sum(sum by (namespace, pod) (max by (namespace, pod, interface) (rate(container_network_receive_bytes_total{namespace=\"$namespace\", pod=~\"$workload-[a-z0-9]+-[a-z0-9]+\"}[5m])))))[7d:5m] @ start())",
           "legendFormat": "他 壓測前 7 天峰值",
           "range": true,
           "instant": false,
@@ -2305,7 +2305,7 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "sum((sum by (namespace, pod) (rate(container_fs_writes_bytes_total{namespace=\"$namespace\", pod=~\"$workload-[a-z0-9]+-[a-z0-9]+\", container!=\"\", container!=\"POD\"}[$__rate_interval])) or sum by (namespace, pod) (rate(container_fs_writes_bytes_total{namespace=\"$namespace\", pod=~\"$workload-[a-z0-9]+-[a-z0-9]+\", container=\"\", pod!=\"\"}[$__rate_interval])) or sum by (namespace, pod) (rate(container_blkio_device_usage_total{namespace=\"$namespace\", pod=~\"$workload-[a-z0-9]+-[a-z0-9]+\", operation=\"Write\", container=\"\", pod!=\"\"}[$__rate_interval]))) + (sum by (namespace, pod) (rate(container_fs_reads_bytes_total{namespace=\"$namespace\", pod=~\"$workload-[a-z0-9]+-[a-z0-9]+\", container!=\"\", container!=\"POD\"}[$__rate_interval])) or sum by (namespace, pod) (rate(container_fs_reads_bytes_total{namespace=\"$namespace\", pod=~\"$workload-[a-z0-9]+-[a-z0-9]+\", container=\"\", pod!=\"\"}[$__rate_interval])) or sum by (namespace, pod) (rate(container_blkio_device_usage_total{namespace=\"$namespace\", pod=~\"$workload-[a-z0-9]+-[a-z0-9]+\", operation=\"Read\", container=\"\", pod!=\"\"}[$__rate_interval]))))",
+          "expr": "sum((sum by (namespace, pod) (max by (namespace, pod, container, device) (rate(container_fs_writes_bytes_total{namespace=\"$namespace\", pod=~\"$workload-[a-z0-9]+-[a-z0-9]+\", container!=\"\", container!=\"POD\"}[$__rate_interval]))) or sum by (namespace, pod) (max by (namespace, pod, container, device) (rate(container_fs_writes_bytes_total{namespace=\"$namespace\", pod=~\"$workload-[a-z0-9]+-[a-z0-9]+\", container=\"\", pod!=\"\"}[$__rate_interval]))) or sum by (namespace, pod) (max by (namespace, pod, device, operation) (rate(container_blkio_device_usage_total{namespace=\"$namespace\", pod=~\"$workload-[a-z0-9]+-[a-z0-9]+\", operation=\"Write\", container=\"\", pod!=\"\"}[$__rate_interval])))) + (sum by (namespace, pod) (max by (namespace, pod, container, device) (rate(container_fs_reads_bytes_total{namespace=\"$namespace\", pod=~\"$workload-[a-z0-9]+-[a-z0-9]+\", container!=\"\", container!=\"POD\"}[$__rate_interval]))) or sum by (namespace, pod) (max by (namespace, pod, container, device) (rate(container_fs_reads_bytes_total{namespace=\"$namespace\", pod=~\"$workload-[a-z0-9]+-[a-z0-9]+\", container=\"\", pod!=\"\"}[$__rate_interval]))) or sum by (namespace, pod) (max by (namespace, pod, device, operation) (rate(container_blkio_device_usage_total{namespace=\"$namespace\", pod=~\"$workload-[a-z0-9]+-[a-z0-9]+\", operation=\"Read\", container=\"\", pod!=\"\"}[$__rate_interval])))))",
           "legendFormat": "他 目前",
           "range": true,
           "instant": false,
@@ -2317,7 +2317,7 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "max_over_time((sum((sum by (namespace, pod) (rate(container_fs_writes_bytes_total{namespace=\"$namespace\", pod=~\"$workload-[a-z0-9]+-[a-z0-9]+\", container!=\"\", container!=\"POD\"}[5m])) or sum by (namespace, pod) (rate(container_fs_writes_bytes_total{namespace=\"$namespace\", pod=~\"$workload-[a-z0-9]+-[a-z0-9]+\", container=\"\", pod!=\"\"}[5m])) or sum by (namespace, pod) (rate(container_blkio_device_usage_total{namespace=\"$namespace\", pod=~\"$workload-[a-z0-9]+-[a-z0-9]+\", operation=\"Write\", container=\"\", pod!=\"\"}[5m]))) + (sum by (namespace, pod) (rate(container_fs_reads_bytes_total{namespace=\"$namespace\", pod=~\"$workload-[a-z0-9]+-[a-z0-9]+\", container!=\"\", container!=\"POD\"}[5m])) or sum by (namespace, pod) (rate(container_fs_reads_bytes_total{namespace=\"$namespace\", pod=~\"$workload-[a-z0-9]+-[a-z0-9]+\", container=\"\", pod!=\"\"}[5m])) or sum by (namespace, pod) (rate(container_blkio_device_usage_total{namespace=\"$namespace\", pod=~\"$workload-[a-z0-9]+-[a-z0-9]+\", operation=\"Read\", container=\"\", pod!=\"\"}[5m])))))[7d:5m] @ start())",
+          "expr": "max_over_time((sum((sum by (namespace, pod) (max by (namespace, pod, container, device) (rate(container_fs_writes_bytes_total{namespace=\"$namespace\", pod=~\"$workload-[a-z0-9]+-[a-z0-9]+\", container!=\"\", container!=\"POD\"}[5m]))) or sum by (namespace, pod) (max by (namespace, pod, container, device) (rate(container_fs_writes_bytes_total{namespace=\"$namespace\", pod=~\"$workload-[a-z0-9]+-[a-z0-9]+\", container=\"\", pod!=\"\"}[5m]))) or sum by (namespace, pod) (max by (namespace, pod, device, operation) (rate(container_blkio_device_usage_total{namespace=\"$namespace\", pod=~\"$workload-[a-z0-9]+-[a-z0-9]+\", operation=\"Write\", container=\"\", pod!=\"\"}[5m])))) + (sum by (namespace, pod) (max by (namespace, pod, container, device) (rate(container_fs_reads_bytes_total{namespace=\"$namespace\", pod=~\"$workload-[a-z0-9]+-[a-z0-9]+\", container!=\"\", container!=\"POD\"}[5m]))) or sum by (namespace, pod) (max by (namespace, pod, container, device) (rate(container_fs_reads_bytes_total{namespace=\"$namespace\", pod=~\"$workload-[a-z0-9]+-[a-z0-9]+\", container=\"\", pod!=\"\"}[5m]))) or sum by (namespace, pod) (max by (namespace, pod, device, operation) (rate(container_blkio_device_usage_total{namespace=\"$namespace\", pod=~\"$workload-[a-z0-9]+-[a-z0-9]+\", operation=\"Read\", container=\"\", pod!=\"\"}[5m]))))))[7d:5m] @ start())",
           "legendFormat": "他 壓測前 7 天峰值",
           "range": true,
           "instant": false,
@@ -2398,7 +2398,7 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "sum(sum by (namespace, pod) (container_fs_usage_bytes{namespace=\"$namespace\", pod=~\"$workload-[a-z0-9]+-[a-z0-9]+\", container!=\"\", container!=\"POD\"}))",
+          "expr": "sum(sum by (namespace, pod) (max by (namespace, pod, container, device) (container_fs_usage_bytes{namespace=\"$namespace\", pod=~\"$workload-[a-z0-9]+-[a-z0-9]+\", container!=\"\", container!=\"POD\"})))",
           "legendFormat": "他 目前",
           "range": true,
           "instant": false,
@@ -2410,7 +2410,7 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "max_over_time((sum(sum by (namespace, pod) (container_fs_usage_bytes{namespace=\"$namespace\", pod=~\"$workload-[a-z0-9]+-[a-z0-9]+\", container!=\"\", container!=\"POD\"})))[7d:5m] @ start())",
+          "expr": "max_over_time((sum(sum by (namespace, pod) (max by (namespace, pod, container, device) (container_fs_usage_bytes{namespace=\"$namespace\", pod=~\"$workload-[a-z0-9]+-[a-z0-9]+\", container!=\"\", container!=\"POD\"}))))[7d:5m] @ start())",
           "legendFormat": "他 壓測前 7 天峰值",
           "range": true,
           "instant": false,
@@ -4485,7 +4485,7 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "topk(10, sum by (namespace, pod) (rate(container_cpu_usage_seconds_total{container!=\"\"}[$__rate_interval])) * on (namespace, pod) group_left () max by (namespace, pod) (kube_pod_info{node=~\"$node\"}))",
+          "expr": "topk(10, sum by (namespace, pod) (max by (namespace, pod, container) (rate(container_cpu_usage_seconds_total{container!=\"\", container!=\"POD\"}[$__rate_interval]))) * on (namespace, pod) group_left () max by (namespace, pod) (kube_pod_info{node=~\"$node\"}))",
           "legendFormat": "{{namespace}}/{{pod}}",
           "range": true,
           "instant": false,
@@ -4539,7 +4539,7 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "topk(10, sum by (namespace, pod) (container_memory_working_set_bytes{container!=\"\"}) * on (namespace, pod) group_left () max by (namespace, pod) (kube_pod_info{node=~\"$node\"}))",
+          "expr": "topk(10, sum by (namespace, pod) (max by (namespace, pod, container) (container_memory_working_set_bytes{container!=\"\", container!=\"POD\"})) * on (namespace, pod) group_left () max by (namespace, pod) (kube_pod_info{node=~\"$node\"}))",
           "legendFormat": "{{namespace}}/{{pod}}",
           "range": true,
           "instant": false,
@@ -4593,7 +4593,7 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "topk(10, (sum by (namespace, pod) (rate(container_fs_writes_bytes_total{container!=\"\", container!=\"POD\"}[$__rate_interval])) or sum by (namespace, pod) (rate(container_fs_writes_bytes_total{container=\"\", pod!=\"\"}[$__rate_interval])) or sum by (namespace, pod) (rate(container_blkio_device_usage_total{operation=\"Write\", container=\"\", pod!=\"\"}[$__rate_interval]))) * on (namespace, pod) group_left () max by (namespace, pod) (kube_pod_info{node=~\"$node\"}))",
+          "expr": "topk(10, (sum by (namespace, pod) (max by (namespace, pod, container, device) (rate(container_fs_writes_bytes_total{container!=\"\", container!=\"POD\"}[$__rate_interval]))) or sum by (namespace, pod) (max by (namespace, pod, container, device) (rate(container_fs_writes_bytes_total{container=\"\", pod!=\"\"}[$__rate_interval]))) or sum by (namespace, pod) (max by (namespace, pod, device, operation) (rate(container_blkio_device_usage_total{operation=\"Write\", container=\"\", pod!=\"\"}[$__rate_interval])))) * on (namespace, pod) group_left () max by (namespace, pod) (kube_pod_info{node=~\"$node\"}))",
           "legendFormat": "{{namespace}}/{{pod}}",
           "range": true,
           "instant": false,
@@ -4648,7 +4648,7 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "topk(10, sum by (namespace, pod) (rate(container_network_transmit_bytes_total[$__rate_interval])) * on (namespace, pod) group_left () max by (namespace, pod) (kube_pod_info{node=~\"$node\"}))",
+          "expr": "topk(10, sum by (namespace, pod) (max by (namespace, pod, interface) (rate(container_network_transmit_bytes_total{pod!=\"\"}[$__rate_interval]))) * on (namespace, pod) group_left () max by (namespace, pod) (kube_pod_info{node=~\"$node\"}))",
           "legendFormat": "{{namespace}}/{{pod}}",
           "range": true,
           "instant": false,

@@ -39,8 +39,25 @@ def by_wl(per_pod, agg="sum"):
 
 
 # ---- per-pod building blocks (result labels: namespace, pod)
+CT = f'container!="", container!="POD", {NSF}'
+BY_CT = "namespace, pod, container"
+BY_DEV = "namespace, pod, container, device"
+BY_IF = "namespace, pod, interface"
+
+
+def one(expr, by=BY_CT):
+    """Keeps one series per container (or per `by`) before summing. Some clusters scrape the same
+    container metric from two kubelet endpoints (/metrics/cadvisor and /metrics/resource), which
+    would otherwise double every sum and break one-to-one divisions."""
+    return f'max by ({by}) ({expr})'
+
+
+def per_pod(expr, by=BY_CT):
+    return f'sum by (namespace, pod) ({one(expr, by)})'
+
+
 def cpu(w):
-    return f'sum by (namespace, pod) (rate(container_cpu_usage_seconds_total{{container!="", container!="POD", {NSF}}}[{w}]))'
+    return per_pod(f'rate(container_cpu_usage_seconds_total{{{CT}}}[{w}])')
 
 
 def cpu_req():
@@ -48,14 +65,15 @@ def cpu_req():
 
 
 def throttle(w):
-    return (f'(sum by (namespace, pod) (rate(container_cpu_cfs_throttled_periods_total{{container!="", {NSF}}}[{w}]))'
-            f' / sum by (namespace, pod) (rate(container_cpu_cfs_periods_total{{container!="", {NSF}}}[{w}])))')
+    throttled = per_pod(f'rate(container_cpu_cfs_throttled_periods_total{{{CT}}}[{w}])')
+    periods = per_pod(f'rate(container_cpu_cfs_periods_total{{{CT}}}[{w}])')
+    return f'({throttled} / {periods})'
 
 
 def mem_limit():
-    return (f'max by (namespace, pod) (container_memory_working_set_bytes{{container!="", container!="POD", {NSF}}}'
-            f' / on (namespace, pod, container) max by (namespace, pod, container) '
-            f'(kube_pod_container_resource_limits{{resource="memory", {NSF}}}))')
+    ws = one(f'container_memory_working_set_bytes{{{CT}}}')
+    limit = one(f'kube_pod_container_resource_limits{{resource="memory", {NSF}}}')
+    return f'max by (namespace, pod) ({ws} / on (namespace, pod, container) {limit})'
 
 
 def restarts():
@@ -63,24 +81,28 @@ def restarts():
 
 
 def net(w):
-    return (f'(sum by (namespace, pod) (rate(container_network_transmit_bytes_total{{{NSF}}}[{w}]))'
-            f' + sum by (namespace, pod) (rate(container_network_receive_bytes_total{{{NSF}}}[{w}])))')
+    tx = per_pod(f'rate(container_network_transmit_bytes_total{{{NSF}}}[{w}])', BY_IF)
+    rx = per_pod(f'rate(container_network_receive_bytes_total{{{NSF}}}[{w}])', BY_IF)
+    return f'({tx} + {rx})'
 
 
 def drops(w):
-    return (f'(sum by (namespace, pod) (rate(container_network_transmit_packets_dropped_total{{{NSF}}}[{w}]))'
-            f' + sum by (namespace, pod) (rate(container_network_receive_packets_dropped_total{{{NSF}}}[{w}])))')
+    tx = per_pod(f'rate(container_network_transmit_packets_dropped_total{{{NSF}}}[{w}])', BY_IF)
+    rx = per_pod(f'rate(container_network_receive_packets_dropped_total{{{NSF}}}[{w}])', BY_IF)
+    return f'({tx} + {rx})'
 
 
 def disk_write(w):
     """Same fallback order as the detail dashboard: container fs stats, pod fs stats, pod blkio."""
-    return (f'(sum by (namespace, pod) (rate(container_fs_writes_bytes_total{{{NSF}, container!="", container!="POD"}}[{w}]))'
-            f' or sum by (namespace, pod) (rate(container_fs_writes_bytes_total{{{NSF}, container="", pod!=""}}[{w}]))'
-            f' or sum by (namespace, pod) (rate(container_blkio_device_usage_total{{{NSF}, operation="Write", container="", pod!=""}}[{w}])))')
+    ctr = per_pod(f'rate(container_fs_writes_bytes_total{{{CT}}}[{w}])', BY_DEV)
+    pod = per_pod(f'rate(container_fs_writes_bytes_total{{{NSF}, container="", pod!=""}}[{w}])', BY_DEV)
+    blkio = per_pod(f'rate(container_blkio_device_usage_total{{{NSF}, operation="Write", container="", pod!=""}}[{w}])',
+                    "namespace, pod, device, operation")
+    return f'({ctr} or {pod} or {blkio})'
 
 
 def fs_usage():
-    return f'sum by (namespace, pod) (container_fs_usage_bytes{{container!="", container!="POD", {NSF}}})'
+    return per_pod(f'container_fs_usage_bytes{{{CT}}}', BY_DEV)
 
 
 # ---- per-node building blocks (result label: instance = node name)
@@ -362,7 +384,7 @@ dash = {
     "tags": ["ocp", "loadtest", "capacity", "overview"],
     "timezone": "browser",
     "schemaVersion": 39,
-    "version": 3,
+    "version": 4,
     "editable": True,
     "graphTooltip": 1,
     "refresh": "1m",

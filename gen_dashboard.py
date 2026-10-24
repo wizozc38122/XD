@@ -18,14 +18,37 @@ NODE = 'instance=~"$node"'
 ON_NODE = ' * on (namespace, pod) group_left () max by (namespace, pod) (kube_pod_info{node=~"$node"})'
 
 
+def one(expr, by="namespace, pod, container"):
+    """Keeps one series per container (or per `by`) before summing. Some clusters scrape the same
+    container metric from two kubelet endpoints (/metrics/cadvisor and /metrics/resource), which
+    would otherwise double every sum and break one-to-one divisions."""
+    return f'max by ({by}) ({expr})'
+
+
+# Deduplicated per-container building blocks for his pods.
+CPU_USE = one('rate(container_cpu_usage_seconds_total{@CT@}[@R@])')
+MEM_WS = one('container_memory_working_set_bytes{@CT@}')
+THROTTLED = one('rate(container_cpu_cfs_throttled_periods_total{@CT@}[@R@])')
+PERIODS = one('rate(container_cpu_cfs_periods_total{@CT@}[@R@])')
+FS_USE = one('container_fs_usage_bytes{@CT@}', "namespace, pod, container, device")
+
+
+def net(metric, sel="@POD@"):
+    return one(f'rate(container_network_{metric}{{{sel}}}[@R@])', "namespace, pod, interface")
+
+
 def pod_io(op, sel=""):
     """Per-pod disk bytes/s. Falls back through the metrics clusters commonly keep:
     container-level cAdvisor fs stats, then pod-level fs stats, then pod-level blkio."""
     fs, blk = ("writes", "Write") if op == "write" else ("reads", "Read")
     s = sel + ", " if sel else ""
-    return (f'(sum by (namespace, pod) (rate(container_fs_{fs}_bytes_total{{{s}container!="", container!="POD"}}[@R@]))'
-            f' or sum by (namespace, pod) (rate(container_fs_{fs}_bytes_total{{{s}container="", pod!=""}}[@R@]))'
-            f' or sum by (namespace, pod) (rate(container_blkio_device_usage_total{{{s}operation="{blk}", container="", pod!=""}}[@R@])))')
+    by_dev = "namespace, pod, container, device"
+    ctr = one(f'rate(container_fs_{fs}_bytes_total{{{s}container!="", container!="POD"}}[@R@])', by_dev)
+    pod = one(f'rate(container_fs_{fs}_bytes_total{{{s}container="", pod!=""}}[@R@])', by_dev)
+    blkio = one(f'rate(container_blkio_device_usage_total{{{s}operation="{blk}", container="", pod!=""}}[@R@])',
+                "namespace, pod, device, operation")
+    return (f'(sum by (namespace, pod) ({ctr}) or sum by (namespace, pod) ({pod})'
+            f' or sum by (namespace, pod) ({blkio}))')
 
 
 NO_POD_IO = "無資料：叢集沒有收集 Pod 層級的磁碟 IO 指標，請改看第 4 區整台 Node 的磁碟面板"
@@ -250,17 +273,18 @@ stat(L, "【他】可用副本數",
      desc(V_SELF, "目前 Ready 的 Pod 數量。", "壓測中如果 HPA 擴容，副本數會上升，Pod 也可能被排到新的 Node。"),
      decimals=0)
 stat(L, "【他】CPU 用量 ÷ 自己的 Request",
-     'sum(rate(container_cpu_usage_seconds_total{@CT@}[@R@])) / sum(kube_pod_container_resource_requests{resource="cpu", @POD@})',
+     f'sum({CPU_USE}) / sum(kube_pod_container_resource_requests{{resource="cpu", @POD@}})',
      "percentunit", steps((Y, 1.0), (RD, 1.5)),
      desc(V_SELF, "實際 CPU 用量占「保證額度（request）」的比例。",
           "100% 以下：在自己的保證額度內。超過 100%：正在借用 Node 的閒置 CPU，Node 吃緊時最容易和鄰居互相搶。"))
 stat(L, "【他】記憶體 ÷ 自己的 Limit（最高的容器）",
-     'max(container_memory_working_set_bytes{@CT@} / on(namespace, pod, container) kube_pod_container_resource_limits{resource="memory", @POD@})',
+     f'max({MEM_WS} / on (namespace, pod, container) '
+     + one('kube_pod_container_resource_limits{resource="memory", @POD@}') + ')',
      "percentunit", steps((Y, 0.8), (RD, 0.9)),
      desc(V_SELF, "記憶體用量最接近上限的那個容器，用量占 limit 的比例。",
           "超過 90% 要注意，到 100% 會被 OOMKilled。沒設 memory limit 則沒有資料。"))
 stat(L, "【他】CPU throttling（最高的 Pod）",
-     'max(sum by (pod) (rate(container_cpu_cfs_throttled_periods_total{@CT@}[@R@])) / sum by (pod) (rate(container_cpu_cfs_periods_total{@CT@}[@R@])))',
+     f'max(sum by (pod) ({THROTTLED}) / sum by (pod) ({PERIODS}))',
      "percentunit", steps((Y, 0.25), (RD, 0.5)),
      desc(V_SELF, "CPU 想用但被 limit 擋下的時間比例。",
           "超過 25% 通常已讓他自己變慢。被節流**只影響他自己**，不會拖累鄰居。"))
@@ -270,7 +294,7 @@ stat(L, "【他】近 1 小時重啟次數",
      desc(V_SELF, "所有 Pod 近 1 小時重啟次數合計。", "大於 0 要看下方的 OOMKilled 面板，或檢查 probe 是否失敗。"),
      decimals=0)
 stat(L, "【他】CPU ÷ 所選 Node 總核數",
-     'sum(rate(container_cpu_usage_seconds_total{@CT@}[@R@])@ON_NODE@) / count(node_cpu_seconds_total{mode="idle", @NODE@})',
+     f'sum({CPU_USE}@ON_NODE@) / count(node_cpu_seconds_total{{mode="idle", @NODE@}})',
      "percentunit", steps((Y, 0.5), (RD, 0.8)),
      desc("他 ÷ 所選 Node 的 CPU 容量合計",
           "他用掉所選 Node CPU 總核數的幾成。分母是容量，所以其他服務停掉時也不會被灌高。",
@@ -294,16 +318,16 @@ L.newline()
 row("2. 【他】自己的用量（只看他的 Pod）")
 L = Line()
 ts(L, "【他】CPU：用量 vs Request / Limit / 昨天同時段",
-   [('sum(rate(container_cpu_usage_seconds_total{@CT@}[@R@]))', "用量"),
+   [(f'sum({CPU_USE})', "用量"),
     ('sum(kube_pod_container_resource_requests{resource="cpu", @POD@})', "request 合計"),
     ('sum(kube_pod_container_resource_limits{resource="cpu", @POD@})', "limit 合計"),
-    ('sum(rate(container_cpu_usage_seconds_total{@CT@}[@R@] offset 1d))', "昨天同時段")],
+    ('sum(' + one('rate(container_cpu_usage_seconds_total{@CT@}[@R@] offset 1d)') + ')', "昨天同時段")],
    "none",
    desc(V_SELF, "他的 Pod 合計 CPU 核數，對照 request、limit 與昨天同一時間。",
         "用量遠高於昨天同時段，代表這次壓測確實加重了負載；貼近 limit 線會開始被 throttling。"),
    w=12)
 ts(L, "【他】記憶體：working set vs Request / Limit",
-   [('sum(container_memory_working_set_bytes{@CT@})', "working set"),
+   [(f'sum({MEM_WS})', "working set"),
     ('sum(kube_pod_container_resource_requests{resource="memory", @POD@})', "request 合計"),
     ('sum(kube_pod_container_resource_limits{resource="memory", @POD@})', "limit 合計")],
    "bytes",
@@ -311,22 +335,22 @@ ts(L, "【他】記憶體：working set vs Request / Limit",
         "持續上升不回落可能是請求堆積或洩漏；碰到 limit 會被 OOMKilled。"),
    w=12)
 ts(L, "【他】CPU throttling 比例（各 Pod）",
-   [('sum by (pod) (rate(container_cpu_cfs_throttled_periods_total{@CT@}[@R@])) / sum by (pod) (rate(container_cpu_cfs_periods_total{@CT@}[@R@]))', "{{pod}}")],
+   [(f'sum by (pod) ({THROTTLED}) / sum by (pod) ({PERIODS})', "{{pod}}")],
    "percentunit",
    desc(V_SELF, "每個 Pod 的 CPU 被 limit 擋下的時間比例。",
         "超過 25% 代表他自己變慢，可能引發 timeout 與重試，進而放大對外部服務的流量。"),
    minv=0)
 ts(L, "【他】網路流量",
-   [('sum(rate(container_network_transmit_bytes_total{@POD@}[@R@]))', "送出 TX"),
-    ('sum(rate(container_network_receive_bytes_total{@POD@}[@R@]))', "接收 RX")],
+   [(f'sum({net("transmit_bytes_total")})', "送出 TX"),
+    (f'sum({net("receive_bytes_total")})', "接收 RX")],
    "Bps",
    desc(V_SELF, "他的 Pod 合計網路流量（Bytes/s）。",
         "和第 4 區「整台 Node 網路吞吐」對照，看 Node 的流量上升是不是主要來自他。"))
 ts(L, "【他】網路丟包 / 錯誤",
-   [('sum(rate(container_network_transmit_packets_dropped_total{@POD@}[@R@]))', "TX 丟包"),
-    ('sum(rate(container_network_receive_packets_dropped_total{@POD@}[@R@]))', "RX 丟包"),
-    ('sum(rate(container_network_transmit_errors_total{@POD@}[@R@]))', "TX 錯誤"),
-    ('sum(rate(container_network_receive_errors_total{@POD@}[@R@]))', "RX 錯誤")],
+   [(f'sum({net("transmit_packets_dropped_total")})', "TX 丟包"),
+    (f'sum({net("receive_packets_dropped_total")})', "RX 丟包"),
+    (f'sum({net("transmit_errors_total")})', "TX 錯誤"),
+    (f'sum({net("receive_errors_total")})', "RX 錯誤")],
    "pps",
    desc(V_SELF, "他的 Pod 網路介面上每秒丟掉或出錯的封包數。",
         "正常應接近 0。壓測時開始出現，代表他自己的網路已經塞住，常見原因是流量太大或接收端處理不及。"),
@@ -339,7 +363,7 @@ ts(L, "【他】磁碟讀寫量",
         "和第 4 區「整台 Node 磁碟」對照。他寫得多、Node 磁碟延遲同時上升，就是 IO 影響的證據。數字用來看趨勢，不一定精確。"),
    no_value=NO_POD_IO)
 ts(L, "【他】容器可寫層 / 暫存空間用量",
-   [('sum(container_fs_usage_bytes{@CT@})', "已使用")],
+   [(f'sum({FS_USE})', "已使用")],
    "bytes",
    desc(V_SELF, "他的容器在 Node 本機磁碟上佔用的空間（可寫層、emptyDir 等）。",
         "持續成長代表一直在寫檔或 log，可能把 Node 磁碟寫滿，觸發 DiskPressure 並驅逐其他 Pod。"))
@@ -353,10 +377,10 @@ ts(L, "【他】重啟與 OOMKilled",
 L.newline()
 
 # ---------------------------------------------------------------- 3 shared expressions
-HIS_CPU = 'sum by (namespace, pod) (rate(container_cpu_usage_seconds_total{@CT@}[@R@]))'
-HIS_MEM = 'sum by (namespace, pod) (container_memory_working_set_bytes{@CT@})'
-HIS_TX = 'sum by (namespace, pod) (rate(container_network_transmit_bytes_total{@POD@}[@R@]))'
-HIS_RX = 'sum by (namespace, pod) (rate(container_network_receive_bytes_total{@POD@}[@R@]))'
+HIS_CPU = f'sum by (namespace, pod) ({CPU_USE})'
+HIS_MEM = f'sum by (namespace, pod) ({MEM_WS})'
+HIS_TX = f'sum by (namespace, pod) ({net("transmit_bytes_total")})'
+HIS_RX = f'sum by (namespace, pod) ({net("receive_bytes_total")})'
 NODE_CPU_USED = 'sum by (instance) (rate(node_cpu_seconds_total{mode!~"idle|iowait", @NODE@}[@R@]))'
 NODE_CPU_CORES = 'count by (instance) (node_cpu_seconds_total{mode="idle", @NODE@})'
 NODE_MEM_USED = 'max by (instance) (node_memory_MemTotal_bytes{@NODE@} - node_memory_MemAvailable_bytes{@NODE@})'
@@ -380,7 +404,7 @@ NODE_MEM_RATIO = 'max by (instance) (1 - node_memory_MemAvailable_bytes{@NODE@} 
 NODE_FS_RATIO = (f'max by (instance) (1 - node_filesystem_avail_bytes{{@NODE@, {FS}}}'
                  f' / node_filesystem_size_bytes{{@NODE@, {FS}}})')
 HIS_DISK_BYTES = pod_io("write", POD) + ' + ' + pod_io("read", POD)
-HIS_FS = 'sum by (namespace, pod) (container_fs_usage_bytes{@CT@})'
+HIS_FS = f'sum by (namespace, pod) ({FS_USE})'
 NO_NIC_SPEED = "無資料：Node 沒有回報網卡速度，請改看第 4 區網路吞吐與丟包"
 VM_NIC = "容量是 Node 回報的網卡速度；虛擬機常固定回報 10 Gbps，實際可用頻寬可能更低，請搭配第 4 區「網路丟包」一起看。"
 
@@ -681,17 +705,19 @@ L = Line()
 JOIN = ' * on (namespace, pod) group_left () max by (namespace, pod) (kube_pod_info{node=~"$node"})'
 NB_HOW = "第 4 區往上飆的時候，看是誰同時上升。如果前幾名都是他，加上 Node 壓力同時上升，就是他造成的；如果是別人，就跟他無關。"
 ts(L, "【鄰居】CPU Top 10",
-   [('topk(10, sum by (namespace, pod) (rate(container_cpu_usage_seconds_total{container!=""}[@R@]))' + JOIN + ')', "{{namespace}}/{{pod}}")],
+   [('topk(10, sum by (namespace, pod) (' + one('rate(container_cpu_usage_seconds_total{container!="", container!="POD"}[@R@])')
+     + ')' + JOIN + ')', "{{namespace}}/{{pod}}")],
    "none", desc(V_NEIGHBOR, "所選 Node 上 CPU 用量最多的 10 個 Pod。", NB_HOW), w=12, h=8, minv=0)
 ts(L, "【鄰居】記憶體 Top 10",
-   [('topk(10, sum by (namespace, pod) (container_memory_working_set_bytes{container!=""})' + JOIN + ')', "{{namespace}}/{{pod}}")],
+   [('topk(10, sum by (namespace, pod) (' + one('container_memory_working_set_bytes{container!="", container!="POD"}')
+     + ')' + JOIN + ')', "{{namespace}}/{{pod}}")],
    "bytes", desc(V_NEIGHBOR, "所選 Node 上記憶體用量最多的 10 個 Pod。", NB_HOW), w=12, h=8, minv=0)
 ts(L, "【鄰居】磁碟寫入 Top 10",
    [('topk(10, ' + pod_io("write") + JOIN + ')', "{{namespace}}/{{pod}}")],
    "Bps", desc(V_NEIGHBOR, "所選 Node 上寫磁碟最多的 10 個 Pod。", NB_HOW), w=12, h=8, minv=0,
    no_value=NO_POD_IO)
 ts(L, "【鄰居】網路送出 Top 10",
-   [('topk(10, sum by (namespace, pod) (rate(container_network_transmit_bytes_total[@R@]))' + JOIN + ')', "{{namespace}}/{{pod}}")],
+   [('topk(10, sum by (namespace, pod) (' + net("transmit_bytes_total", 'pod!=""') + ')' + JOIN + ')', "{{namespace}}/{{pod}}")],
    "Bps", desc(V_NEIGHBOR, "所選 Node 上網路送出最多的 10 個 Pod。", NB_HOW), w=12, h=8, minv=0)
 L.newline()
 
@@ -738,7 +764,7 @@ dash = {
     "tags": ["ocp", "loadtest", "capacity"],
     "timezone": "browser",
     "schemaVersion": 39,
-    "version": 8,
+    "version": 9,
     "editable": True,
     "graphTooltip": 1,
     "refresh": "30s",
