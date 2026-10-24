@@ -8,7 +8,7 @@
   ],
   "timezone": "browser",
   "schemaVersion": 39,
-  "version": 6,
+  "version": 7,
   "editable": true,
   "graphTooltip": 1,
   "refresh": "30s",
@@ -1948,8 +1948,8 @@
     {
       "id": 31,
       "type": "table",
-      "title": "【上限】參考：Node 回報的網卡速度與過去 30 天峰值",
-      "description": "**視角**：所選的每台 Node（整台加總）\n\n**這是什麼**：Node 自己回報的網卡速度，以及過去 30 天實際跑到的最高網路、磁碟流量（每 5 分鐘平均）。\n\n**怎麼看**：用來決定上方輸入框要填多少。峰值只代表「至少撐得住這麼多」，不是上限：到 Grafana Explore 看峰值那段時間的磁碟延遲與網路丟包，延遲和丟包都正常就代表上限更高，延遲已明顯上升則這附近就是實際可用上限。這個表格會掃 30 天資料，載入可能較慢。",
+      "title": "【上限】參考：Node 回報的網卡速度與過去 7 天峰值",
+      "description": "**視角**：所選的每台 Node（整台加總）\n\n**這是什麼**：Node 自己回報的網卡速度，以及過去 7 天實際跑到的最高網路、磁碟流量（每 5 分鐘平均）。\n\n**怎麼看**：用來決定上方輸入框要填多少。峰值只代表「至少撐得住這麼多」，不是上限：到 Grafana Explore 看峰值那段時間的磁碟延遲與網路丟包，延遲和丟包都正常就代表上限更高，延遲已明顯上升則這附近就是實際可用上限。",
       "datasource": {
         "type": "prometheus",
         "uid": "${datasource}"
@@ -1973,7 +1973,7 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "max by (node) (label_replace(max_over_time((8 * sum by (instance) (rate(node_network_transmit_bytes_total{instance=~\"$node\", device=~\"(ens|eth|eno|enp|bond)[a-z0-9]*\"}[5m])))[30d:5m]), \"node\", \"$1\", \"instance\", \"(.*)\"))",
+          "expr": "max by (node) (label_replace(max_over_time((8 * sum by (instance) (rate(node_network_transmit_bytes_total{instance=~\"$node\", device=~\"(ens|eth|eno|enp|bond)[a-z0-9]*\"}[5m])))[7d:5m]), \"node\", \"$1\", \"instance\", \"(.*)\"))",
           "legendFormat": "",
           "range": false,
           "instant": true,
@@ -1985,7 +1985,7 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "max by (node) (label_replace(max_over_time((8 * sum by (instance) (rate(node_network_receive_bytes_total{instance=~\"$node\", device=~\"(ens|eth|eno|enp|bond)[a-z0-9]*\"}[5m])))[30d:5m]), \"node\", \"$1\", \"instance\", \"(.*)\"))",
+          "expr": "max by (node) (label_replace(max_over_time((8 * sum by (instance) (rate(node_network_receive_bytes_total{instance=~\"$node\", device=~\"(ens|eth|eno|enp|bond)[a-z0-9]*\"}[5m])))[7d:5m]), \"node\", \"$1\", \"instance\", \"(.*)\"))",
           "legendFormat": "",
           "range": false,
           "instant": true,
@@ -1997,7 +1997,7 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "max by (node) (label_replace(max_over_time((sum by (instance) (rate(node_disk_read_bytes_total{instance=~\"$node\", device=~\"sd[a-z]+|nvme[0-9]+n[0-9]+|vd[a-z]+|xvd[a-z]+\"}[5m]) + rate(node_disk_written_bytes_total{instance=~\"$node\", device=~\"sd[a-z]+|nvme[0-9]+n[0-9]+|vd[a-z]+|xvd[a-z]+\"}[5m])))[30d:5m]), \"node\", \"$1\", \"instance\", \"(.*)\"))",
+          "expr": "max by (node) (label_replace(max_over_time((sum by (instance) (rate(node_disk_read_bytes_total{instance=~\"$node\", device=~\"sd[a-z]+|nvme[0-9]+n[0-9]+|vd[a-z]+|xvd[a-z]+\"}[5m]) + rate(node_disk_written_bytes_total{instance=~\"$node\", device=~\"sd[a-z]+|nvme[0-9]+n[0-9]+|vd[a-z]+|xvd[a-z]+\"}[5m])))[7d:5m]), \"node\", \"$1\", \"instance\", \"(.*)\"))",
           "legendFormat": "",
           "range": false,
           "instant": true,
@@ -2009,7 +2009,7 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "max by (node) (label_replace(max_over_time((sum by (instance) (rate(node_disk_reads_completed_total{instance=~\"$node\", device=~\"sd[a-z]+|nvme[0-9]+n[0-9]+|vd[a-z]+|xvd[a-z]+\"}[5m]) + rate(node_disk_writes_completed_total{instance=~\"$node\", device=~\"sd[a-z]+|nvme[0-9]+n[0-9]+|vd[a-z]+|xvd[a-z]+\"}[5m])))[30d:5m]), \"node\", \"$1\", \"instance\", \"(.*)\"))",
+          "expr": "max by (node) (label_replace(max_over_time((sum by (instance) (rate(node_disk_reads_completed_total{instance=~\"$node\", device=~\"sd[a-z]+|nvme[0-9]+n[0-9]+|vd[a-z]+|xvd[a-z]+\"}[5m]) + rate(node_disk_writes_completed_total{instance=~\"$node\", device=~\"sd[a-z]+|nvme[0-9]+n[0-9]+|vd[a-z]+|xvd[a-z]+\"}[5m])))[7d:5m]), \"node\", \"$1\", \"instance\", \"(.*)\"))",
           "legendFormat": "",
           "range": false,
           "instant": true,
@@ -2030,10 +2030,10 @@
             "renameByName": {
               "node": "Node",
               "Value #A": "網卡回報速度",
-              "Value #B": "30 天網路送出峰值",
-              "Value #C": "30 天網路接收峰值",
-              "Value #D": "30 天磁碟吞吐峰值",
-              "Value #E": "30 天磁碟 IOPS 峰值"
+              "Value #B": "7 天網路送出峰值",
+              "Value #C": "7 天網路接收峰值",
+              "Value #D": "7 天磁碟吞吐峰值",
+              "Value #E": "7 天磁碟 IOPS 峰值"
             },
             "indexByName": {
               "node": 0,
@@ -2068,7 +2068,7 @@
           {
             "matcher": {
               "id": "byName",
-              "options": "30 天網路送出峰值"
+              "options": "7 天網路送出峰值"
             },
             "properties": [
               {
@@ -2084,7 +2084,7 @@
           {
             "matcher": {
               "id": "byName",
-              "options": "30 天網路接收峰值"
+              "options": "7 天網路接收峰值"
             },
             "properties": [
               {
@@ -2100,7 +2100,7 @@
           {
             "matcher": {
               "id": "byName",
-              "options": "30 天磁碟吞吐峰值"
+              "options": "7 天磁碟吞吐峰值"
             },
             "properties": [
               {
@@ -2116,7 +2116,7 @@
           {
             "matcher": {
               "id": "byName",
-              "options": "30 天磁碟 IOPS 峰值"
+              "options": "7 天磁碟 IOPS 峰值"
             },
             "properties": [
               {

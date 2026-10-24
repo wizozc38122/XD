@@ -427,24 +427,24 @@ L = Line()
 NIC_BITS = "8 * " + 'max by (instance) (node_network_speed_bytes{@NODE@, @NIC@})'
 
 
-def peak_30d(expr):
-    return f'max_over_time(({expr})[30d:5m])'
+def peak_7d(expr):
+    return f'max_over_time(({expr})[7d:5m])'
 
 
-multi_table(L, "【上限】參考：Node 回報的網卡速度與過去 30 天峰值", "node", [
+multi_table(L, "【上限】參考：Node 回報的網卡速度與過去 7 天峰值", "node", [
     ("網卡回報速度", as_node(NIC_BITS), "bps", 0),
-    ("30 天網路送出峰值", as_node(peak_30d("8 * " + NODE_TX.replace("@R@", "5m"))), "bps", 1),
-    ("30 天網路接收峰值", as_node(peak_30d("8 * " + NODE_RX.replace("@R@", "5m"))), "bps", 1),
-    ("30 天磁碟吞吐峰值", as_node(peak_30d(
+    ("7 天網路送出峰值", as_node(peak_7d("8 * " + NODE_TX.replace("@R@", "5m"))), "bps", 1),
+    ("7 天網路接收峰值", as_node(peak_7d("8 * " + NODE_RX.replace("@R@", "5m"))), "bps", 1),
+    ("7 天磁碟吞吐峰值", as_node(peak_7d(
         'sum by (instance) (rate(node_disk_read_bytes_total{@NODE@, @DEV@}[5m]) + rate(node_disk_written_bytes_total{@NODE@, @DEV@}[5m]))')),
      "Bps", 1),
-    ("30 天磁碟 IOPS 峰值", as_node(peak_30d(
+    ("7 天磁碟 IOPS 峰值", as_node(peak_7d(
         'sum by (instance) (rate(node_disk_reads_completed_total{@NODE@, @DEV@}[5m]) + rate(node_disk_writes_completed_total{@NODE@, @DEV@}[5m]))')),
      "iops", 0),
 ], desc("所選的每台 Node（整台加總）",
-        "Node 自己回報的網卡速度，以及過去 30 天實際跑到的最高網路、磁碟流量（每 5 分鐘平均）。",
+        "Node 自己回報的網卡速度，以及過去 7 天實際跑到的最高網路、磁碟流量（每 5 分鐘平均）。",
         "用來決定上方輸入框要填多少。峰值只代表「至少撐得住這麼多」，不是上限：到 Grafana Explore 看峰值那段時間的磁碟延遲與網路丟包，"
-        "延遲和丟包都正常就代表上限更高，延遲已明顯上升則這附近就是實際可用上限。這個表格會掃 30 天資料，載入可能較慢。"),
+        "延遲和丟包都正常就代表上限更高，延遲已明顯上升則這附近就是實際可用上限。"),
     h=6)
 L.newline()
 
@@ -612,7 +612,7 @@ dash = {
     "tags": ["ocp", "loadtest", "capacity"],
     "timezone": "browser",
     "schemaVersion": 39,
-    "version": 6,
+    "version": 7,
     "editable": True,
     "graphTooltip": 1,
     "refresh": "30s",
