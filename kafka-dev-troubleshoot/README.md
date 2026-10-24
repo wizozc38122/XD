@@ -1,0 +1,94 @@
+# Kafka 問題排查（開發人員）Dashboard
+
+給開發人員：應用程式遇到 Kafka 相關問題（lag 一直漲、寫入失敗、權限錯誤、登入失敗、變慢）時，依症狀找方向。每張圖的 ⓘ 都有「是什麼／正常／不正常時」說明。
+
+## 檔案
+
+| 檔案 | 說明 |
+|---|---|
+| `kafka-dev-troubleshoot-dashboard.json` | 匯入 Grafana 用的 Dashboard |
+| `gen_dashboard.py` | 產生上面 JSON 的腳本。要改面板就改這裡，再執行 `python gen_dashboard.py kafka-dev-troubleshoot-dashboard.json` 重新產生 |
+
+第二個參數可以限制「環境」下拉選單只列出符合 regex 的 Prometheus 資料來源（預設不限制）：
+
+```
+python gen_dashboard.py kafka-dev-troubleshoot-dashboard.json "Prometheus-(SIT|UAT|PROD-NH|PROD-BQ|PROD-BQ1)"
+```
+
+## 匯入
+
+1. Grafana → Dashboards → New → Import → 上傳 `kafka-dev-troubleshoot-dashboard.json`。
+2. 上方變數依序選：
+   - **環境**：Prometheus 資料來源。
+   - **Cluster**：Kafka 叢集（取自 kafka-exporter 的 `cluster` label）。
+   - **Topic** / **Consumer Group**：預設全選。
+   - **速度取樣**：② 的消費 / 寫入速度用多長時間平均（5m / 15m / 1h，預設 15m）。
+3. 時間範圍要**包含出問題前**的一段時間，才看得出變化。
+
+需求（括號內是實測版本）：
+
+- jmx_exporter Java agent（1.6.0）
+- danielqsj/kafka-exporter（v1.9.0）
+- node_exporter（v1.9.1）
+- Prometheus（v3.2.0）、Grafana 12
+
+三個 exporter 的 scrape job 都要帶**同一個 `cluster` label**，dashboard 用它篩選。
+
+## 區塊
+
+1. ① 健康總覽：Kafka 本身有沒有壞
+2. ② Consumer 有沒有追上、Topic 是否滿載
+3. ③ 延遲：寫入 / 讀取慢在哪一段
+4. ④ 錯誤與權限：應用程式收到什麼錯誤
+5. ⑤ 各帳號（專案）與連線的程式
+6. ⑥ Broker 資源（預設收合）
+7. ⑦ 副本與 Partition 健康（維運用，預設收合）
+
+## 幾個容易誤會的數字
+
+- **還落後、追上需要**：用「速度取樣」區間的平均速度算。區間短反應快但跳動大；消費只比寫入快一點點時，追上需要會很不穩，超過 1 天會顯示「> 1 天（幾乎持平）」。
+- **Lag 佔保留量**：最落後的 partition 裡，還沒讀的訊息佔 Kafka 目前保留量的比例（用訊息筆數算）。
+  - **100%**：retention 的清除已經追到 consumer 讀到的位置。
+  - **超過 100%**：沒讀的資料已經被刪了，consumer 會收到 `OFFSET_OUT_OF_RANGE`，之後從哪讀看 `auto.offset.reset`。
+  - 不管 retention 是依大小還是依時間，算法都一樣。
+  - topic 設定多少：`kafka-configs --describe --entity-type topics --entity-name <topic>`。
+- **讀取延遲約 500 ms**：是正常的。沒有新資料時，broker 會等滿 `fetch.max.wait.ms`（預設 500 ms）才回應。
+
+## jmx exporter 設定
+
+jmx exporter 的規則有兩種寫法，dashboard 都支援：
+
+- **官方範例 `kafka-kraft-3_0_0.yml`**：帳號、listener 會被寫進 metric 名稱，帳號名稱的 `-` 會顯示成 `_`。
+- **自訂規則**：帳號、listener 拆成 label，例如 `kafka_server_client_quota_byte_rate{user=...}`。
+
+面板顯示「jmx exporter 設定沒收 X」時，在 `includeObjectNames` 加上 X：
+
+| 面板 | 要收的 MBean |
+|---|---|
+| ④ ACL 授權檢查、權限被拒的 authorizer 線 | `kafka.server:type=plugins,config=authorizer.class.name,*` |
+| ① ④ 登入失敗、⑤ 連線數、連線的 client 程式 | `kafka.server:type=socket-server-metrics,listener=*,networkProcessor=*`、`kafka.server:type=socket-server-metrics,clientSoftwareName=*,clientSoftwareVersion=*,listener=*,networkProcessor=*` |
+| ⑤ 各帳號佔用 broker 處理時間 | `kafka.server:type=Request,user=*` |
+| ② Rebalance 次數 | `kafka.server:type=group-coordinator-metrics`、`kafka.coordinator.group:type=GroupMetadataManager,*` |
+| ③ 延遲拆解的後三段 | `kafka.network:type=RequestMetrics,name={ThrottleTimeMs,ResponseQueueTimeMs,ResponseSendTimeMs},request={Produce,FetchConsumer}` |
+| ② Topic 磁碟大小 | `kafka.log:type=Log,name=Size,*`（每個 partition 一條，partition 多時請評估） |
+
+自訂規則常見的坑：
+
+- **錯誤回應**：Fetch 的錯誤是 `request=Fetch`（不分 FetchConsumer / FetchFollower）；`GROUP_AUTHORIZATION_FAILED` 在 `FindCoordinator`。建議直接收 `kafka.network:type=RequestMetrics,name=ErrorsPerSec,*`。
+- **KRaft 通用規則**：寫成 `kafka.server<type=(.+)><>...` 會連 `type=Produce, user=...` 這類 MBean 一起配到，後面的 quota 規則就永遠輪不到。改成 `type=([a-z-]+)` 只配單一屬性的 MBean。
+- **group-coordinator-metrics**：這是 Kafka metrics，不是 yammer metrics，MBean 沒有 `name=` 屬性，寫 `name=...` 會一個都抓不到。
+
+## 各帳號流量（⑤）
+
+Kafka 要有設定 quota，broker 才會記錄每個帳號的流量。設一個很大的預設值就不會真的限速，也不用重啟 broker：
+
+```
+kafka-configs --alter --entity-type users --entity-default \
+  --add-config producer_byte_rate=1073741824,consumer_byte_rate=1073741824,request_percentage=10000
+```
+
+## 這裡看不到的
+
+- **哪個帳號被拒**：Kafka 只提供拒絕總數，要看 broker 的 authorizer log。
+- **每則訊息的端到端延遲**：要應用程式自己埋點。
+- **Topic 設定**（retention 等）：用 `kafka-configs --describe` 查。
