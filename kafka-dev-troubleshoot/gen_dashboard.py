@@ -284,7 +284,8 @@ panels.append(table(
                             "例：還留著 1,000 筆、其中 950 筆沒讀 = 95%，再刪一點就會刪到沒讀的；"
                             "**已掉資料** = 超過 100%，沒讀的已經被刪了（consumer 會收到 OFFSET_OUT_OF_RANGE）。"
                             "retention 設多少要用 `kafka-configs --describe --entity-type topics --entity-name <topic>` 查"),
-               ("Lag 趨勢", "lag 每秒增加幾筆（筆/秒），> 0 = 越落越多")]),
+               ("Lag 趨勢", "lag 每秒增加幾筆（筆/秒，速度取樣區間平均），> 0 = 越落越多；"
+                          "沒人在讀時 ≈ 寫入速度（寫進來的都變 lag），也沒有寫入時才是 0")]),
     cg_targets, gp(0, y, 24, 9),
     rename={"consumergroup": "Consumer Group", "topic": "Topic", "Value #A": "Lag", "Value #B": "成員",
             "Value #C": "消費/秒", "Value #D": "寫入/秒", "Value #E": "還落後", "Value #F": "追上需要",
