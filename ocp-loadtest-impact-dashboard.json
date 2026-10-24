@@ -98,29 +98,7 @@
           "text": "0",
           "value": "0"
         },
-        "hide": 0
-      },
-      {
-        "type": "textbox",
-        "name": "disk_mbps",
-        "label": "磁碟吞吐上限 MB/s（0 = 不計算）",
-        "query": "0",
-        "current": {
-          "text": "0",
-          "value": "0"
-        },
-        "hide": 0
-      },
-      {
-        "type": "textbox",
-        "name": "disk_iops",
-        "label": "磁碟 IOPS 上限（0 = 不計算）",
-        "query": "0",
-        "current": {
-          "text": "0",
-          "value": "0"
-        },
-        "hide": 0
+        "hide": 2
       }
     ]
   },
@@ -147,10 +125,10 @@
       "title": "",
       "options": {
         "mode": "markdown",
-        "content": "### 這個 Dashboard 怎麼用\n**目的**：壓測期間，判斷 `$workload`（namespace `$namespace`）是否拖慢**同一台 Node** 上的其他服務。重點是 CPU / 記憶體 limit **管不到**的共用資源：網路、磁碟 IO、conntrack。\n\n**面板標題前綴代表「在看誰」，這點很重要：**\n\n| 前綴 | 看的是 | 用來回答 |\n|---|---|---|\n| 【他】 | 他自己的 Pod 合計 | 他用了多少、有沒有被自己的 limit 卡住 |\n| 【占比】 | 他 ÷ 所在 Node **目前的總用量** | 他在這台 Node 上算不算大戶 |\n| 【上限】 | 整台 Node 和他各自 ÷ **硬體上限**（網卡速度、磁碟規格、檔案系統容量） | 資源離滿還有多遠、用量主要是不是他 |\n| 【整台 Node】 | 整台 Node 所有 Pod 加總，**不是他的用量** | 這台機器有沒有變吃緊（看壓測期間有沒有往上飆） |\n| 【鄰居】 | 同 Node 上所有 Pod 排名 | 誰是大戶、鄰居有沒有跟著變化 |\n| 【共用】 | 全叢集共用元件（Router、DNS） | 入口與 DNS 有沒有被打高 |\n\n**判讀**：只有「他的用量上升」**且**「整台 Node 的壓力指標在同一時間往上飆」**且**「鄰居也受影響」三者時間對得上，才算他影響了整體。整台 Node 指標本身沒辦法告訴你是誰造成的，要搭配【他】和【鄰居】一起看。\n\n**建議操作**：選 namespace 與 Deployment → `Node` 會自動帶出他所在的 Node → 時間範圍框住壓測**前後**（要有壓測前的基準才看得出飆升）。要看磁碟離上限多遠，請在上方填入磁碟吞吐與 IOPS 上限。每個面板右上角的 ⓘ 有說明。"
+        "content": "### 這個 Dashboard 怎麼用\n**目的**：壓測期間，判斷 `$workload`（namespace `$namespace`）是否拖慢**同一台 Node** 上的其他服務。重點是 CPU / 記憶體 limit **管不到**的共用資源：網路、磁碟 IO、conntrack。\n\n**面板標題前綴代表「在看誰」，這點很重要：**\n\n| 前綴 | 看的是 | 用來回答 |\n|---|---|---|\n| 【他】 | 他自己的 Pod 合計 | 他用了多少、有沒有被自己的 limit 卡住 |\n| 【占目前用量】 | 他 ÷ Node **目前實際的總用量** | 他是不是大戶。⚠️ 其他服務停掉、只剩他在跑時會接近 100%，**不代表資源快滿** |\n| 【占容量】 | 整台 Node 和他各自 ÷ Node **容量**（CPU 核數、總記憶體、網卡速度、磁碟忙碌時間、檔案系統容量） | 資源離滿還有多遠，**壓測主要看這個** |\n| 【整台 Node】 | 整台 Node 所有 Pod 加總，**不是他的用量** | 這台機器有沒有變吃緊（看壓測期間有沒有往上飆） |\n| 【鄰居】 | 同 Node 上所有 Pod 排名 | 誰是大戶、鄰居有沒有跟著變化 |\n| 【共用】 | 全叢集共用元件（Router、DNS） | 入口與 DNS 有沒有被打高 |\n\n**所有百分比的分母都寫在標題的「÷ …」**：÷ 自己的 Request / Limit、÷ Node 目前用量、÷ Node 容量，三種意思完全不同。\n\n**判讀**：只有「他的用量上升」**且**「整台 Node 的壓力指標在同一時間往上飆」**且**「鄰居也受影響」三者時間對得上，才算他影響了整體。整台 Node 指標本身沒辦法告訴你是誰造成的，要搭配【他】和【鄰居】一起看。\n\n**建議操作**：選 namespace 與 Deployment → `Node` 會自動帶出他所在的 Node → 時間範圍框住壓測**前後**（要有壓測前的基準才看得出飆升）。每個面板右上角的 ⓘ 有說明。"
       },
       "gridPos": {
-        "h": 12,
+        "h": 13,
         "w": 24,
         "x": 0,
         "y": 0
@@ -165,7 +143,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 12
+        "y": 13
       },
       "panels": []
     },
@@ -227,13 +205,13 @@
         "h": 4,
         "w": 4,
         "x": 0,
-        "y": 13
+        "y": 14
       }
     },
     {
       "id": 4,
       "type": "stat",
-      "title": "【他】CPU 用量 / Request",
+      "title": "【他】CPU 用量 ÷ 自己的 Request",
       "description": "**視角**：他自己（這個 Deployment 的 Pod 合計）\n\n**這是什麼**：實際 CPU 用量占「保證額度（request）」的比例。\n\n**怎麼看**：100% 以下：在自己的保證額度內。超過 100%：正在借用 Node 的閒置 CPU，Node 吃緊時最容易和鄰居互相搶。",
       "datasource": {
         "type": "prometheus",
@@ -295,13 +273,13 @@
         "h": 4,
         "w": 4,
         "x": 4,
-        "y": 13
+        "y": 14
       }
     },
     {
       "id": 5,
       "type": "stat",
-      "title": "【他】記憶體 / Limit（最高的容器）",
+      "title": "【他】記憶體 ÷ 自己的 Limit（最高的容器）",
       "description": "**視角**：他自己（這個 Deployment 的 Pod 合計）\n\n**這是什麼**：記憶體用量最接近上限的那個容器，用量占 limit 的比例。\n\n**怎麼看**：超過 90% 要注意，到 100% 會被 OOMKilled。沒設 memory limit 則沒有資料。",
       "datasource": {
         "type": "prometheus",
@@ -363,7 +341,7 @@
         "h": 4,
         "w": 4,
         "x": 8,
-        "y": 13
+        "y": 14
       }
     },
     {
@@ -431,7 +409,7 @@
         "h": 4,
         "w": 4,
         "x": 12,
-        "y": 13
+        "y": 14
       }
     },
     {
@@ -496,14 +474,14 @@
         "h": 4,
         "w": 4,
         "x": 16,
-        "y": 13
+        "y": 14
       }
     },
     {
       "id": 8,
       "type": "stat",
-      "title": "【占比】他占所選 Node 的 CPU",
-      "description": "**視角**：他 ÷ 所選 Node 的總量（只算跑在所選 Node 上的 Pod）\n\n**這是什麼**：這些 Node 上正在使用的 CPU，有多少是他用的。\n\n**怎麼看**：占比高只代表他是大戶，**不代表造成影響**；要看第 4 區整台 Node 是否同時變吃緊。",
+      "title": "【占容量】他的 CPU ÷ 所選 Node 總核數",
+      "description": "**視角**：他 ÷ 所選 Node 的 CPU 容量合計\n\n**這是什麼**：他用掉所選 Node CPU 總核數的幾成。分母是容量，所以其他服務停掉時也不會被灌高。\n\n**怎麼看**：要看整台 Node 是否快滿，請看 3B【占容量】CPU 的「整台」線。",
       "datasource": {
         "type": "prometheus",
         "uid": "${datasource}"
@@ -515,7 +493,7 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "sum(rate(container_cpu_usage_seconds_total{namespace=\"$namespace\", pod=~\"$workload-[a-z0-9]+-[a-z0-9]+\", container!=\"\", container!=\"POD\"}[$__rate_interval]) * on (namespace, pod) group_left () max by (namespace, pod) (kube_pod_info{node=~\"$node\"})) / sum(rate(node_cpu_seconds_total{mode!~\"idle|iowait\", instance=~\"$node\"}[$__rate_interval]))",
+          "expr": "sum(rate(container_cpu_usage_seconds_total{namespace=\"$namespace\", pod=~\"$workload-[a-z0-9]+-[a-z0-9]+\", container!=\"\", container!=\"POD\"}[$__rate_interval]) * on (namespace, pod) group_left () max by (namespace, pod) (kube_pod_info{node=~\"$node\"})) / count(node_cpu_seconds_total{mode=\"idle\", instance=~\"$node\"})",
           "legendFormat": "",
           "range": true,
           "instant": false,
@@ -534,11 +512,11 @@
               },
               {
                 "color": "yellow",
-                "value": 0.3
+                "value": 0.5
               },
               {
                 "color": "red",
-                "value": 0.6
+                "value": 0.8
               }
             ]
           },
@@ -564,7 +542,7 @@
         "h": 4,
         "w": 4,
         "x": 20,
-        "y": 13
+        "y": 14
       }
     },
     {
@@ -618,7 +596,7 @@
         "h": 7,
         "w": 12,
         "x": 0,
-        "y": 17
+        "y": 18
       }
     },
     {
@@ -666,7 +644,7 @@
         "h": 7,
         "w": 12,
         "x": 12,
-        "y": 17
+        "y": 18
       }
     },
     {
@@ -678,7 +656,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 24
+        "y": 25
       },
       "panels": []
     },
@@ -768,7 +746,7 @@
         "h": 7,
         "w": 12,
         "x": 0,
-        "y": 25
+        "y": 26
       }
     },
     {
@@ -845,7 +823,7 @@
         "h": 7,
         "w": 12,
         "x": 12,
-        "y": 25
+        "y": 26
       }
     },
     {
@@ -899,7 +877,7 @@
         "h": 7,
         "w": 8,
         "x": 0,
-        "y": 32
+        "y": 33
       }
     },
     {
@@ -964,7 +942,7 @@
         "h": 7,
         "w": 8,
         "x": 8,
-        "y": 32
+        "y": 33
       }
     },
     {
@@ -1054,7 +1032,7 @@
         "h": 7,
         "w": 8,
         "x": 16,
-        "y": 32
+        "y": 33
       }
     },
     {
@@ -1120,7 +1098,7 @@
         "h": 7,
         "w": 8,
         "x": 0,
-        "y": 39
+        "y": 40
       }
     },
     {
@@ -1173,7 +1151,7 @@
         "h": 7,
         "w": 8,
         "x": 8,
-        "y": 39
+        "y": 40
       }
     },
     {
@@ -1239,27 +1217,42 @@
         "h": 7,
         "w": 8,
         "x": 16,
-        "y": 39
+        "y": 40
       }
     },
     {
       "id": 20,
       "type": "row",
-      "title": "3. 【占比】他占 Node 目前總用量多少、【上限】整台和他各離硬體上限多遠",
+      "title": "3A. 【占目前用量】他 ÷ Node 目前實際總用量：他是不是大戶（不代表資源快滿）",
       "collapsed": false,
       "gridPos": {
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 46
+        "y": 47
       },
       "panels": []
     },
     {
       "id": 21,
+      "type": "text",
+      "title": "",
+      "options": {
+        "mode": "markdown",
+        "content": "**3A 的分母是 Node「目前實際的總用量」，不是容量。** 只回答「這台 Node 現在用掉的資源，有幾成是他用的」。\n\n⚠️ 壓測時如果其他服務很閒或已停掉，只剩他在跑，這裡會接近 **100%**，但資源可能其實很空。**要判斷資源快不快滿，請看下方 3B【占容量】。**"
+      },
+      "gridPos": {
+        "h": 3,
+        "w": 24,
+        "x": 0,
+        "y": 48
+      }
+    },
+    {
+      "id": 22,
       "type": "timeseries",
-      "title": "【占比】CPU",
-      "description": "**視角**：他 ÷ 所選 Node 的總量（只算跑在所選 Node 上的 Pod）\n\n**這是什麼**：第一條：Node 上正在被使用的 CPU 有多少是他的。第二條：他用掉這些 Node 總容量的幾成。\n\n**怎麼看**：占比高代表他是大戶，但影響與否要看第 4 區是否同時變吃緊。",
+      "title": "【占目前用量】CPU：他 ÷ Node 目前 CPU 用量",
+      "description": "**視角**：他 ÷ 這台 Node **目前實際的總用量**（每台 Node 一條線，只算他跑在該 Node 上的 Pod）\n\n**這是什麼**：這台 Node 正在使用的 CPU，有幾成是他用的。\n\n**怎麼看**：接近 100% 只代表這台 Node 目前的用量幾乎都是他的；其他服務停掉時一定會這樣。資源快不快滿請看 3B【占容量】。",
       "datasource": {
         "type": "prometheus",
         "uid": "${datasource}"
@@ -1271,20 +1264,8 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "sum(rate(container_cpu_usage_seconds_total{namespace=\"$namespace\", pod=~\"$workload-[a-z0-9]+-[a-z0-9]+\", container!=\"\", container!=\"POD\"}[$__rate_interval]) * on (namespace, pod) group_left () max by (namespace, pod) (kube_pod_info{node=~\"$node\"})) / sum(rate(node_cpu_seconds_total{mode!~\"idle|iowait\", instance=~\"$node\"}[$__rate_interval]))",
-          "legendFormat": "占這些 Node 正在用的 CPU",
-          "range": true,
-          "instant": false,
-          "format": "time_series"
-        },
-        {
-          "refId": "B",
-          "datasource": {
-            "type": "prometheus",
-            "uid": "${datasource}"
-          },
-          "expr": "sum(rate(container_cpu_usage_seconds_total{namespace=\"$namespace\", pod=~\"$workload-[a-z0-9]+-[a-z0-9]+\", container!=\"\", container!=\"POD\"}[$__rate_interval]) * on (namespace, pod) group_left () max by (namespace, pod) (kube_pod_info{node=~\"$node\"})) / sum(kube_node_status_allocatable{resource=\"cpu\", node=~\"$node\"})",
-          "legendFormat": "占這些 Node 的可分配 CPU",
+          "expr": "sum by (node) (sum by (namespace, pod) (rate(container_cpu_usage_seconds_total{namespace=\"$namespace\", pod=~\"$workload-[a-z0-9]+-[a-z0-9]+\", container!=\"\", container!=\"POD\"}[$__rate_interval])) * on (namespace, pod) group_left (node) max by (namespace, pod, node) (kube_pod_info{node=~\"$node\"})) / on (node) max by (node) (label_replace(sum by (instance) (rate(node_cpu_seconds_total{mode!~\"idle|iowait\", instance=~\"$node\"}[$__rate_interval])), \"node\", \"$1\", \"instance\", \"(.*)\"))",
+          "legendFormat": "{{node}} 他 ÷ 目前用量",
           "range": true,
           "instant": false,
           "format": "time_series"
@@ -1318,14 +1299,14 @@
         "h": 7,
         "w": 6,
         "x": 0,
-        "y": 47
+        "y": 51
       }
     },
     {
-      "id": 22,
+      "id": 23,
       "type": "timeseries",
-      "title": "【占比】網路",
-      "description": "**視角**：他 ÷ 所選 Node 的總量（只算跑在所選 Node 上的 Pod）\n\n**這是什麼**：他的網路流量占 Node 實體網卡**目前總流量**的比例，不是占網卡頻寬上限；要看離上限多遠，請看下方【上限】面板。\n\n**怎麼看**：同一台 Node 內 Pod 互傳不經過實體網卡，所以可能超過 100%，只當量級參考。網卡名稱不是 ens/eth/eno/enp/bond 開頭時需修改查詢。",
+      "title": "【占目前用量】記憶體：他 ÷ Node 目前記憶體用量",
+      "description": "**視角**：他 ÷ 這台 Node **目前實際的總用量**（每台 Node 一條線，只算他跑在該 Node 上的 Pod）\n\n**這是什麼**：這台 Node 已被使用的記憶體，有幾成是他用的。\n\n**怎麼看**：接近 100% 只代表這台 Node 目前的用量幾乎都是他的；其他服務停掉時一定會這樣。資源快不快滿請看 3B【占容量】。",
       "datasource": {
         "type": "prometheus",
         "uid": "${datasource}"
@@ -1337,20 +1318,8 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "sum(rate(container_network_transmit_bytes_total{namespace=\"$namespace\", pod=~\"$workload-[a-z0-9]+-[a-z0-9]+\"}[$__rate_interval]) * on (namespace, pod) group_left () max by (namespace, pod) (kube_pod_info{node=~\"$node\"})) / sum(rate(node_network_transmit_bytes_total{instance=~\"$node\", device=~\"(ens|eth|eno|enp|bond)[a-z0-9]*\"}[$__rate_interval]))",
-          "legendFormat": "TX 占 Node 網卡",
-          "range": true,
-          "instant": false,
-          "format": "time_series"
-        },
-        {
-          "refId": "B",
-          "datasource": {
-            "type": "prometheus",
-            "uid": "${datasource}"
-          },
-          "expr": "sum(rate(container_network_receive_bytes_total{namespace=\"$namespace\", pod=~\"$workload-[a-z0-9]+-[a-z0-9]+\"}[$__rate_interval]) * on (namespace, pod) group_left () max by (namespace, pod) (kube_pod_info{node=~\"$node\"})) / sum(rate(node_network_receive_bytes_total{instance=~\"$node\", device=~\"(ens|eth|eno|enp|bond)[a-z0-9]*\"}[$__rate_interval]))",
-          "legendFormat": "RX 占 Node 網卡",
+          "expr": "sum by (node) (sum by (namespace, pod) (container_memory_working_set_bytes{namespace=\"$namespace\", pod=~\"$workload-[a-z0-9]+-[a-z0-9]+\", container!=\"\", container!=\"POD\"}) * on (namespace, pod) group_left (node) max by (namespace, pod, node) (kube_pod_info{node=~\"$node\"})) / on (node) max by (node) (label_replace(max by (instance) (node_memory_MemTotal_bytes{instance=~\"$node\"} - node_memory_MemAvailable_bytes{instance=~\"$node\"}), \"node\", \"$1\", \"instance\", \"(.*)\"))",
+          "legendFormat": "{{node}} 他 ÷ 目前用量",
           "range": true,
           "instant": false,
           "format": "time_series"
@@ -1384,14 +1353,14 @@
         "h": 7,
         "w": 6,
         "x": 6,
-        "y": 47
+        "y": 51
       }
     },
     {
-      "id": 23,
+      "id": 24,
       "type": "timeseries",
-      "title": "【占比】磁碟寫入",
-      "description": "**視角**：他 ÷ 所選 Node 的總量（只算跑在所選 Node 上的 Pod）\n\n**這是什麼**：他的磁碟寫入量占 Node 本機磁碟總寫入量的比例。\n\n**怎麼看**：容器層與 Node 層的統計方式不同，只當量級參考。寫到 PVC（網路儲存）的量不算在 Node 本機磁碟。",
+      "title": "【占目前用量】網路：他 ÷ Node 目前網卡流量",
+      "description": "**視角**：他 ÷ 這台 Node **目前實際的總用量**（每台 Node 一條線，只算他跑在該 Node 上的 Pod）\n\n**這是什麼**：這台 Node 實體網卡目前的流量，有幾成是他的。\n\n**怎麼看**：接近 100% 只代表這台 Node 目前的用量幾乎都是他的；其他服務停掉時一定會這樣。資源快不快滿請看 3B【占容量】。同一台 Node 內 Pod 互傳不經過實體網卡，所以可能超過 100%，只當量級參考。",
       "datasource": {
         "type": "prometheus",
         "uid": "${datasource}"
@@ -1403,8 +1372,74 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "sum((sum by (namespace, pod) (rate(container_fs_writes_bytes_total{namespace=\"$namespace\", pod=~\"$workload-[a-z0-9]+-[a-z0-9]+\", container!=\"\", container!=\"POD\"}[$__rate_interval])) or sum by (namespace, pod) (rate(container_fs_writes_bytes_total{namespace=\"$namespace\", pod=~\"$workload-[a-z0-9]+-[a-z0-9]+\", container=\"\", pod!=\"\"}[$__rate_interval])) or sum by (namespace, pod) (rate(container_blkio_device_usage_total{namespace=\"$namespace\", pod=~\"$workload-[a-z0-9]+-[a-z0-9]+\", operation=\"Write\", container=\"\", pod!=\"\"}[$__rate_interval]))) * on (namespace, pod) group_left () max by (namespace, pod) (kube_pod_info{node=~\"$node\"})) / sum(rate(node_disk_written_bytes_total{instance=~\"$node\", device=~\"sd[a-z]+|nvme[0-9]+n[0-9]+|vd[a-z]+|xvd[a-z]+\"}[$__rate_interval]))",
-          "legendFormat": "寫入占 Node 磁碟",
+          "expr": "sum by (node) (sum by (namespace, pod) (rate(container_network_transmit_bytes_total{namespace=\"$namespace\", pod=~\"$workload-[a-z0-9]+-[a-z0-9]+\"}[$__rate_interval])) * on (namespace, pod) group_left (node) max by (namespace, pod, node) (kube_pod_info{node=~\"$node\"})) / on (node) max by (node) (label_replace(sum by (instance) (rate(node_network_transmit_bytes_total{instance=~\"$node\", device=~\"(ens|eth|eno|enp|bond)[a-z0-9]*\"}[$__rate_interval])), \"node\", \"$1\", \"instance\", \"(.*)\"))",
+          "legendFormat": "{{node}} 送出 TX 他 ÷ 目前流量",
+          "range": true,
+          "instant": false,
+          "format": "time_series"
+        },
+        {
+          "refId": "B",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "expr": "sum by (node) (sum by (namespace, pod) (rate(container_network_receive_bytes_total{namespace=\"$namespace\", pod=~\"$workload-[a-z0-9]+-[a-z0-9]+\"}[$__rate_interval])) * on (namespace, pod) group_left (node) max by (namespace, pod, node) (kube_pod_info{node=~\"$node\"})) / on (node) max by (node) (label_replace(sum by (instance) (rate(node_network_receive_bytes_total{instance=~\"$node\", device=~\"(ens|eth|eno|enp|bond)[a-z0-9]*\"}[$__rate_interval])), \"node\", \"$1\", \"instance\", \"(.*)\"))",
+          "legendFormat": "{{node}} 接收 RX 他 ÷ 目前流量",
+          "range": true,
+          "instant": false,
+          "format": "time_series"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 1,
+            "fillOpacity": 12,
+            "showPoints": "never",
+            "spanNulls": true
+          },
+          "min": 0
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "gridPos": {
+        "h": 7,
+        "w": 6,
+        "x": 12,
+        "y": 51
+      }
+    },
+    {
+      "id": 25,
+      "type": "timeseries",
+      "title": "【占目前用量】磁碟寫入：他 ÷ Node 目前磁碟寫入量",
+      "description": "**視角**：他 ÷ 這台 Node **目前實際的總用量**（每台 Node 一條線，只算他跑在該 Node 上的 Pod）\n\n**這是什麼**：這台 Node 本機磁碟目前的寫入量，有幾成是他寫的。\n\n**怎麼看**：接近 100% 只代表這台 Node 目前的用量幾乎都是他的；其他服務停掉時一定會這樣。資源快不快滿請看 3B【占容量】。容器層與 Node 層的統計方式不同，寫到 PVC（網路儲存）的量也不算在 Node 本機磁碟，只當量級參考。",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${datasource}"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "expr": "sum by (node) ((sum by (namespace, pod) (rate(container_fs_writes_bytes_total{namespace=\"$namespace\", pod=~\"$workload-[a-z0-9]+-[a-z0-9]+\", container!=\"\", container!=\"POD\"}[$__rate_interval])) or sum by (namespace, pod) (rate(container_fs_writes_bytes_total{namespace=\"$namespace\", pod=~\"$workload-[a-z0-9]+-[a-z0-9]+\", container=\"\", pod!=\"\"}[$__rate_interval])) or sum by (namespace, pod) (rate(container_blkio_device_usage_total{namespace=\"$namespace\", pod=~\"$workload-[a-z0-9]+-[a-z0-9]+\", operation=\"Write\", container=\"\", pod!=\"\"}[$__rate_interval]))) * on (namespace, pod) group_left (node) max by (namespace, pod, node) (kube_pod_info{node=~\"$node\"})) / on (node) max by (node) (label_replace(sum by (instance) (rate(node_disk_written_bytes_total{instance=~\"$node\", device=~\"sd[a-z]+|nvme[0-9]+n[0-9]+|vd[a-z]+|xvd[a-z]+\"}[$__rate_interval])), \"node\", \"$1\", \"instance\", \"(.*)\"))",
+          "legendFormat": "{{node}} 他 ÷ 目前寫入量",
           "range": true,
           "instant": false,
           "format": "time_series"
@@ -1438,15 +1473,43 @@
       "gridPos": {
         "h": 7,
         "w": 6,
-        "x": 12,
-        "y": 47
+        "x": 18,
+        "y": 51
       }
     },
     {
-      "id": 24,
+      "id": 26,
+      "type": "row",
+      "title": "3B. 【占容量】整台 Node 與他 ÷ 硬體容量：離滿還有多遠（壓測主要看這區）",
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 58
+      },
+      "panels": []
+    },
+    {
+      "id": 27,
+      "type": "text",
+      "title": "",
+      "options": {
+        "mode": "markdown",
+        "content": "**3B 的分母是 Node 的「容量」**：CPU 總核數、總記憶體、網卡速度、磁碟忙碌時間、檔案系統容量，全部自動取得。每台 Node 兩條線：\n\n- **整台 ÷ 容量**：整台 Node 用掉容量的幾成。接近紅色虛線才代表這項資源快滿，同 Node 所有 Pod 都會受影響。\n- **他 ÷ 容量**：他自己用掉容量的幾成。他的線越貼近整台的線，代表用量主要來自他。"
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 24,
+        "x": 0,
+        "y": 59
+      }
+    },
+    {
+      "id": 28,
       "type": "timeseries",
-      "title": "【占比】記憶體",
-      "description": "**視角**：他 ÷ 所選 Node 的總量（只算跑在所選 Node 上的 Pod）\n\n**這是什麼**：他的記憶體用量占 Node 總記憶體的比例。\n\n**怎麼看**：記憶體有 limit 保護，通常只需確認不要占太大。",
+      "title": "【占容量】CPU：整台 vs 他 ÷ Node CPU 總核數",
+      "description": "**視角**：每台 Node 兩條線：整台 Node ÷ **容量**，以及他 ÷ **容量**\n\n**這是什麼**：整台 Node 和他各用掉 CPU 總核數的幾成（不含閒置與 iowait）。\n\n**怎麼看**：整台接近紅色虛線代表 CPU 快滿，超用 request 的 Pod 會互相搶 CPU。他的 CPU 有 limit 保護，他的線不會超過他的 limit 合計。",
       "datasource": {
         "type": "prometheus",
         "uid": "${datasource}"
@@ -1458,8 +1521,20 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "sum(container_memory_working_set_bytes{namespace=\"$namespace\", pod=~\"$workload-[a-z0-9]+-[a-z0-9]+\", container!=\"\", container!=\"POD\"} * on (namespace, pod) group_left () max by (namespace, pod) (kube_pod_info{node=~\"$node\"})) / sum(node_memory_MemTotal_bytes{instance=~\"$node\"})",
-          "legendFormat": "占 Node 總記憶體",
+          "expr": "max by (node) (label_replace(sum by (instance) (rate(node_cpu_seconds_total{mode!~\"idle|iowait\", instance=~\"$node\"}[$__rate_interval])), \"node\", \"$1\", \"instance\", \"(.*)\")) / on (node) max by (node) (label_replace(count by (instance) (node_cpu_seconds_total{mode=\"idle\", instance=~\"$node\"}), \"node\", \"$1\", \"instance\", \"(.*)\"))",
+          "legendFormat": "{{node}} 整台 ÷ 總核數",
+          "range": true,
+          "instant": false,
+          "format": "time_series"
+        },
+        {
+          "refId": "B",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "expr": "sum by (node) (sum by (namespace, pod) (rate(container_cpu_usage_seconds_total{namespace=\"$namespace\", pod=~\"$workload-[a-z0-9]+-[a-z0-9]+\", container!=\"\", container!=\"POD\"}[$__rate_interval])) * on (namespace, pod) group_left (node) max by (namespace, pod, node) (kube_pod_info{node=~\"$node\"})) / on (node) max by (node) (label_replace(count by (instance) (node_cpu_seconds_total{mode=\"idle\", instance=~\"$node\"}), \"node\", \"$1\", \"instance\", \"(.*)\"))",
+          "legendFormat": "{{node}} 他 ÷ 總核數",
           "range": true,
           "instant": false,
           "format": "time_series"
@@ -1473,9 +1548,29 @@
             "lineWidth": 1,
             "fillOpacity": 12,
             "showPoints": "never",
-            "spanNulls": true
+            "spanNulls": true,
+            "thresholdsStyle": {
+              "mode": "dashed"
+            }
           },
-          "min": 0
+          "min": 0,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "yellow",
+                "value": 0.7
+              },
+              {
+                "color": "red",
+                "value": 0.9
+              }
+            ]
+          }
         },
         "overrides": []
       },
@@ -1491,31 +1586,102 @@
       },
       "gridPos": {
         "h": 7,
-        "w": 6,
-        "x": 18,
-        "y": 47
+        "w": 12,
+        "x": 0,
+        "y": 63
       }
     },
     {
-      "id": 25,
-      "type": "text",
-      "title": "",
+      "id": 29,
+      "type": "timeseries",
+      "title": "【占容量】記憶體：整台 vs 他 ÷ Node 總記憶體",
+      "description": "**視角**：每台 Node 兩條線：整台 Node ÷ **容量**，以及他 ÷ **容量**\n\n**這是什麼**：整台 Node 和他各用掉總記憶體的幾成。\n\n**怎麼看**：整台接近紅色虛線時，kubelet 可能開始驅逐 Pod（MemoryPressure）。他的記憶體有 limit 保護，他的線不會超過他的 limit 合計。",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${datasource}"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "expr": "max by (node) (label_replace(max by (instance) (1 - node_memory_MemAvailable_bytes{instance=~\"$node\"} / node_memory_MemTotal_bytes{instance=~\"$node\"}), \"node\", \"$1\", \"instance\", \"(.*)\"))",
+          "legendFormat": "{{node}} 整台 ÷ 總記憶體",
+          "range": true,
+          "instant": false,
+          "format": "time_series"
+        },
+        {
+          "refId": "B",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "expr": "sum by (node) (sum by (namespace, pod) (container_memory_working_set_bytes{namespace=\"$namespace\", pod=~\"$workload-[a-z0-9]+-[a-z0-9]+\", container!=\"\", container!=\"POD\"}) * on (namespace, pod) group_left (node) max by (namespace, pod, node) (kube_pod_info{node=~\"$node\"})) / on (node) max by (node) (label_replace(max by (instance) (node_memory_MemTotal_bytes{instance=~\"$node\"}), \"node\", \"$1\", \"instance\", \"(.*)\"))",
+          "legendFormat": "{{node}} 他 ÷ 總記憶體",
+          "range": true,
+          "instant": false,
+          "format": "time_series"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 1,
+            "fillOpacity": 12,
+            "showPoints": "never",
+            "spanNulls": true,
+            "thresholdsStyle": {
+              "mode": "dashed"
+            }
+          },
+          "min": 0,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "yellow",
+                "value": 0.7
+              },
+              {
+                "color": "red",
+                "value": 0.9
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
       "options": {
-        "mode": "markdown",
-        "content": "**上面四個【占比】是跟 Node「目前的總用量」比，下面五個【上限】是跟「硬體上限」比。** 每台 Node 兩條線：\n\n- **整台**：整台 Node 用掉上限的幾成。接近 100%（紅色虛線）才代表這項資源快滿了，同 Node 所有 Pod 都會受影響。\n- **他**：他自己用掉上限的幾成。他的線越貼近整台的線，代表用量主要來自他。\n\n網卡上限預設用 Node 回報的網卡速度；磁碟吞吐與 IOPS 沒有指標會回報上限，要在上方輸入框填入規格值，填 0 則不計算。"
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
       },
       "gridPos": {
-        "h": 4,
-        "w": 24,
-        "x": 0,
-        "y": 54
+        "h": 7,
+        "w": 12,
+        "x": 12,
+        "y": 63
       }
     },
     {
-      "id": 26,
+      "id": 30,
       "type": "timeseries",
-      "title": "【上限】網路送出 TX：整台 vs 他",
-      "description": "**視角**：每台 Node 兩條線：整台 Node 用量 ÷ 上限，以及他的用量 ÷ 上限\n\n**這是什麼**：網卡送出方向的流量占網卡上限的比例。\n\n**怎麼看**：整台的線接近紅色虛線代表網卡快滿。上限預設是 Node 回報的網卡速度；虛擬機常固定回報 10 Gbps 或不回報，如果知道實際可用頻寬，請在上方「網卡上限 Mbps」填入。網卡送出與接收各自有上限，所以分開看。",
+      "title": "【占容量】網路送出 TX：整台 vs 他 ÷ 網卡上限",
+      "description": "**視角**：每台 Node 兩條線：整台 Node ÷ **容量**，以及他 ÷ **容量**\n\n**這是什麼**：網卡送出方向，整台 Node 和他各用掉網卡上限的幾成。\n\n**怎麼看**：整台的線接近紅色虛線代表網卡快滿。容量是 Node 回報的網卡速度；虛擬機常固定回報 10 Gbps，實際可用頻寬可能更低，所以整台的線不高時，也請搭配第 4 區「網路丟包」一起看。網卡送出與接收各自有上限，所以分開看。",
       "datasource": {
         "type": "prometheus",
         "uid": "${datasource}"
@@ -1528,7 +1694,7 @@
             "uid": "${datasource}"
           },
           "expr": "max by (node) (label_replace(sum by (instance) (rate(node_network_transmit_bytes_total{instance=~\"$node\", device=~\"(ens|eth|eno|enp|bond)[a-z0-9]*\"}[$__rate_interval])), \"node\", \"$1\", \"instance\", \"(.*)\")) / on (node) max by (node) (label_replace((max by (instance) (node_uname_info{instance=~\"$node\"}) * 0 + $nic_mbps * 125000 > 0) or max by (instance) (node_network_speed_bytes{instance=~\"$node\", device=~\"(ens|eth|eno|enp|bond)[a-z0-9]*\"}), \"node\", \"$1\", \"instance\", \"(.*)\"))",
-          "legendFormat": "{{node}} 整台",
+          "legendFormat": "{{node}} 整台 ÷ 網卡上限",
           "range": true,
           "instant": false,
           "format": "time_series"
@@ -1540,7 +1706,7 @@
             "uid": "${datasource}"
           },
           "expr": "sum by (node) (sum by (namespace, pod) (rate(container_network_transmit_bytes_total{namespace=\"$namespace\", pod=~\"$workload-[a-z0-9]+-[a-z0-9]+\"}[$__rate_interval])) * on (namespace, pod) group_left (node) max by (namespace, pod, node) (kube_pod_info{node=~\"$node\"})) / on (node) max by (node) (label_replace((max by (instance) (node_uname_info{instance=~\"$node\"}) * 0 + $nic_mbps * 125000 > 0) or max by (instance) (node_network_speed_bytes{instance=~\"$node\", device=~\"(ens|eth|eno|enp|bond)[a-z0-9]*\"}), \"node\", \"$1\", \"instance\", \"(.*)\"))",
-          "legendFormat": "{{node}} 他",
+          "legendFormat": "{{node}} 他 ÷ 網卡上限",
           "range": true,
           "instant": false,
           "format": "time_series"
@@ -1560,7 +1726,7 @@
             }
           },
           "min": 0,
-          "noValue": "無資料：Node 沒有回報網卡速度，請在上方「網卡上限 Mbps」填入",
+          "noValue": "無資料：Node 沒有回報網卡速度，請改看第 4 區網路吞吐與丟包",
           "thresholds": {
             "mode": "absolute",
             "steps": [
@@ -1595,14 +1761,14 @@
         "h": 7,
         "w": 12,
         "x": 0,
-        "y": 58
+        "y": 70
       }
     },
     {
-      "id": 27,
+      "id": 31,
       "type": "timeseries",
-      "title": "【上限】網路接收 RX：整台 vs 他",
-      "description": "**視角**：每台 Node 兩條線：整台 Node 用量 ÷ 上限，以及他的用量 ÷ 上限\n\n**這是什麼**：網卡接收方向的流量占網卡上限的比例。\n\n**怎麼看**：整台的線接近紅色虛線代表網卡快滿。上限預設是 Node 回報的網卡速度；虛擬機常固定回報 10 Gbps 或不回報，如果知道實際可用頻寬，請在上方「網卡上限 Mbps」填入。網卡送出與接收各自有上限，所以分開看。",
+      "title": "【占容量】網路接收 RX：整台 vs 他 ÷ 網卡上限",
+      "description": "**視角**：每台 Node 兩條線：整台 Node ÷ **容量**，以及他 ÷ **容量**\n\n**這是什麼**：網卡接收方向，整台 Node 和他各用掉網卡上限的幾成。\n\n**怎麼看**：整台的線接近紅色虛線代表網卡快滿。容量是 Node 回報的網卡速度；虛擬機常固定回報 10 Gbps，實際可用頻寬可能更低，所以整台的線不高時，也請搭配第 4 區「網路丟包」一起看。網卡送出與接收各自有上限，所以分開看。",
       "datasource": {
         "type": "prometheus",
         "uid": "${datasource}"
@@ -1615,7 +1781,7 @@
             "uid": "${datasource}"
           },
           "expr": "max by (node) (label_replace(sum by (instance) (rate(node_network_receive_bytes_total{instance=~\"$node\", device=~\"(ens|eth|eno|enp|bond)[a-z0-9]*\"}[$__rate_interval])), \"node\", \"$1\", \"instance\", \"(.*)\")) / on (node) max by (node) (label_replace((max by (instance) (node_uname_info{instance=~\"$node\"}) * 0 + $nic_mbps * 125000 > 0) or max by (instance) (node_network_speed_bytes{instance=~\"$node\", device=~\"(ens|eth|eno|enp|bond)[a-z0-9]*\"}), \"node\", \"$1\", \"instance\", \"(.*)\"))",
-          "legendFormat": "{{node}} 整台",
+          "legendFormat": "{{node}} 整台 ÷ 網卡上限",
           "range": true,
           "instant": false,
           "format": "time_series"
@@ -1627,7 +1793,7 @@
             "uid": "${datasource}"
           },
           "expr": "sum by (node) (sum by (namespace, pod) (rate(container_network_receive_bytes_total{namespace=\"$namespace\", pod=~\"$workload-[a-z0-9]+-[a-z0-9]+\"}[$__rate_interval])) * on (namespace, pod) group_left (node) max by (namespace, pod, node) (kube_pod_info{node=~\"$node\"})) / on (node) max by (node) (label_replace((max by (instance) (node_uname_info{instance=~\"$node\"}) * 0 + $nic_mbps * 125000 > 0) or max by (instance) (node_network_speed_bytes{instance=~\"$node\", device=~\"(ens|eth|eno|enp|bond)[a-z0-9]*\"}), \"node\", \"$1\", \"instance\", \"(.*)\"))",
-          "legendFormat": "{{node}} 他",
+          "legendFormat": "{{node}} 他 ÷ 網卡上限",
           "range": true,
           "instant": false,
           "format": "time_series"
@@ -1647,7 +1813,7 @@
             }
           },
           "min": 0,
-          "noValue": "無資料：Node 沒有回報網卡速度，請在上方「網卡上限 Mbps」填入",
+          "noValue": "無資料：Node 沒有回報網卡速度，請改看第 4 區網路吞吐與丟包",
           "thresholds": {
             "mode": "absolute",
             "steps": [
@@ -1682,14 +1848,14 @@
         "h": 7,
         "w": 12,
         "x": 12,
-        "y": 58
+        "y": 70
       }
     },
     {
-      "id": 28,
+      "id": 32,
       "type": "timeseries",
-      "title": "【上限】磁碟吞吐（讀 + 寫）：整台 vs 他",
-      "description": "**視角**：每台 Node 兩條線：整台 Node 用量 ÷ 上限，以及他的用量 ÷ 上限\n\n**這是什麼**：Node 本機磁碟每秒讀寫量占磁碟吞吐上限的比例。上限是 Node 上所有本機磁碟合計。\n\n**怎麼看**：整台接近紅色虛線代表磁碟頻寬快滿，同 Node 所有 Pod 的 IO 都會變慢。上限請向基礎設施團隊確認，或查雲端磁碟規格。",
+      "title": "【占容量】磁碟忙碌程度：整台 vs 他（估算）÷ 總時間",
+      "description": "**視角**：每台 Node 兩條線：整台 Node ÷ **容量**，以及他 ÷ **容量**\n\n**這是什麼**：磁碟的讀寫速度與 IOPS 上限沒有指標會回報，所以用「磁碟有在處理 IO 的時間 ÷ 總時間」代表磁碟用掉多少容量，不需要輸入規格。整台取 Node 上最忙的那顆本機磁碟；他的線是估算值 = 整台忙碌率 × 他占目前磁碟讀寫量的比例。\n\n**怎麼看**：整台接近紅色虛線代表磁碟快滿，同 Node 所有 Pod 的 IO 都會變慢。SSD 和雲端磁碟可同時處理多筆 IO，到 100% 不一定真的慢，請搭配第 4 區「磁碟延遲」一起看：忙碌率高且延遲上升，才是真的滿了。",
       "datasource": {
         "type": "prometheus",
         "uid": "${datasource}"
@@ -1701,8 +1867,8 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "max by (node) (label_replace(sum by (instance) (rate(node_disk_read_bytes_total{instance=~\"$node\", device=~\"sd[a-z]+|nvme[0-9]+n[0-9]+|vd[a-z]+|xvd[a-z]+\"}[$__rate_interval]) + rate(node_disk_written_bytes_total{instance=~\"$node\", device=~\"sd[a-z]+|nvme[0-9]+n[0-9]+|vd[a-z]+|xvd[a-z]+\"}[$__rate_interval])), \"node\", \"$1\", \"instance\", \"(.*)\")) / on (node) max by (node) (label_replace((max by (instance) (node_uname_info{instance=~\"$node\"}) * 0 + $disk_mbps * 1000000 > 0), \"node\", \"$1\", \"instance\", \"(.*)\"))",
-          "legendFormat": "{{node}} 整台",
+          "expr": "max by (node) (label_replace(max by (instance) (rate(node_disk_io_time_seconds_total{instance=~\"$node\", device=~\"sd[a-z]+|nvme[0-9]+n[0-9]+|vd[a-z]+|xvd[a-z]+\"}[$__rate_interval])), \"node\", \"$1\", \"instance\", \"(.*)\"))",
+          "legendFormat": "{{node}} 整台 ÷ 總時間",
           "range": true,
           "instant": false,
           "format": "time_series"
@@ -1713,8 +1879,8 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "sum by (node) ((sum by (namespace, pod) (rate(container_fs_writes_bytes_total{namespace=\"$namespace\", pod=~\"$workload-[a-z0-9]+-[a-z0-9]+\", container!=\"\", container!=\"POD\"}[$__rate_interval])) or sum by (namespace, pod) (rate(container_fs_writes_bytes_total{namespace=\"$namespace\", pod=~\"$workload-[a-z0-9]+-[a-z0-9]+\", container=\"\", pod!=\"\"}[$__rate_interval])) or sum by (namespace, pod) (rate(container_blkio_device_usage_total{namespace=\"$namespace\", pod=~\"$workload-[a-z0-9]+-[a-z0-9]+\", operation=\"Write\", container=\"\", pod!=\"\"}[$__rate_interval]))) + (sum by (namespace, pod) (rate(container_fs_reads_bytes_total{namespace=\"$namespace\", pod=~\"$workload-[a-z0-9]+-[a-z0-9]+\", container!=\"\", container!=\"POD\"}[$__rate_interval])) or sum by (namespace, pod) (rate(container_fs_reads_bytes_total{namespace=\"$namespace\", pod=~\"$workload-[a-z0-9]+-[a-z0-9]+\", container=\"\", pod!=\"\"}[$__rate_interval])) or sum by (namespace, pod) (rate(container_blkio_device_usage_total{namespace=\"$namespace\", pod=~\"$workload-[a-z0-9]+-[a-z0-9]+\", operation=\"Read\", container=\"\", pod!=\"\"}[$__rate_interval]))) * on (namespace, pod) group_left (node) max by (namespace, pod, node) (kube_pod_info{node=~\"$node\"})) / on (node) max by (node) (label_replace((max by (instance) (node_uname_info{instance=~\"$node\"}) * 0 + $disk_mbps * 1000000 > 0), \"node\", \"$1\", \"instance\", \"(.*)\"))",
-          "legendFormat": "{{node}} 他",
+          "expr": "(sum by (node) ((sum by (namespace, pod) (rate(container_fs_writes_bytes_total{namespace=\"$namespace\", pod=~\"$workload-[a-z0-9]+-[a-z0-9]+\", container!=\"\", container!=\"POD\"}[$__rate_interval])) or sum by (namespace, pod) (rate(container_fs_writes_bytes_total{namespace=\"$namespace\", pod=~\"$workload-[a-z0-9]+-[a-z0-9]+\", container=\"\", pod!=\"\"}[$__rate_interval])) or sum by (namespace, pod) (rate(container_blkio_device_usage_total{namespace=\"$namespace\", pod=~\"$workload-[a-z0-9]+-[a-z0-9]+\", operation=\"Write\", container=\"\", pod!=\"\"}[$__rate_interval]))) + (sum by (namespace, pod) (rate(container_fs_reads_bytes_total{namespace=\"$namespace\", pod=~\"$workload-[a-z0-9]+-[a-z0-9]+\", container!=\"\", container!=\"POD\"}[$__rate_interval])) or sum by (namespace, pod) (rate(container_fs_reads_bytes_total{namespace=\"$namespace\", pod=~\"$workload-[a-z0-9]+-[a-z0-9]+\", container=\"\", pod!=\"\"}[$__rate_interval])) or sum by (namespace, pod) (rate(container_blkio_device_usage_total{namespace=\"$namespace\", pod=~\"$workload-[a-z0-9]+-[a-z0-9]+\", operation=\"Read\", container=\"\", pod!=\"\"}[$__rate_interval]))) * on (namespace, pod) group_left (node) max by (namespace, pod, node) (kube_pod_info{node=~\"$node\"})) / on (node) max by (node) (label_replace(sum by (instance) (rate(node_disk_read_bytes_total{instance=~\"$node\", device=~\"sd[a-z]+|nvme[0-9]+n[0-9]+|vd[a-z]+|xvd[a-z]+\"}[$__rate_interval]) + rate(node_disk_written_bytes_total{instance=~\"$node\", device=~\"sd[a-z]+|nvme[0-9]+n[0-9]+|vd[a-z]+|xvd[a-z]+\"}[$__rate_interval])), \"node\", \"$1\", \"instance\", \"(.*)\"))) * on (node) max by (node) (label_replace(max by (instance) (rate(node_disk_io_time_seconds_total{instance=~\"$node\", device=~\"sd[a-z]+|nvme[0-9]+n[0-9]+|vd[a-z]+|xvd[a-z]+\"}[$__rate_interval])), \"node\", \"$1\", \"instance\", \"(.*)\"))",
+          "legendFormat": "{{node}} 他（估算）÷ 總時間",
           "range": true,
           "instant": false,
           "format": "time_series"
@@ -1734,7 +1900,6 @@
             }
           },
           "min": 0,
-          "noValue": "未設定：請在上方「磁碟吞吐上限 MB/s」填入磁碟規格",
           "thresholds": {
             "mode": "absolute",
             "steps": [
@@ -1767,103 +1932,16 @@
       },
       "gridPos": {
         "h": 7,
-        "w": 8,
+        "w": 12,
         "x": 0,
-        "y": 65
+        "y": 77
       }
     },
     {
-      "id": 29,
+      "id": 33,
       "type": "timeseries",
-      "title": "【上限】磁碟 IOPS：整台 vs 他",
-      "description": "**視角**：每台 Node 兩條線：整台 Node 用量 ÷ 上限，以及他的用量 ÷ 上限\n\n**這是什麼**：Node 本機磁碟每秒讀寫次數占 IOPS 上限的比例。\n\n**怎麼看**：大量小檔案或 log 寫入通常先撞到 IOPS 上限，而不是吞吐上限。只有整台的線而沒有他的線，代表叢集沒有收集 Pod 層級的 IO 次數。",
-      "datasource": {
-        "type": "prometheus",
-        "uid": "${datasource}"
-      },
-      "targets": [
-        {
-          "refId": "A",
-          "datasource": {
-            "type": "prometheus",
-            "uid": "${datasource}"
-          },
-          "expr": "max by (node) (label_replace(sum by (instance) (rate(node_disk_reads_completed_total{instance=~\"$node\", device=~\"sd[a-z]+|nvme[0-9]+n[0-9]+|vd[a-z]+|xvd[a-z]+\"}[$__rate_interval]) + rate(node_disk_writes_completed_total{instance=~\"$node\", device=~\"sd[a-z]+|nvme[0-9]+n[0-9]+|vd[a-z]+|xvd[a-z]+\"}[$__rate_interval])), \"node\", \"$1\", \"instance\", \"(.*)\")) / on (node) max by (node) (label_replace((max by (instance) (node_uname_info{instance=~\"$node\"}) * 0 + $disk_iops * 1 > 0), \"node\", \"$1\", \"instance\", \"(.*)\"))",
-          "legendFormat": "{{node}} 整台",
-          "range": true,
-          "instant": false,
-          "format": "time_series"
-        },
-        {
-          "refId": "B",
-          "datasource": {
-            "type": "prometheus",
-            "uid": "${datasource}"
-          },
-          "expr": "sum by (node) ((sum by (namespace, pod) (rate(container_fs_writes_total{namespace=\"$namespace\", pod=~\"$workload-[a-z0-9]+-[a-z0-9]+\", container!=\"\", container!=\"POD\"}[$__rate_interval])) or sum by (namespace, pod) (rate(container_fs_writes_total{namespace=\"$namespace\", pod=~\"$workload-[a-z0-9]+-[a-z0-9]+\", container=\"\", pod!=\"\"}[$__rate_interval]))) + (sum by (namespace, pod) (rate(container_fs_reads_total{namespace=\"$namespace\", pod=~\"$workload-[a-z0-9]+-[a-z0-9]+\", container!=\"\", container!=\"POD\"}[$__rate_interval])) or sum by (namespace, pod) (rate(container_fs_reads_total{namespace=\"$namespace\", pod=~\"$workload-[a-z0-9]+-[a-z0-9]+\", container=\"\", pod!=\"\"}[$__rate_interval]))) * on (namespace, pod) group_left (node) max by (namespace, pod, node) (kube_pod_info{node=~\"$node\"})) / on (node) max by (node) (label_replace((max by (instance) (node_uname_info{instance=~\"$node\"}) * 0 + $disk_iops * 1 > 0), \"node\", \"$1\", \"instance\", \"(.*)\"))",
-          "legendFormat": "{{node}} 他",
-          "range": true,
-          "instant": false,
-          "format": "time_series"
-        }
-      ],
-      "fieldConfig": {
-        "defaults": {
-          "unit": "percentunit",
-          "custom": {
-            "drawStyle": "line",
-            "lineWidth": 1,
-            "fillOpacity": 12,
-            "showPoints": "never",
-            "spanNulls": true,
-            "thresholdsStyle": {
-              "mode": "dashed"
-            }
-          },
-          "min": 0,
-          "noValue": "未設定：請在上方「磁碟 IOPS 上限」填入磁碟規格",
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              {
-                "color": "green",
-                "value": null
-              },
-              {
-                "color": "yellow",
-                "value": 0.7
-              },
-              {
-                "color": "red",
-                "value": 0.9
-              }
-            ]
-          }
-        },
-        "overrides": []
-      },
-      "options": {
-        "legend": {
-          "displayMode": "list",
-          "placement": "bottom"
-        },
-        "tooltip": {
-          "mode": "multi",
-          "sort": "desc"
-        }
-      },
-      "gridPos": {
-        "h": 7,
-        "w": 8,
-        "x": 8,
-        "y": 65
-      }
-    },
-    {
-      "id": 30,
-      "type": "timeseries",
-      "title": "【上限】磁碟空間：整台 vs 他",
-      "description": "**視角**：每台 Node 兩條線：整台 Node 用量 ÷ 上限，以及他的用量 ÷ 上限\n\n**這是什麼**：Node 本機檔案系統的使用比例，以及他的容器可寫層佔掉的比例。上限就是檔案系統容量，不需要另外輸入。\n\n**怎麼看**：整台超過約 85–90% 時，kubelet 會進入 DiskPressure 並開始驅逐 Pod。他的線持續往上爬，代表他一直在寫檔或 log。",
+      "title": "【占容量】磁碟空間：整台 vs 他 ÷ 檔案系統容量",
+      "description": "**視角**：每台 Node 兩條線：整台 Node ÷ **容量**，以及他 ÷ **容量**\n\n**這是什麼**：Node 本機檔案系統，整台和他的容器可寫層各用掉容量的幾成。容量自動取得，不需要另外輸入。\n\n**怎麼看**：整台超過約 85–90% 時，kubelet 會進入 DiskPressure 並開始驅逐 Pod。他的線持續往上爬，代表他一直在寫檔或 log。",
       "datasource": {
         "type": "prometheus",
         "uid": "${datasource}"
@@ -1876,7 +1954,7 @@
             "uid": "${datasource}"
           },
           "expr": "max by (node) (label_replace(max by (instance) (1 - node_filesystem_avail_bytes{instance=~\"$node\", mountpoint=~\"/sysroot|/var|/\", fstype!~\"tmpfs|overlay|squashfs\"} / node_filesystem_size_bytes{instance=~\"$node\", mountpoint=~\"/sysroot|/var|/\", fstype!~\"tmpfs|overlay|squashfs\"}), \"node\", \"$1\", \"instance\", \"(.*)\"))",
-          "legendFormat": "{{node}} 整台",
+          "legendFormat": "{{node}} 整台 ÷ 容量",
           "range": true,
           "instant": false,
           "format": "time_series"
@@ -1888,7 +1966,7 @@
             "uid": "${datasource}"
           },
           "expr": "sum by (node) (sum by (namespace, pod) (container_fs_usage_bytes{namespace=\"$namespace\", pod=~\"$workload-[a-z0-9]+-[a-z0-9]+\", container!=\"\", container!=\"POD\"}) * on (namespace, pod) group_left (node) max by (namespace, pod, node) (kube_pod_info{node=~\"$node\"})) / on (node) max by (node) (label_replace(max by (instance) (node_filesystem_size_bytes{instance=~\"$node\", mountpoint=~\"/sysroot|/var|/\", fstype!~\"tmpfs|overlay|squashfs\"}), \"node\", \"$1\", \"instance\", \"(.*)\"))",
-          "legendFormat": "{{node}} 他",
+          "legendFormat": "{{node}} 他 ÷ 容量",
           "range": true,
           "instant": false,
           "format": "time_series"
@@ -1940,16 +2018,662 @@
       },
       "gridPos": {
         "h": 7,
-        "w": 8,
-        "x": 16,
-        "y": 65
+        "w": 12,
+        "x": 12,
+        "y": 77
       }
     },
     {
-      "id": 31,
+      "id": 34,
+      "type": "row",
+      "title": "3C. 【對比歷史峰值】整台 Node 目前 vs 壓測前 7 天峰值：有沒有超過平常最忙的時候",
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 84
+      },
+      "panels": []
+    },
+    {
+      "id": 35,
+      "type": "text",
+      "title": "",
+      "options": {
+        "mode": "markdown",
+        "content": "**虛線 = 時間範圍開始前 7 天內，整台 Node 的最高值**（每 5 分鐘平均）。實線是整台 Node 和他目前的實際用量。\n\n- **整台的實線超過虛線**：比過去一週最忙的時候還忙，這台 Node 正在承受平常沒遇過的壓力，要特別注意。\n- **整台的實線在虛線以下**：還在平常會遇到的範圍內，通常還好。\n- **他的實線**：看整台超出平常的部分，是不是主要來自他。\n\n⚠️ 時間範圍的**起點要設在壓測開始前**，虛線才會是「壓測前的正常峰值」，不會被壓測本身墊高。"
+      },
+      "gridPos": {
+        "h": 5,
+        "w": 24,
+        "x": 0,
+        "y": 85
+      }
+    },
+    {
+      "id": 36,
+      "type": "timeseries",
+      "title": "【對比峰值】CPU 用量（核）",
+      "description": "**視角**：每台 Node：整台目前、他目前（實線），以及整台壓測前 7 天峰值（虛線）\n\n**這是什麼**：使用中的 CPU 核數（不含閒置與 iowait）。\n\n**怎麼看**：整台的實線超過同一台 Node 的虛線，代表比過去一週最忙時還忙；再看他的實線是不是占了超出的那一段。",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${datasource}"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "expr": "max by (node) (label_replace(sum by (instance) (rate(node_cpu_seconds_total{mode!~\"idle|iowait\", instance=~\"$node\"}[$__rate_interval])), \"node\", \"$1\", \"instance\", \"(.*)\"))",
+          "legendFormat": "{{node}} 整台 目前",
+          "range": true,
+          "instant": false,
+          "format": "time_series"
+        },
+        {
+          "refId": "B",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "expr": "sum by (node) (sum by (namespace, pod) (rate(container_cpu_usage_seconds_total{namespace=\"$namespace\", pod=~\"$workload-[a-z0-9]+-[a-z0-9]+\", container!=\"\", container!=\"POD\"}[$__rate_interval])) * on (namespace, pod) group_left (node) max by (namespace, pod, node) (kube_pod_info{node=~\"$node\"}))",
+          "legendFormat": "{{node}} 他 目前",
+          "range": true,
+          "instant": false,
+          "format": "time_series"
+        },
+        {
+          "refId": "C",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "expr": "max by (node) (label_replace(max_over_time((sum by (instance) (rate(node_cpu_seconds_total{mode!~\"idle|iowait\", instance=~\"$node\"}[5m])))[7d:5m] @ start()), \"node\", \"$1\", \"instance\", \"(.*)\"))",
+          "legendFormat": "{{node}} 整台 壓測前 7 天峰值",
+          "range": true,
+          "instant": false,
+          "format": "time_series"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 1,
+            "fillOpacity": 12,
+            "showPoints": "never",
+            "spanNulls": true
+          },
+          "min": 0
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": ".*峰值.*"
+            },
+            "properties": [
+              {
+                "id": "custom.lineStyle",
+                "value": {
+                  "fill": "dash",
+                  "dash": [
+                    10,
+                    10
+                  ]
+                }
+              },
+              {
+                "id": "custom.fillOpacity",
+                "value": 0
+              },
+              {
+                "id": "custom.lineWidth",
+                "value": 2
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "gridPos": {
+        "h": 7,
+        "w": 8,
+        "x": 0,
+        "y": 90
+      }
+    },
+    {
+      "id": 37,
+      "type": "timeseries",
+      "title": "【對比峰值】記憶體用量",
+      "description": "**視角**：每台 Node：整台目前、他目前（實線），以及整台壓測前 7 天峰值（虛線）\n\n**這是什麼**：已使用的記憶體（總記憶體 − 可用記憶體）。\n\n**怎麼看**：整台的實線超過同一台 Node 的虛線，代表比過去一週最忙時還忙；再看他的實線是不是占了超出的那一段。",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${datasource}"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "expr": "max by (node) (label_replace(max by (instance) (node_memory_MemTotal_bytes{instance=~\"$node\"} - node_memory_MemAvailable_bytes{instance=~\"$node\"}), \"node\", \"$1\", \"instance\", \"(.*)\"))",
+          "legendFormat": "{{node}} 整台 目前",
+          "range": true,
+          "instant": false,
+          "format": "time_series"
+        },
+        {
+          "refId": "B",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "expr": "sum by (node) (sum by (namespace, pod) (container_memory_working_set_bytes{namespace=\"$namespace\", pod=~\"$workload-[a-z0-9]+-[a-z0-9]+\", container!=\"\", container!=\"POD\"}) * on (namespace, pod) group_left (node) max by (namespace, pod, node) (kube_pod_info{node=~\"$node\"}))",
+          "legendFormat": "{{node}} 他 目前",
+          "range": true,
+          "instant": false,
+          "format": "time_series"
+        },
+        {
+          "refId": "C",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "expr": "max by (node) (label_replace(max_over_time((max by (instance) (node_memory_MemTotal_bytes{instance=~\"$node\"} - node_memory_MemAvailable_bytes{instance=~\"$node\"}))[7d:5m] @ start()), \"node\", \"$1\", \"instance\", \"(.*)\"))",
+          "legendFormat": "{{node}} 整台 壓測前 7 天峰值",
+          "range": true,
+          "instant": false,
+          "format": "time_series"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "bytes",
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 1,
+            "fillOpacity": 12,
+            "showPoints": "never",
+            "spanNulls": true
+          },
+          "min": 0
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": ".*峰值.*"
+            },
+            "properties": [
+              {
+                "id": "custom.lineStyle",
+                "value": {
+                  "fill": "dash",
+                  "dash": [
+                    10,
+                    10
+                  ]
+                }
+              },
+              {
+                "id": "custom.fillOpacity",
+                "value": 0
+              },
+              {
+                "id": "custom.lineWidth",
+                "value": 2
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "gridPos": {
+        "h": 7,
+        "w": 8,
+        "x": 8,
+        "y": 90
+      }
+    },
+    {
+      "id": 38,
+      "type": "timeseries",
+      "title": "【對比峰值】網路送出 TX",
+      "description": "**視角**：每台 Node：整台目前、他目前（實線），以及整台壓測前 7 天峰值（虛線）\n\n**這是什麼**：實體網卡送出方向的流量（bits/s）。\n\n**怎麼看**：整台的實線超過同一台 Node 的虛線，代表比過去一週最忙時還忙；再看他的實線是不是占了超出的那一段。",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${datasource}"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "expr": "8 * max by (node) (label_replace(sum by (instance) (rate(node_network_transmit_bytes_total{instance=~\"$node\", device=~\"(ens|eth|eno|enp|bond)[a-z0-9]*\"}[$__rate_interval])), \"node\", \"$1\", \"instance\", \"(.*)\"))",
+          "legendFormat": "{{node}} 整台 目前",
+          "range": true,
+          "instant": false,
+          "format": "time_series"
+        },
+        {
+          "refId": "B",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "expr": "8 * sum by (node) (sum by (namespace, pod) (rate(container_network_transmit_bytes_total{namespace=\"$namespace\", pod=~\"$workload-[a-z0-9]+-[a-z0-9]+\"}[$__rate_interval])) * on (namespace, pod) group_left (node) max by (namespace, pod, node) (kube_pod_info{node=~\"$node\"}))",
+          "legendFormat": "{{node}} 他 目前",
+          "range": true,
+          "instant": false,
+          "format": "time_series"
+        },
+        {
+          "refId": "C",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "expr": "8 * max by (node) (label_replace(max_over_time((sum by (instance) (rate(node_network_transmit_bytes_total{instance=~\"$node\", device=~\"(ens|eth|eno|enp|bond)[a-z0-9]*\"}[5m])))[7d:5m] @ start()), \"node\", \"$1\", \"instance\", \"(.*)\"))",
+          "legendFormat": "{{node}} 整台 壓測前 7 天峰值",
+          "range": true,
+          "instant": false,
+          "format": "time_series"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "bps",
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 1,
+            "fillOpacity": 12,
+            "showPoints": "never",
+            "spanNulls": true
+          },
+          "min": 0
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": ".*峰值.*"
+            },
+            "properties": [
+              {
+                "id": "custom.lineStyle",
+                "value": {
+                  "fill": "dash",
+                  "dash": [
+                    10,
+                    10
+                  ]
+                }
+              },
+              {
+                "id": "custom.fillOpacity",
+                "value": 0
+              },
+              {
+                "id": "custom.lineWidth",
+                "value": 2
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "gridPos": {
+        "h": 7,
+        "w": 8,
+        "x": 16,
+        "y": 90
+      }
+    },
+    {
+      "id": 39,
+      "type": "timeseries",
+      "title": "【對比峰值】網路接收 RX",
+      "description": "**視角**：每台 Node：整台目前、他目前（實線），以及整台壓測前 7 天峰值（虛線）\n\n**這是什麼**：實體網卡接收方向的流量（bits/s）。\n\n**怎麼看**：整台的實線超過同一台 Node 的虛線，代表比過去一週最忙時還忙；再看他的實線是不是占了超出的那一段。",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${datasource}"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "expr": "8 * max by (node) (label_replace(sum by (instance) (rate(node_network_receive_bytes_total{instance=~\"$node\", device=~\"(ens|eth|eno|enp|bond)[a-z0-9]*\"}[$__rate_interval])), \"node\", \"$1\", \"instance\", \"(.*)\"))",
+          "legendFormat": "{{node}} 整台 目前",
+          "range": true,
+          "instant": false,
+          "format": "time_series"
+        },
+        {
+          "refId": "B",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "expr": "8 * sum by (node) (sum by (namespace, pod) (rate(container_network_receive_bytes_total{namespace=\"$namespace\", pod=~\"$workload-[a-z0-9]+-[a-z0-9]+\"}[$__rate_interval])) * on (namespace, pod) group_left (node) max by (namespace, pod, node) (kube_pod_info{node=~\"$node\"}))",
+          "legendFormat": "{{node}} 他 目前",
+          "range": true,
+          "instant": false,
+          "format": "time_series"
+        },
+        {
+          "refId": "C",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "expr": "8 * max by (node) (label_replace(max_over_time((sum by (instance) (rate(node_network_receive_bytes_total{instance=~\"$node\", device=~\"(ens|eth|eno|enp|bond)[a-z0-9]*\"}[5m])))[7d:5m] @ start()), \"node\", \"$1\", \"instance\", \"(.*)\"))",
+          "legendFormat": "{{node}} 整台 壓測前 7 天峰值",
+          "range": true,
+          "instant": false,
+          "format": "time_series"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "bps",
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 1,
+            "fillOpacity": 12,
+            "showPoints": "never",
+            "spanNulls": true
+          },
+          "min": 0
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": ".*峰值.*"
+            },
+            "properties": [
+              {
+                "id": "custom.lineStyle",
+                "value": {
+                  "fill": "dash",
+                  "dash": [
+                    10,
+                    10
+                  ]
+                }
+              },
+              {
+                "id": "custom.fillOpacity",
+                "value": 0
+              },
+              {
+                "id": "custom.lineWidth",
+                "value": 2
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "gridPos": {
+        "h": 7,
+        "w": 8,
+        "x": 0,
+        "y": 97
+      }
+    },
+    {
+      "id": 40,
+      "type": "timeseries",
+      "title": "【對比峰值】磁碟吞吐（讀 + 寫）",
+      "description": "**視角**：每台 Node：整台目前、他目前（實線），以及整台壓測前 7 天峰值（虛線）\n\n**這是什麼**：Node 本機磁碟每秒讀寫量。他的線沒資料，代表叢集沒有收集 Pod 層級的磁碟 IO。\n\n**怎麼看**：整台的實線超過同一台 Node 的虛線，代表比過去一週最忙時還忙；再看他的實線是不是占了超出的那一段。",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${datasource}"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "expr": "max by (node) (label_replace(sum by (instance) (rate(node_disk_read_bytes_total{instance=~\"$node\", device=~\"sd[a-z]+|nvme[0-9]+n[0-9]+|vd[a-z]+|xvd[a-z]+\"}[$__rate_interval]) + rate(node_disk_written_bytes_total{instance=~\"$node\", device=~\"sd[a-z]+|nvme[0-9]+n[0-9]+|vd[a-z]+|xvd[a-z]+\"}[$__rate_interval])), \"node\", \"$1\", \"instance\", \"(.*)\"))",
+          "legendFormat": "{{node}} 整台 目前",
+          "range": true,
+          "instant": false,
+          "format": "time_series"
+        },
+        {
+          "refId": "B",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "expr": "sum by (node) ((sum by (namespace, pod) (rate(container_fs_writes_bytes_total{namespace=\"$namespace\", pod=~\"$workload-[a-z0-9]+-[a-z0-9]+\", container!=\"\", container!=\"POD\"}[$__rate_interval])) or sum by (namespace, pod) (rate(container_fs_writes_bytes_total{namespace=\"$namespace\", pod=~\"$workload-[a-z0-9]+-[a-z0-9]+\", container=\"\", pod!=\"\"}[$__rate_interval])) or sum by (namespace, pod) (rate(container_blkio_device_usage_total{namespace=\"$namespace\", pod=~\"$workload-[a-z0-9]+-[a-z0-9]+\", operation=\"Write\", container=\"\", pod!=\"\"}[$__rate_interval]))) + (sum by (namespace, pod) (rate(container_fs_reads_bytes_total{namespace=\"$namespace\", pod=~\"$workload-[a-z0-9]+-[a-z0-9]+\", container!=\"\", container!=\"POD\"}[$__rate_interval])) or sum by (namespace, pod) (rate(container_fs_reads_bytes_total{namespace=\"$namespace\", pod=~\"$workload-[a-z0-9]+-[a-z0-9]+\", container=\"\", pod!=\"\"}[$__rate_interval])) or sum by (namespace, pod) (rate(container_blkio_device_usage_total{namespace=\"$namespace\", pod=~\"$workload-[a-z0-9]+-[a-z0-9]+\", operation=\"Read\", container=\"\", pod!=\"\"}[$__rate_interval]))) * on (namespace, pod) group_left (node) max by (namespace, pod, node) (kube_pod_info{node=~\"$node\"}))",
+          "legendFormat": "{{node}} 他 目前",
+          "range": true,
+          "instant": false,
+          "format": "time_series"
+        },
+        {
+          "refId": "C",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "expr": "max by (node) (label_replace(max_over_time((sum by (instance) (rate(node_disk_read_bytes_total{instance=~\"$node\", device=~\"sd[a-z]+|nvme[0-9]+n[0-9]+|vd[a-z]+|xvd[a-z]+\"}[5m]) + rate(node_disk_written_bytes_total{instance=~\"$node\", device=~\"sd[a-z]+|nvme[0-9]+n[0-9]+|vd[a-z]+|xvd[a-z]+\"}[5m])))[7d:5m] @ start()), \"node\", \"$1\", \"instance\", \"(.*)\"))",
+          "legendFormat": "{{node}} 整台 壓測前 7 天峰值",
+          "range": true,
+          "instant": false,
+          "format": "time_series"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "Bps",
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 1,
+            "fillOpacity": 12,
+            "showPoints": "never",
+            "spanNulls": true
+          },
+          "min": 0
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": ".*峰值.*"
+            },
+            "properties": [
+              {
+                "id": "custom.lineStyle",
+                "value": {
+                  "fill": "dash",
+                  "dash": [
+                    10,
+                    10
+                  ]
+                }
+              },
+              {
+                "id": "custom.fillOpacity",
+                "value": 0
+              },
+              {
+                "id": "custom.lineWidth",
+                "value": 2
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "gridPos": {
+        "h": 7,
+        "w": 8,
+        "x": 8,
+        "y": 97
+      }
+    },
+    {
+      "id": 41,
+      "type": "timeseries",
+      "title": "【對比峰值】磁碟 IOPS",
+      "description": "**視角**：每台 Node：整台目前、他目前（實線），以及整台壓測前 7 天峰值（虛線）\n\n**這是什麼**：Node 本機磁碟每秒讀寫次數。\n\n**怎麼看**：整台的實線超過同一台 Node 的虛線，代表比過去一週最忙時還忙；再看他的實線是不是占了超出的那一段。",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${datasource}"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "expr": "max by (node) (label_replace(sum by (instance) (rate(node_disk_reads_completed_total{instance=~\"$node\", device=~\"sd[a-z]+|nvme[0-9]+n[0-9]+|vd[a-z]+|xvd[a-z]+\"}[$__rate_interval]) + rate(node_disk_writes_completed_total{instance=~\"$node\", device=~\"sd[a-z]+|nvme[0-9]+n[0-9]+|vd[a-z]+|xvd[a-z]+\"}[$__rate_interval])), \"node\", \"$1\", \"instance\", \"(.*)\"))",
+          "legendFormat": "{{node}} 整台 目前",
+          "range": true,
+          "instant": false,
+          "format": "time_series"
+        },
+        {
+          "refId": "B",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "expr": "max by (node) (label_replace(max_over_time((sum by (instance) (rate(node_disk_reads_completed_total{instance=~\"$node\", device=~\"sd[a-z]+|nvme[0-9]+n[0-9]+|vd[a-z]+|xvd[a-z]+\"}[5m]) + rate(node_disk_writes_completed_total{instance=~\"$node\", device=~\"sd[a-z]+|nvme[0-9]+n[0-9]+|vd[a-z]+|xvd[a-z]+\"}[5m])))[7d:5m] @ start()), \"node\", \"$1\", \"instance\", \"(.*)\"))",
+          "legendFormat": "{{node}} 整台 壓測前 7 天峰值",
+          "range": true,
+          "instant": false,
+          "format": "time_series"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "iops",
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 1,
+            "fillOpacity": 12,
+            "showPoints": "never",
+            "spanNulls": true
+          },
+          "min": 0
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": ".*峰值.*"
+            },
+            "properties": [
+              {
+                "id": "custom.lineStyle",
+                "value": {
+                  "fill": "dash",
+                  "dash": [
+                    10,
+                    10
+                  ]
+                }
+              },
+              {
+                "id": "custom.fillOpacity",
+                "value": 0
+              },
+              {
+                "id": "custom.lineWidth",
+                "value": 2
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "gridPos": {
+        "h": 7,
+        "w": 8,
+        "x": 16,
+        "y": 97
+      }
+    },
+    {
+      "id": 42,
       "type": "table",
-      "title": "【上限】參考：Node 回報的網卡速度與過去 7 天峰值",
-      "description": "**視角**：所選的每台 Node（整台加總）\n\n**這是什麼**：Node 自己回報的網卡速度，以及過去 7 天實際跑到的最高網路、磁碟流量（每 5 分鐘平均）。\n\n**怎麼看**：用來決定上方輸入框要填多少。峰值只代表「至少撐得住這麼多」，不是上限：到 Grafana Explore 看峰值那段時間的磁碟延遲與網路丟包，延遲和丟包都正常就代表上限更高，延遲已明顯上升則這附近就是實際可用上限。",
+      "title": "【對比峰值】參考：網卡速度與最近 7 天峰值",
+      "description": "**視角**：所選的每台 Node（整台加總）\n\n**這是什麼**：Node 自己回報的網卡速度，以及到時間範圍結束為止、最近 7 天實際跑到的最高網路、磁碟流量（每 5 分鐘平均）。\n\n**怎麼看**：峰值只代表「至少撐得住這麼多」，不是上限：峰值那段時間的磁碟延遲與網路丟包都正常，就代表上限更高；延遲已明顯上升，則這附近就是實際可用上限。網卡速度遠高於峰值，代表網卡還有很多餘裕。",
       "datasource": {
         "type": "prometheus",
         "uid": "${datasource}"
@@ -2138,11 +2862,11 @@
         "h": 6,
         "w": 24,
         "x": 0,
-        "y": 72
+        "y": 104
       }
     },
     {
-      "id": 32,
+      "id": 43,
       "type": "row",
       "title": "4. 【整台 Node】共用資源壓力：所有 Pod 加總，不是他的用量，看壓測期間有沒有往上飆",
       "collapsed": false,
@@ -2150,12 +2874,12 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 78
+        "y": 110
       },
       "panels": []
     },
     {
-      "id": 33,
+      "id": 44,
       "type": "text",
       "title": "",
       "options": {
@@ -2166,11 +2890,11 @@
         "h": 3,
         "w": 24,
         "x": 0,
-        "y": 79
+        "y": 111
       }
     },
     {
-      "id": 34,
+      "id": 45,
       "type": "timeseries",
       "title": "【整台 Node】PSI：有多少時間有工作在等資源",
       "description": "**視角**：整台 Node（所有 Pod 加總），**不是他自己的用量**\n\n**這是什麼**：PSI（Pressure Stall Information）是 Linux 核心記錄的「有工作因為搶不到 CPU / 磁碟 IO / 記憶體而在等」的時間比例。比 CPU 使用率更直接反映「大家有沒有變慢」。\n\n**怎麼看**：壓測前後比較，往上飆就是 Node 開始吃緊。粗略參考：CPU 或 IO 持續超過 10% 值得注意。**沒有資料**代表 Node 核心沒開 PSI（RHCOS 預設可能關閉），請改看右邊的替代面板。",
@@ -2245,11 +2969,11 @@
         "h": 7,
         "w": 8,
         "x": 0,
-        "y": 82
+        "y": 114
       }
     },
     {
-      "id": 35,
+      "id": 46,
       "type": "timeseries",
       "title": "【整台 Node】PSI 替代：iowait 與每核負載",
       "description": "**視角**：整台 Node（所有 Pod 加總），**不是他自己的用量**\n\n**這是什麼**：iowait：CPU 閒著在等磁碟的時間比例。每核負載：排隊等 CPU 或 IO 的工作數 ÷ CPU 核數（100% 約等於每核一個工作）。\n\n**怎麼看**：PSI 沒資料時用這個。iowait 往上飆代表磁碟變慢；每核負載長時間超過 100% 代表工作在排隊。",
@@ -2311,11 +3035,11 @@
         "h": 7,
         "w": 8,
         "x": 8,
-        "y": 82
+        "y": 114
       }
     },
     {
-      "id": 36,
+      "id": 47,
       "type": "timeseries",
       "title": "【整台 Node】磁碟延遲（每次 IO 平均花多久）",
       "description": "**視角**：整台 Node（所有 Pod 加總），**不是他自己的用量**\n\n**這是什麼**：Node 本機磁碟每次讀寫平均要等多久，所有 Pod 共用這顆磁碟。**判斷磁碟有沒有拖慢大家，這個最準。**\n\n**怎麼看**：壓測中明顯往上飆就是磁碟變慢，同 Node 所有 Pod 都會受影響。粗略參考：SSD 通常數 ms 以內，超過 10–20 ms 就很慢。",
@@ -2365,13 +3089,13 @@
         "h": 7,
         "w": 8,
         "x": 16,
-        "y": 82
+        "y": 114
       }
     },
     {
-      "id": 37,
+      "id": 48,
       "type": "timeseries",
-      "title": "【整台 Node】磁碟忙碌程度",
+      "title": "【整台 Node】磁碟忙碌程度（÷ 總時間）",
       "description": "**視角**：整台 Node（所有 Pod 加總），**不是他自己的用量**\n\n**這是什麼**：磁碟有在處理 IO 的時間比例（類似 iostat 的 %util）。\n\n**怎麼看**：接近 100% 可能飽和，但 SSD / 雲端磁碟可同時處理多筆 IO，100% 不一定代表慢，要搭配左邊的磁碟延遲一起看。",
       "datasource": {
         "type": "prometheus",
@@ -2419,11 +3143,11 @@
         "h": 7,
         "w": 8,
         "x": 0,
-        "y": 89
+        "y": 121
       }
     },
     {
-      "id": 38,
+      "id": 49,
       "type": "timeseries",
       "title": "【整台 Node】磁碟每秒讀寫次數（IOPS）",
       "description": "**視角**：整台 Node（所有 Pod 加總），**不是他自己的用量**\n\n**這是什麼**：Node 本機磁碟每秒完成的讀寫次數。\n\n**怎麼看**：IOPS 上升而延遲沒變，代表磁碟還撐得住；IOPS 上不去但延遲飆升，代表已經到磁碟上限。",
@@ -2485,13 +3209,13 @@
         "h": 7,
         "w": 8,
         "x": 8,
-        "y": 89
+        "y": 121
       }
     },
     {
-      "id": 39,
+      "id": 50,
       "type": "timeseries",
-      "title": "【整台 Node】檔案系統使用率",
+      "title": "【整台 Node】檔案系統使用率（÷ 容量）",
       "description": "**視角**：整台 Node（所有 Pod 加總），**不是他自己的用量**\n\n**這是什麼**：Node 本機磁碟空間用了幾成，容器映像、容器可寫層和 log 都放在這裡。\n\n**怎麼看**：超過 85% 要注意；剩餘空間低於約 10–15% 時 kubelet 會開始驅逐 Pod（DiskPressure）。",
       "datasource": {
         "type": "prometheus",
@@ -2539,11 +3263,11 @@
         "h": 7,
         "w": 8,
         "x": 16,
-        "y": 89
+        "y": 121
       }
     },
     {
-      "id": 40,
+      "id": 51,
       "type": "timeseries",
       "title": "【整台 Node】網路吞吐",
       "description": "**視角**：整台 Node（所有 Pod 加總），**不是他自己的用量**\n\n**這是什麼**：Node 實體網卡的總流量，所有 Pod 共用這張網卡。\n\n**怎麼看**：和第 2 區【他】的網路流量對照，看 Node 的流量上升是不是主要來自他。接近網卡頻寬上限時，所有 Pod 都會變慢。",
@@ -2605,11 +3329,11 @@
         "h": 7,
         "w": 8,
         "x": 0,
-        "y": 96
+        "y": 128
       }
     },
     {
-      "id": 41,
+      "id": 52,
       "type": "timeseries",
       "title": "【整台 Node】網路丟包 / 錯誤",
       "description": "**視角**：整台 Node（所有 Pod 加總），**不是他自己的用量**\n\n**這是什麼**：Node 實體網卡每秒丟掉或出錯的封包數。丟包通常是網卡或核心的緩衝區塞滿處理不及。\n\n**怎麼看**：正常應接近 0。壓測期間開始出現並往上升，代表網卡塞住，同 Node 所有 Pod 的網路都會受影響（重傳、延遲變高）。",
@@ -2671,13 +3395,13 @@
         "h": 7,
         "w": 8,
         "x": 8,
-        "y": 96
+        "y": 128
       }
     },
     {
-      "id": 42,
+      "id": 53,
       "type": "timeseries",
-      "title": "【整台 Node】網路封包處理 CPU（softirq）",
+      "title": "【整台 Node】網路封包處理 CPU（softirq，÷ 總 CPU 時間）",
       "description": "**視角**：整台 Node（所有 Pod 加總），**不是他自己的用量**\n\n**這是什麼**：Node 核心處理網路封包（以及部分磁碟完成通知）所花的 CPU 時間比例。這部分 CPU **不會算在 Pod 的 CPU limit 裡**，所以他的 CPU 被限制住，大流量還是會吃掉整台 Node 的 CPU。\n\n**怎麼看**：壓測時跟著網路流量一起往上飆，代表大流量正在消耗 Node 的 CPU。粗略參考：持續超過 10% 值得注意，若集中在少數 CPU 核上，該核會先滿而讓網路變慢。",
       "datasource": {
         "type": "prometheus",
@@ -2725,13 +3449,13 @@
         "h": 7,
         "w": 8,
         "x": 16,
-        "y": 96
+        "y": 128
       }
     },
     {
-      "id": 43,
+      "id": 54,
       "type": "timeseries",
-      "title": "【整台 Node】conntrack 連線追蹤表使用率",
+      "title": "【整台 Node】conntrack 使用率（÷ 表格上限）",
       "description": "**視角**：整台 Node（所有 Pod 加總），**不是他自己的用量**\n\n**這是什麼**：Node 核心記錄每條網路連線的表格，所有 Pod 共用一張，有容量上限。大量短連線（例如每次都重新連 DB / Redis / Kafka）最容易吃滿。\n\n**怎麼看**：超過 70% 要注意；滿了之後新連線會被直接丟掉，同 Node 所有 Pod 都會連不出去。",
       "datasource": {
         "type": "prometheus",
@@ -2779,13 +3503,13 @@
         "h": 7,
         "w": 6,
         "x": 0,
-        "y": 103
+        "y": 135
       }
     },
     {
-      "id": 44,
+      "id": 55,
       "type": "timeseries",
-      "title": "【整台 Node】CPU 使用率",
+      "title": "【整台 Node】CPU 使用率（÷ 總核數）",
       "description": "**視角**：整台 Node（所有 Pod 加總），**不是他自己的用量**\n\n**這是什麼**：整台 Node 的 CPU 有多少時間在工作。\n\n**怎麼看**：長時間超過 80% 且 PSI CPU 也上升時，沒設 limit 或超用 request 的 Pod 會互相搶 CPU。",
       "datasource": {
         "type": "prometheus",
@@ -2833,13 +3557,13 @@
         "h": 7,
         "w": 6,
         "x": 6,
-        "y": 103
+        "y": 135
       }
     },
     {
-      "id": 45,
+      "id": 56,
       "type": "timeseries",
-      "title": "【整台 Node】可用記憶體比例",
+      "title": "【整台 Node】剩餘可用記憶體（÷ 總記憶體）",
       "description": "**視角**：整台 Node（所有 Pod 加總），**不是他自己的用量**\n\n**這是什麼**：整台 Node 還能給程式用的記憶體比例。\n\n**怎麼看**：低於 10% 要注意，kubelet 可能開始驅逐 Pod（MemoryPressure）。",
       "datasource": {
         "type": "prometheus",
@@ -2887,11 +3611,11 @@
         "h": 7,
         "w": 6,
         "x": 12,
-        "y": 103
+        "y": 135
       }
     },
     {
-      "id": 46,
+      "id": 57,
       "type": "timeseries",
       "title": "【整台 Node】Node 壓力狀態（1 = 發生中）",
       "description": "**視角**：整台 Node（所有 Pod 加總），**不是他自己的用量**\n\n**這是什麼**：kubelet 回報 Node 進入磁碟、記憶體或程序數不足的狀態。\n\n**怎麼看**：出現 1 代表 Node 已經嚴重吃緊，kubelet 會開始驅逐 Pod，影響同 Node 的所有服務。",
@@ -2941,11 +3665,11 @@
         "h": 7,
         "w": 6,
         "x": 18,
-        "y": 103
+        "y": 135
       }
     },
     {
-      "id": 47,
+      "id": 58,
       "type": "row",
       "title": "5. 【鄰居】所選 Node 上用量前 10 名（含他自己）",
       "collapsed": false,
@@ -2953,12 +3677,12 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 110
+        "y": 142
       },
       "panels": []
     },
     {
-      "id": 48,
+      "id": 59,
       "type": "timeseries",
       "title": "【鄰居】CPU Top 10",
       "description": "**視角**：所選 Node 上的所有 Pod 排名（含他自己）\n\n**這是什麼**：所選 Node 上 CPU 用量最多的 10 個 Pod。\n\n**怎麼看**：第 4 區往上飆的時候，看是誰同時上升。如果前幾名都是他，加上 Node 壓力同時上升，就是他造成的；如果是別人，就跟他無關。",
@@ -3008,11 +3732,11 @@
         "h": 8,
         "w": 12,
         "x": 0,
-        "y": 111
+        "y": 143
       }
     },
     {
-      "id": 49,
+      "id": 60,
       "type": "timeseries",
       "title": "【鄰居】記憶體 Top 10",
       "description": "**視角**：所選 Node 上的所有 Pod 排名（含他自己）\n\n**這是什麼**：所選 Node 上記憶體用量最多的 10 個 Pod。\n\n**怎麼看**：第 4 區往上飆的時候，看是誰同時上升。如果前幾名都是他，加上 Node 壓力同時上升，就是他造成的；如果是別人，就跟他無關。",
@@ -3062,11 +3786,11 @@
         "h": 8,
         "w": 12,
         "x": 12,
-        "y": 111
+        "y": 143
       }
     },
     {
-      "id": 50,
+      "id": 61,
       "type": "timeseries",
       "title": "【鄰居】磁碟寫入 Top 10",
       "description": "**視角**：所選 Node 上的所有 Pod 排名（含他自己）\n\n**這是什麼**：所選 Node 上寫磁碟最多的 10 個 Pod。\n\n**怎麼看**：第 4 區往上飆的時候，看是誰同時上升。如果前幾名都是他，加上 Node 壓力同時上升，就是他造成的；如果是別人，就跟他無關。",
@@ -3117,11 +3841,11 @@
         "h": 8,
         "w": 12,
         "x": 0,
-        "y": 119
+        "y": 151
       }
     },
     {
-      "id": 51,
+      "id": 62,
       "type": "timeseries",
       "title": "【鄰居】網路送出 Top 10",
       "description": "**視角**：所選 Node 上的所有 Pod 排名（含他自己）\n\n**這是什麼**：所選 Node 上網路送出最多的 10 個 Pod。\n\n**怎麼看**：第 4 區往上飆的時候，看是誰同時上升。如果前幾名都是他，加上 Node 壓力同時上升，就是他造成的；如果是別人，就跟他無關。",
@@ -3171,11 +3895,11 @@
         "h": 8,
         "w": 12,
         "x": 12,
-        "y": 119
+        "y": 151
       }
     },
     {
-      "id": 52,
+      "id": 63,
       "type": "row",
       "title": "6. 【共用】入口與 DNS（全叢集共用，不分 Node）",
       "collapsed": false,
@@ -3183,12 +3907,12 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 127
+        "y": 159
       },
       "panels": []
     },
     {
-      "id": 53,
+      "id": 64,
       "type": "timeseries",
       "title": "【共用】Router 回應數（依狀態碼，此 namespace）",
       "description": "**視角**：全叢集共用元件，不分 Node\n\n**這是什麼**：經過 OCP Router 進到這個 namespace 的請求數，依 HTTP 狀態碼分。\n\n**怎麼看**：5xx 上升代表後端出問題。沒資料代表此服務不經過 Router，或沒有權限查詢 Router 指標。",
@@ -3238,11 +3962,11 @@
         "h": 7,
         "w": 8,
         "x": 0,
-        "y": 128
+        "y": 160
       }
     },
     {
-      "id": 54,
+      "id": 65,
       "type": "timeseries",
       "title": "【共用】Router 後端排隊（此 namespace）",
       "description": "**視角**：全叢集共用元件，不分 Node\n\n**這是什麼**：請求在 Router 等待後端 Pod 接手的數量。\n\n**怎麼看**：大於 0 代表後端 Pod 處理不及，請求在入口排隊。",
@@ -3292,11 +4016,11 @@
         "h": 7,
         "w": 8,
         "x": 8,
-        "y": 128
+        "y": 160
       }
     },
     {
-      "id": 55,
+      "id": 66,
       "type": "timeseries",
       "title": "【共用】CoreDNS 請求量與 P99 延遲",
       "description": "**視角**：全叢集共用元件，不分 Node\n\n**這是什麼**：全叢集 DNS 服務的查詢量與最慢 1% 查詢的延遲。\n\n**怎麼看**：壓測時若每次連線都重新查 DNS，查詢量會飆高；P99 延遲上升時，全叢集的服務解析名稱都會變慢。",
@@ -3358,7 +4082,7 @@
         "h": 7,
         "w": 8,
         "x": 16,
-        "y": 128
+        "y": 160
       }
     }
   ]

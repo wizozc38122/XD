@@ -32,13 +32,6 @@ NO_POD_IO = "無資料：叢集沒有收集 Pod 層級的磁碟 IO 指標，請�
 FS = 'mountpoint=~"/sysroot|/var|/", fstype!~"tmpfs|overlay|squashfs"'
 
 
-def pod_ops(op, sel):
-    """Per-pod disk operations/s, container-level first, then pod-level."""
-    fs = "writes" if op == "write" else "reads"
-    return (f'(sum by (namespace, pod) (rate(container_fs_{fs}_total{{{sel}, container!="", container!="POD"}}[@R@]))'
-            f' or sum by (namespace, pod) (rate(container_fs_{fs}_total{{{sel}, container="", pod!=""}}[@R@])))')
-
-
 def as_node(expr):
     """Renames node-exporter's instance label to node so it joins with kube_pod_info."""
     return f'max by (node) (label_replace({expr}, "node", "$1", "instance", "(.*)"))'
@@ -51,14 +44,13 @@ def his_by_node(per_pod):
 
 
 def manual_cap(var, factor):
-    """A per-node constant from a dashboard textbox; dropped when the textbox is 0."""
+    """A per-node constant from a dashboard variable; dropped when the variable is 0."""
     return f'(max by (instance) (node_uname_info{{@NODE@}}) * 0 + ${var} * {factor} > 0)'
 
 
-# Capacities per node (label: node). The NIC falls back to the speed the node reports.
+# Capacities per node (label: node). The NIC uses the speed the node reports unless the
+# hidden nic_mbps variable overrides it (e.g. ?var-nic_mbps=1000 in the URL).
 NET_CAP = as_node(manual_cap("nic_mbps", 125000) + ' or max by (instance) (node_network_speed_bytes{@NODE@, @NIC@})')
-DISK_BPS_CAP = as_node(manual_cap("disk_mbps", 1000000))
-DISK_IOPS_CAP = as_node(manual_cap("disk_iops", 1))
 FS_CAP = as_node(f'max by (instance) (node_filesystem_size_bytes{{@NODE@, {FS}}})')
 
 
@@ -73,7 +65,8 @@ def desc(view, what, how):
 
 
 V_SELF = "他自己（這個 Deployment 的 Pod 合計）"
-V_SHARE = "他 ÷ 所選 Node 的總量（只算跑在所選 Node 上的 Pod）"
+V_SHARE = "他 ÷ 這台 Node **目前實際的總用量**（每台 Node 一條線，只算他跑在該 Node 上的 Pod）"
+V_LIMIT = "每台 Node 兩條線：整台 Node ÷ **容量**，以及他 ÷ **容量**"
 V_NODE = "整台 Node（所有 Pod 加總），**不是他自己的用量**"
 V_NEIGHBOR = "所選 Node 上的所有 Pod 排名（含他自己）"
 V_SHARED = "全叢集共用元件，不分 Node"
@@ -124,7 +117,8 @@ class Line:
         self.h = 0
 
 
-def ts(line, title, items, unit, description, w=8, h=7, minv=None, no_value=None, thresholds=None):
+def ts(line, title, items, unit, description, w=8, h=7, minv=None, no_value=None, thresholds=None,
+       overrides=None):
     custom = {"drawStyle": "line", "lineWidth": 1, "fillOpacity": 12,
               "showPoints": "never", "spanNulls": True}
     defaults = {"unit": unit, "custom": custom}
@@ -138,10 +132,17 @@ def ts(line, title, items, unit, description, w=8, h=7, minv=None, no_value=None
     line.add({
         "id": nid(), "type": "timeseries", "title": title, "description": description,
         "datasource": DS, "targets": targets(items),
-        "fieldConfig": {"defaults": defaults, "overrides": []},
+        "fieldConfig": {"defaults": defaults, "overrides": overrides or []},
         "options": {"legend": {"displayMode": "list", "placement": "bottom"},
                     "tooltip": {"mode": "multi", "sort": "desc"}},
     }, w, h)
+
+
+# Draws every series whose name contains 峰值 as a dashed, unfilled line.
+PEAK_DASHED = [{"matcher": {"id": "byRegexp", "options": ".*峰值.*"},
+                "properties": [{"id": "custom.lineStyle", "value": {"fill": "dash", "dash": [10, 10]}},
+                               {"id": "custom.fillOpacity", "value": 0},
+                               {"id": "custom.lineWidth", "value": 2}]}]
 
 
 def stat(line, title, expr, unit, steps, description, w=4, h=4, decimals=None):
@@ -218,15 +219,17 @@ text(L, """### 這個 Dashboard 怎麼用
 | 前綴 | 看的是 | 用來回答 |
 |---|---|---|
 | 【他】 | 他自己的 Pod 合計 | 他用了多少、有沒有被自己的 limit 卡住 |
-| 【占比】 | 他 ÷ 所在 Node **目前的總用量** | 他在這台 Node 上算不算大戶 |
-| 【上限】 | 整台 Node 和他各自 ÷ **硬體上限**（網卡速度、磁碟規格、檔案系統容量） | 資源離滿還有多遠、用量主要是不是他 |
+| 【占目前用量】 | 他 ÷ Node **目前實際的總用量** | 他是不是大戶。⚠️ 其他服務停掉、只剩他在跑時會接近 100%，**不代表資源快滿** |
+| 【占容量】 | 整台 Node 和他各自 ÷ Node **容量**（CPU 核數、總記憶體、網卡速度、磁碟忙碌時間、檔案系統容量） | 資源離滿還有多遠，**壓測主要看這個** |
 | 【整台 Node】 | 整台 Node 所有 Pod 加總，**不是他的用量** | 這台機器有沒有變吃緊（看壓測期間有沒有往上飆） |
 | 【鄰居】 | 同 Node 上所有 Pod 排名 | 誰是大戶、鄰居有沒有跟著變化 |
 | 【共用】 | 全叢集共用元件（Router、DNS） | 入口與 DNS 有沒有被打高 |
 
+**所有百分比的分母都寫在標題的「÷ …」**：÷ 自己的 Request / Limit、÷ Node 目前用量、÷ Node 容量，三種意思完全不同。
+
 **判讀**：只有「他的用量上升」**且**「整台 Node 的壓力指標在同一時間往上飆」**且**「鄰居也受影響」三者時間對得上，才算他影響了整體。整台 Node 指標本身沒辦法告訴你是誰造成的，要搭配【他】和【鄰居】一起看。
 
-**建議操作**：選 namespace 與 Deployment → `Node` 會自動帶出他所在的 Node → 時間範圍框住壓測**前後**（要有壓測前的基準才看得出飆升）。要看磁碟離上限多遠，請在上方填入磁碟吞吐與 IOPS 上限。每個面板右上角的 ⓘ 有說明。""", w=24, h=12)
+**建議操作**：選 namespace 與 Deployment → `Node` 會自動帶出他所在的 Node → 時間範圍框住壓測**前後**（要有壓測前的基準才看得出飆升）。每個面板右上角的 ⓘ 有說明。""", w=24, h=13)
 L.newline()
 
 # ---------------------------------------------------------------- 1 summary
@@ -237,12 +240,12 @@ stat(L, "【他】可用副本數",
      "none", steps(),
      desc(V_SELF, "目前 Ready 的 Pod 數量。", "壓測中如果 HPA 擴容，副本數會上升，Pod 也可能被排到新的 Node。"),
      decimals=0)
-stat(L, "【他】CPU 用量 / Request",
+stat(L, "【他】CPU 用量 ÷ 自己的 Request",
      'sum(rate(container_cpu_usage_seconds_total{@CT@}[@R@])) / sum(kube_pod_container_resource_requests{resource="cpu", @POD@})',
      "percentunit", steps((Y, 1.0), (RD, 1.5)),
      desc(V_SELF, "實際 CPU 用量占「保證額度（request）」的比例。",
           "100% 以下：在自己的保證額度內。超過 100%：正在借用 Node 的閒置 CPU，Node 吃緊時最容易和鄰居互相搶。"))
-stat(L, "【他】記憶體 / Limit（最高的容器）",
+stat(L, "【他】記憶體 ÷ 自己的 Limit（最高的容器）",
      'max(container_memory_working_set_bytes{@CT@} / on(namespace, pod, container) kube_pod_container_resource_limits{resource="memory", @POD@})',
      "percentunit", steps((Y, 0.8), (RD, 0.9)),
      desc(V_SELF, "記憶體用量最接近上限的那個容器，用量占 limit 的比例。",
@@ -257,11 +260,12 @@ stat(L, "【他】近 1 小時重啟次數",
      "none", steps((RD, 1)),
      desc(V_SELF, "所有 Pod 近 1 小時重啟次數合計。", "大於 0 要看下方的 OOMKilled 面板，或檢查 probe 是否失敗。"),
      decimals=0)
-stat(L, "【占比】他占所選 Node 的 CPU",
-     'sum(rate(container_cpu_usage_seconds_total{@CT@}[@R@])@ON_NODE@) / sum(rate(node_cpu_seconds_total{mode!~"idle|iowait", @NODE@}[@R@]))',
-     "percentunit", steps((Y, 0.3), (RD, 0.6)),
-     desc(V_SHARE, "這些 Node 上正在使用的 CPU，有多少是他用的。",
-          "占比高只代表他是大戶，**不代表造成影響**；要看第 4 區整台 Node 是否同時變吃緊。"))
+stat(L, "【占容量】他的 CPU ÷ 所選 Node 總核數",
+     'sum(rate(container_cpu_usage_seconds_total{@CT@}[@R@])@ON_NODE@) / count(node_cpu_seconds_total{mode="idle", @NODE@})',
+     "percentunit", steps((Y, 0.5), (RD, 0.8)),
+     desc("他 ÷ 所選 Node 的 CPU 容量合計",
+          "他用掉所選 Node CPU 總核數的幾成。分母是容量，所以其他服務停掉時也不會被灌高。",
+          "要看整台 Node 是否快滿，請看 3B【占容量】CPU 的「整台」線。"))
 L.newline()
 L = Line()
 ts(L, "【他】各 Node 上的 Pod 數（部署位置）",
@@ -339,99 +343,169 @@ ts(L, "【他】重啟與 OOMKilled",
    minv=0)
 L.newline()
 
-# ---------------------------------------------------------------- 3 share
-row("3. 【占比】他占 Node 目前總用量多少、【上限】整台和他各離硬體上限多遠")
+# ---------------------------------------------------------------- 3A share of current usage
+HIS_CPU = 'sum by (namespace, pod) (rate(container_cpu_usage_seconds_total{@CT@}[@R@]))'
+HIS_MEM = 'sum by (namespace, pod) (container_memory_working_set_bytes{@CT@})'
+HIS_TX = 'sum by (namespace, pod) (rate(container_network_transmit_bytes_total{@POD@}[@R@]))'
+HIS_RX = 'sum by (namespace, pod) (rate(container_network_receive_bytes_total{@POD@}[@R@]))'
+NODE_CPU_USED = 'sum by (instance) (rate(node_cpu_seconds_total{mode!~"idle|iowait", @NODE@}[@R@]))'
+NODE_CPU_CORES = 'count by (instance) (node_cpu_seconds_total{mode="idle", @NODE@})'
+NODE_MEM_USED = 'max by (instance) (node_memory_MemTotal_bytes{@NODE@} - node_memory_MemAvailable_bytes{@NODE@})'
+NODE_MEM_TOTAL = 'max by (instance) (node_memory_MemTotal_bytes{@NODE@})'
+NODE_TX = 'sum by (instance) (rate(node_network_transmit_bytes_total{@NODE@, @NIC@}[@R@]))'
+NODE_RX = 'sum by (instance) (rate(node_network_receive_bytes_total{@NODE@, @NIC@}[@R@]))'
+NODE_DISK_WRITE = 'sum by (instance) (rate(node_disk_written_bytes_total{@NODE@, @DEV@}[@R@]))'
+
+
+def ratio(num, den):
+    return f'{num} / on (node) {den}'
+
+
+row("3A. 【占目前用量】他 ÷ Node 目前實際總用量：他是不是大戶（不代表資源快滿）")
 L = Line()
-ts(L, "【占比】CPU",
-   [('sum(rate(container_cpu_usage_seconds_total{@CT@}[@R@])@ON_NODE@) / sum(rate(node_cpu_seconds_total{mode!~"idle|iowait", @NODE@}[@R@]))', "占這些 Node 正在用的 CPU"),
-    ('sum(rate(container_cpu_usage_seconds_total{@CT@}[@R@])@ON_NODE@) / sum(kube_node_status_allocatable{resource="cpu", node=~"$node"})', "占這些 Node 的可分配 CPU")],
-   "percentunit",
-   desc(V_SHARE, "第一條：Node 上正在被使用的 CPU 有多少是他的。第二條：他用掉這些 Node 總容量的幾成。",
-        "占比高代表他是大戶，但影響與否要看第 4 區是否同時變吃緊。"),
-   w=6, minv=0)
-ts(L, "【占比】網路",
-   [('sum(rate(container_network_transmit_bytes_total{@POD@}[@R@])@ON_NODE@) / sum(rate(node_network_transmit_bytes_total{@NODE@, @NIC@}[@R@]))', "TX 占 Node 網卡"),
-    ('sum(rate(container_network_receive_bytes_total{@POD@}[@R@])@ON_NODE@) / sum(rate(node_network_receive_bytes_total{@NODE@, @NIC@}[@R@]))', "RX 占 Node 網卡")],
-   "percentunit",
-   desc(V_SHARE, "他的網路流量占 Node 實體網卡**目前總流量**的比例，不是占網卡頻寬上限；要看離上限多遠，請看下方【上限】面板。",
-        "同一台 Node 內 Pod 互傳不經過實體網卡，所以可能超過 100%，只當量級參考。網卡名稱不是 ens/eth/eno/enp/bond 開頭時需修改查詢。"),
-   w=6, minv=0)
-ts(L, "【占比】磁碟寫入",
-   [('sum(' + pod_io("write", POD) + '@ON_NODE@) / sum(rate(node_disk_written_bytes_total{@NODE@, @DEV@}[@R@]))', "寫入占 Node 磁碟")],
-   "percentunit",
-   desc(V_SHARE, "他的磁碟寫入量占 Node 本機磁碟總寫入量的比例。",
-        "容器層與 Node 層的統計方式不同，只當量級參考。寫到 PVC（網路儲存）的量不算在 Node 本機磁碟。"),
-   w=6, minv=0, no_value=NO_POD_IO)
-ts(L, "【占比】記憶體",
-   [('sum(container_memory_working_set_bytes{@CT@}@ON_NODE@) / sum(node_memory_MemTotal_bytes{@NODE@})', "占 Node 總記憶體")],
-   "percentunit",
-   desc(V_SHARE, "他的記憶體用量占 Node 總記憶體的比例。", "記憶體有 limit 保護，通常只需確認不要占太大。"),
-   w=6, minv=0)
+text(L, """**3A 的分母是 Node「目前實際的總用量」，不是容量。** 只回答「這台 Node 現在用掉的資源，有幾成是他用的」。
+
+⚠️ 壓測時如果其他服務很閒或已停掉，只剩他在跑，這裡會接近 **100%**，但資源可能其實很空。**要判斷資源快不快滿，請看下方 3B【占容量】。**""", h=3)
 L.newline()
 L = Line()
-text(L, """**上面四個【占比】是跟 Node「目前的總用量」比，下面五個【上限】是跟「硬體上限」比。** 每台 Node 兩條線：
+SHARE_HOW = "接近 100% 只代表這台 Node 目前的用量幾乎都是他的；其他服務停掉時一定會這樣。資源快不快滿請看 3B【占容量】。"
+ts(L, "【占目前用量】CPU：他 ÷ Node 目前 CPU 用量",
+   [(ratio(his_by_node(HIS_CPU), as_node(NODE_CPU_USED)), "{{node}} 他 ÷ 目前用量")],
+   "percentunit", desc(V_SHARE, "這台 Node 正在使用的 CPU，有幾成是他用的。", SHARE_HOW), w=6, minv=0)
+ts(L, "【占目前用量】記憶體：他 ÷ Node 目前記憶體用量",
+   [(ratio(his_by_node(HIS_MEM), as_node(NODE_MEM_USED)), "{{node}} 他 ÷ 目前用量")],
+   "percentunit", desc(V_SHARE, "這台 Node 已被使用的記憶體，有幾成是他用的。", SHARE_HOW), w=6, minv=0)
+ts(L, "【占目前用量】網路：他 ÷ Node 目前網卡流量",
+   [(ratio(his_by_node(HIS_TX), as_node(NODE_TX)), "{{node}} 送出 TX 他 ÷ 目前流量"),
+    (ratio(his_by_node(HIS_RX), as_node(NODE_RX)), "{{node}} 接收 RX 他 ÷ 目前流量")],
+   "percentunit",
+   desc(V_SHARE, "這台 Node 實體網卡目前的流量，有幾成是他的。",
+        SHARE_HOW + "同一台 Node 內 Pod 互傳不經過實體網卡，所以可能超過 100%，只當量級參考。"),
+   w=6, minv=0)
+ts(L, "【占目前用量】磁碟寫入：他 ÷ Node 目前磁碟寫入量",
+   [(ratio(his_by_node(pod_io("write", POD)), as_node(NODE_DISK_WRITE)), "{{node}} 他 ÷ 目前寫入量")],
+   "percentunit",
+   desc(V_SHARE, "這台 Node 本機磁碟目前的寫入量，有幾成是他寫的。",
+        SHARE_HOW + "容器層與 Node 層的統計方式不同，寫到 PVC（網路儲存）的量也不算在 Node 本機磁碟，只當量級參考。"),
+   w=6, minv=0, no_value=NO_POD_IO)
+L.newline()
 
-- **整台**：整台 Node 用掉上限的幾成。接近 100%（紅色虛線）才代表這項資源快滿了，同 Node 所有 Pod 都會受影響。
-- **他**：他自己用掉上限的幾成。他的線越貼近整台的線，代表用量主要來自他。
+# ---------------------------------------------------------------- 3B share of capacity
+row("3B. 【占容量】整台 Node 與他 ÷ 硬體容量：離滿還有多遠（壓測主要看這區）")
+L = Line()
+text(L, """**3B 的分母是 Node 的「容量」**：CPU 總核數、總記憶體、網卡速度、磁碟忙碌時間、檔案系統容量，全部自動取得。每台 Node 兩條線：
 
-網卡上限預設用 Node 回報的網卡速度；磁碟吞吐與 IOPS 沒有指標會回報上限，要在上方輸入框填入規格值，填 0 則不計算。""", h=4)
+- **整台 ÷ 容量**：整台 Node 用掉容量的幾成。接近紅色虛線才代表這項資源快滿，同 Node 所有 Pod 都會受影響。
+- **他 ÷ 容量**：他自己用掉容量的幾成。他的線越貼近整台的線，代表用量主要來自他。""", h=4)
 L.newline()
 L = Line()
 LIMIT_STEPS = steps((Y, 0.7), (RD, 0.9))
-V_LIMIT = "每台 Node 兩條線：整台 Node 用量 ÷ 上限，以及他的用量 ÷ 上限"
-HIS_TX = 'sum by (namespace, pod) (rate(container_network_transmit_bytes_total{@POD@}[@R@]))'
-HIS_RX = 'sum by (namespace, pod) (rate(container_network_receive_bytes_total{@POD@}[@R@]))'
-NODE_TX = 'sum by (instance) (rate(node_network_transmit_bytes_total{@NODE@, @NIC@}[@R@]))'
-NODE_RX = 'sum by (instance) (rate(node_network_receive_bytes_total{@NODE@, @NIC@}[@R@]))'
-NET_HOW = ("整台的線接近紅色虛線代表網卡快滿。上限預設是 Node 回報的網卡速度；虛擬機常固定回報 10 Gbps 或不回報，"
-           "如果知道實際可用頻寬，請在上方「網卡上限 Mbps」填入。網卡送出與接收各自有上限，所以分開看。")
-ts(L, "【上限】網路送出 TX：整台 vs 他",
-   [(as_node(NODE_TX) + ' / on (node) ' + NET_CAP, "{{node}} 整台"),
-    (his_by_node(HIS_TX) + ' / on (node) ' + NET_CAP, "{{node}} 他")],
-   "percentunit", desc(V_LIMIT, "網卡送出方向的流量占網卡上限的比例。", NET_HOW),
+NET_HOW = ("整台的線接近紅色虛線代表網卡快滿。容量是 Node 回報的網卡速度；虛擬機常固定回報 10 Gbps，實際可用頻寬可能更低，"
+           "所以整台的線不高時，也請搭配第 4 區「網路丟包」一起看。網卡送出與接收各自有上限，所以分開看。")
+ts(L, "【占容量】CPU：整台 vs 他 ÷ Node CPU 總核數",
+   [(ratio(as_node(NODE_CPU_USED), as_node(NODE_CPU_CORES)), "{{node}} 整台 ÷ 總核數"),
+    (ratio(his_by_node(HIS_CPU), as_node(NODE_CPU_CORES)), "{{node}} 他 ÷ 總核數")],
+   "percentunit",
+   desc(V_LIMIT, "整台 Node 和他各用掉 CPU 總核數的幾成（不含閒置與 iowait）。",
+        "整台接近紅色虛線代表 CPU 快滿，超用 request 的 Pod 會互相搶 CPU。他的 CPU 有 limit 保護，他的線不會超過他的 limit 合計。"),
+   w=12, minv=0, thresholds=LIMIT_STEPS)
+ts(L, "【占容量】記憶體：整台 vs 他 ÷ Node 總記憶體",
+   [(as_node('max by (instance) (1 - node_memory_MemAvailable_bytes{@NODE@} / node_memory_MemTotal_bytes{@NODE@})'), "{{node}} 整台 ÷ 總記憶體"),
+    (ratio(his_by_node(HIS_MEM), as_node(NODE_MEM_TOTAL)), "{{node}} 他 ÷ 總記憶體")],
+   "percentunit",
+   desc(V_LIMIT, "整台 Node 和他各用掉總記憶體的幾成。",
+        "整台接近紅色虛線時，kubelet 可能開始驅逐 Pod（MemoryPressure）。他的記憶體有 limit 保護，他的線不會超過他的 limit 合計。"),
+   w=12, minv=0, thresholds=LIMIT_STEPS)
+ts(L, "【占容量】網路送出 TX：整台 vs 他 ÷ 網卡上限",
+   [(ratio(as_node(NODE_TX), NET_CAP), "{{node}} 整台 ÷ 網卡上限"),
+    (ratio(his_by_node(HIS_TX), NET_CAP), "{{node}} 他 ÷ 網卡上限")],
+   "percentunit", desc(V_LIMIT, "網卡送出方向，整台 Node 和他各用掉網卡上限的幾成。", NET_HOW),
    w=12, minv=0, thresholds=LIMIT_STEPS,
-   no_value="無資料：Node 沒有回報網卡速度，請在上方「網卡上限 Mbps」填入")
-ts(L, "【上限】網路接收 RX：整台 vs 他",
-   [(as_node(NODE_RX) + ' / on (node) ' + NET_CAP, "{{node}} 整台"),
-    (his_by_node(HIS_RX) + ' / on (node) ' + NET_CAP, "{{node}} 他")],
-   "percentunit", desc(V_LIMIT, "網卡接收方向的流量占網卡上限的比例。", NET_HOW),
+   no_value="無資料：Node 沒有回報網卡速度，請改看第 4 區網路吞吐與丟包")
+ts(L, "【占容量】網路接收 RX：整台 vs 他 ÷ 網卡上限",
+   [(ratio(as_node(NODE_RX), NET_CAP), "{{node}} 整台 ÷ 網卡上限"),
+    (ratio(his_by_node(HIS_RX), NET_CAP), "{{node}} 他 ÷ 網卡上限")],
+   "percentunit", desc(V_LIMIT, "網卡接收方向，整台 Node 和他各用掉網卡上限的幾成。", NET_HOW),
    w=12, minv=0, thresholds=LIMIT_STEPS,
-   no_value="無資料：Node 沒有回報網卡速度，請在上方「網卡上限 Mbps」填入")
-ts(L, "【上限】磁碟吞吐（讀 + 寫）：整台 vs 他",
-   [(as_node('sum by (instance) (rate(node_disk_read_bytes_total{@NODE@, @DEV@}[@R@]) + rate(node_disk_written_bytes_total{@NODE@, @DEV@}[@R@]))')
-     + ' / on (node) ' + DISK_BPS_CAP, "{{node}} 整台"),
-    (his_by_node(pod_io("write", POD) + ' + ' + pod_io("read", POD)) + ' / on (node) ' + DISK_BPS_CAP, "{{node}} 他")],
+   no_value="無資料：Node 沒有回報網卡速度，請改看第 4 區網路吞吐與丟包")
+NODE_DISK_BUSY = f'max by (instance) (rate(node_disk_io_time_seconds_total{{@NODE@, @DEV@}}[@R@]))'
+NODE_DISK_BYTES = ('sum by (instance) (rate(node_disk_read_bytes_total{@NODE@, @DEV@}[@R@])'
+                   ' + rate(node_disk_written_bytes_total{@NODE@, @DEV@}[@R@]))')
+HIS_DISK_BYTES = pod_io("write", POD) + ' + ' + pod_io("read", POD)
+ts(L, "【占容量】磁碟忙碌程度：整台 vs 他（估算）÷ 總時間",
+   [(as_node(NODE_DISK_BUSY), "{{node}} 整台 ÷ 總時間"),
+    ('(' + ratio(his_by_node(HIS_DISK_BYTES), as_node(NODE_DISK_BYTES)) + ') * on (node) ' + as_node(NODE_DISK_BUSY),
+     "{{node}} 他（估算）÷ 總時間")],
    "percentunit",
-   desc(V_LIMIT, "Node 本機磁碟每秒讀寫量占磁碟吞吐上限的比例。上限是 Node 上所有本機磁碟合計。",
-        "整台接近紅色虛線代表磁碟頻寬快滿，同 Node 所有 Pod 的 IO 都會變慢。上限請向基礎設施團隊確認，或查雲端磁碟規格。"),
-   minv=0, thresholds=LIMIT_STEPS,
-   no_value="未設定：請在上方「磁碟吞吐上限 MB/s」填入磁碟規格")
-ts(L, "【上限】磁碟 IOPS：整台 vs 他",
-   [(as_node('sum by (instance) (rate(node_disk_reads_completed_total{@NODE@, @DEV@}[@R@]) + rate(node_disk_writes_completed_total{@NODE@, @DEV@}[@R@]))')
-     + ' / on (node) ' + DISK_IOPS_CAP, "{{node}} 整台"),
-    (his_by_node(pod_ops("write", POD) + ' + ' + pod_ops("read", POD)) + ' / on (node) ' + DISK_IOPS_CAP, "{{node}} 他")],
+   desc(V_LIMIT,
+        "磁碟的讀寫速度與 IOPS 上限沒有指標會回報，所以用「磁碟有在處理 IO 的時間 ÷ 總時間」代表磁碟用掉多少容量，不需要輸入規格。"
+        "整台取 Node 上最忙的那顆本機磁碟；他的線是估算值 = 整台忙碌率 × 他占目前磁碟讀寫量的比例。",
+        "整台接近紅色虛線代表磁碟快滿，同 Node 所有 Pod 的 IO 都會變慢。SSD 和雲端磁碟可同時處理多筆 IO，到 100% 不一定真的慢，"
+        "請搭配第 4 區「磁碟延遲」一起看：忙碌率高且延遲上升，才是真的滿了。"),
+   w=12, minv=0, thresholds=LIMIT_STEPS)
+ts(L, "【占容量】磁碟空間：整台 vs 他 ÷ 檔案系統容量",
+   [(as_node(f'max by (instance) (1 - node_filesystem_avail_bytes{{@NODE@, {FS}}} / node_filesystem_size_bytes{{@NODE@, {FS}}})'), "{{node}} 整台 ÷ 容量"),
+    (ratio(his_by_node('sum by (namespace, pod) (container_fs_usage_bytes{@CT@})'), FS_CAP), "{{node}} 他 ÷ 容量")],
    "percentunit",
-   desc(V_LIMIT, "Node 本機磁碟每秒讀寫次數占 IOPS 上限的比例。",
-        "大量小檔案或 log 寫入通常先撞到 IOPS 上限，而不是吞吐上限。只有整台的線而沒有他的線，代表叢集沒有收集 Pod 層級的 IO 次數。"),
-   minv=0, thresholds=LIMIT_STEPS,
-   no_value="未設定：請在上方「磁碟 IOPS 上限」填入磁碟規格")
-ts(L, "【上限】磁碟空間：整台 vs 他",
-   [(as_node(f'max by (instance) (1 - node_filesystem_avail_bytes{{@NODE@, {FS}}} / node_filesystem_size_bytes{{@NODE@, {FS}}})'), "{{node}} 整台"),
-    (his_by_node('sum by (namespace, pod) (container_fs_usage_bytes{@CT@})') + ' / on (node) ' + FS_CAP, "{{node}} 他")],
-   "percentunit",
-   desc(V_LIMIT, "Node 本機檔案系統的使用比例，以及他的容器可寫層佔掉的比例。上限就是檔案系統容量，不需要另外輸入。",
+   desc(V_LIMIT, "Node 本機檔案系統，整台和他的容器可寫層各用掉容量的幾成。容量自動取得，不需要另外輸入。",
         "整台超過約 85–90% 時，kubelet 會進入 DiskPressure 並開始驅逐 Pod。他的線持續往上爬，代表他一直在寫檔或 log。"),
-   minv=0, thresholds=steps((Y, 0.8), (RD, 0.85)))
+   w=12, minv=0, thresholds=steps((Y, 0.8), (RD, 0.85)))
 L.newline()
-L = Line()
-NIC_BITS = "8 * " + 'max by (instance) (node_network_speed_bytes{@NODE@, @NIC@})'
 
-
+# ---------------------------------------------------------------- 3C compare with the 7-day peak
 def peak_7d(expr):
     return f'max_over_time(({expr})[7d:5m])'
 
 
-multi_table(L, "【上限】參考：Node 回報的網卡速度與過去 7 天峰值", "node", [
+def peak_before(expr):
+    """Peak over the 7 days before the start of the dashboard time range, evaluated once."""
+    return f'max_over_time(({expr})[7d:5m] @ start())'
+
+
+def fixed(expr):
+    return expr.replace("@R@", "5m")
+
+
+row("3C. 【對比歷史峰值】整台 Node 目前 vs 壓測前 7 天峰值：有沒有超過平常最忙的時候")
+L = Line()
+text(L, """**虛線 = 時間範圍開始前 7 天內，整台 Node 的最高值**（每 5 分鐘平均）。實線是整台 Node 和他目前的實際用量。
+
+- **整台的實線超過虛線**：比過去一週最忙的時候還忙，這台 Node 正在承受平常沒遇過的壓力，要特別注意。
+- **整台的實線在虛線以下**：還在平常會遇到的範圍內，通常還好。
+- **他的實線**：看整台超出平常的部分，是不是主要來自他。
+
+⚠️ 時間範圍的**起點要設在壓測開始前**，虛線才會是「壓測前的正常峰值」，不會被壓測本身墊高。""", h=5)
+L.newline()
+L = Line()
+V_PEAK = "每台 Node：整台目前、他目前（實線），以及整台壓測前 7 天峰值（虛線）"
+PEAK_HOW = "整台的實線超過同一台 Node 的虛線，代表比過去一週最忙時還忙；再看他的實線是不是占了超出的那一段。"
+
+
+def peak_panel(title, node_expr, his_expr, unit, what, scale=""):
+    items = [(scale + as_node(node_expr), "{{node}} 整台 目前"),
+             (scale + as_node(peak_before(fixed(node_expr))), "{{node}} 整台 壓測前 7 天峰值")]
+    if his_expr:
+        items.insert(1, (scale + his_by_node(his_expr), "{{node}} 他 目前"))
+    ts(L, title, items, unit, desc(V_PEAK, what, PEAK_HOW), minv=0, overrides=PEAK_DASHED)
+
+
+peak_panel("【對比峰值】CPU 用量（核）", NODE_CPU_USED, HIS_CPU, "none",
+           "使用中的 CPU 核數（不含閒置與 iowait）。")
+peak_panel("【對比峰值】記憶體用量", NODE_MEM_USED, HIS_MEM, "bytes",
+           "已使用的記憶體（總記憶體 − 可用記憶體）。")
+peak_panel("【對比峰值】網路送出 TX", NODE_TX, HIS_TX, "bps",
+           "實體網卡送出方向的流量（bits/s）。", scale="8 * ")
+peak_panel("【對比峰值】網路接收 RX", NODE_RX, HIS_RX, "bps",
+           "實體網卡接收方向的流量（bits/s）。", scale="8 * ")
+peak_panel("【對比峰值】磁碟吞吐（讀 + 寫）", NODE_DISK_BYTES, HIS_DISK_BYTES, "Bps",
+           "Node 本機磁碟每秒讀寫量。他的線沒資料，代表叢集沒有收集 Pod 層級的磁碟 IO。")
+peak_panel("【對比峰值】磁碟 IOPS", 'sum by (instance) (rate(node_disk_reads_completed_total{@NODE@, @DEV@}[@R@])'
+           ' + rate(node_disk_writes_completed_total{@NODE@, @DEV@}[@R@]))', None, "iops",
+           "Node 本機磁碟每秒讀寫次數。")
+L.newline()
+L = Line()
+NIC_BITS = "8 * " + 'max by (instance) (node_network_speed_bytes{@NODE@, @NIC@})'
+multi_table(L, "【對比峰值】參考：網卡速度與最近 7 天峰值", "node", [
     ("網卡回報速度", as_node(NIC_BITS), "bps", 0),
     ("7 天網路送出峰值", as_node(peak_7d("8 * " + NODE_TX.replace("@R@", "5m"))), "bps", 1),
     ("7 天網路接收峰值", as_node(peak_7d("8 * " + NODE_RX.replace("@R@", "5m"))), "bps", 1),
@@ -442,9 +516,9 @@ multi_table(L, "【上限】參考：Node 回報的網卡速度與過去 7 天�
         'sum by (instance) (rate(node_disk_reads_completed_total{@NODE@, @DEV@}[5m]) + rate(node_disk_writes_completed_total{@NODE@, @DEV@}[5m]))')),
      "iops", 0),
 ], desc("所選的每台 Node（整台加總）",
-        "Node 自己回報的網卡速度，以及過去 7 天實際跑到的最高網路、磁碟流量（每 5 分鐘平均）。",
-        "用來決定上方輸入框要填多少。峰值只代表「至少撐得住這麼多」，不是上限：到 Grafana Explore 看峰值那段時間的磁碟延遲與網路丟包，"
-        "延遲和丟包都正常就代表上限更高，延遲已明顯上升則這附近就是實際可用上限。"),
+        "Node 自己回報的網卡速度，以及到時間範圍結束為止、最近 7 天實際跑到的最高網路、磁碟流量（每 5 分鐘平均）。",
+        "峰值只代表「至少撐得住這麼多」，不是上限：峰值那段時間的磁碟延遲與網路丟包都正常，就代表上限更高；"
+        "延遲已明顯上升，則這附近就是實際可用上限。網卡速度遠高於峰值，代表網卡還有很多餘裕。"),
     h=6)
 L.newline()
 
@@ -480,7 +554,7 @@ ts(L, "【整台 Node】磁碟延遲（每次 IO 平均花多久）",
         "Node 本機磁碟每次讀寫平均要等多久，所有 Pod 共用這顆磁碟。**判斷磁碟有沒有拖慢大家，這個最準。**",
         "壓測中明顯往上飆就是磁碟變慢，同 Node 所有 Pod 都會受影響。粗略參考：SSD 通常數 ms 以內，超過 10–20 ms 就很慢。"),
    minv=0)
-ts(L, "【整台 Node】磁碟忙碌程度",
+ts(L, "【整台 Node】磁碟忙碌程度（÷ 總時間）",
    [('rate(node_disk_io_time_seconds_total{@NODE@, @DEV@}[@R@])', "{{instance}} {{device}}")],
    "percentunit",
    desc(V_NODE, "磁碟有在處理 IO 的時間比例（類似 iostat 的 %util）。",
@@ -493,7 +567,7 @@ ts(L, "【整台 Node】磁碟每秒讀寫次數（IOPS）",
    desc(V_NODE, "Node 本機磁碟每秒完成的讀寫次數。",
         "IOPS 上升而延遲沒變，代表磁碟還撐得住；IOPS 上不去但延遲飆升，代表已經到磁碟上限。"),
    minv=0)
-ts(L, "【整台 Node】檔案系統使用率",
+ts(L, "【整台 Node】檔案系統使用率（÷ 容量）",
    [('1 - node_filesystem_avail_bytes{@NODE@, mountpoint=~"/sysroot|/var|/", fstype!~"tmpfs|overlay|squashfs"} / node_filesystem_size_bytes{@NODE@, mountpoint=~"/sysroot|/var|/", fstype!~"tmpfs|overlay|squashfs"}', "{{instance}} {{mountpoint}}")],
    "percentunit",
    desc(V_NODE, "Node 本機磁碟空間用了幾成，容器映像、容器可寫層和 log 都放在這裡。",
@@ -513,7 +587,7 @@ ts(L, "【整台 Node】網路丟包 / 錯誤",
    desc(V_NODE, "Node 實體網卡每秒丟掉或出錯的封包數。丟包通常是網卡或核心的緩衝區塞滿處理不及。",
         "正常應接近 0。壓測期間開始出現並往上升，代表網卡塞住，同 Node 所有 Pod 的網路都會受影響（重傳、延遲變高）。"),
    minv=0)
-ts(L, "【整台 Node】網路封包處理 CPU（softirq）",
+ts(L, "【整台 Node】網路封包處理 CPU（softirq，÷ 總 CPU 時間）",
    [('avg by (instance) (rate(node_cpu_seconds_total{mode="softirq", @NODE@}[@R@]))', "{{instance}}")],
    "percentunit",
    desc(V_NODE,
@@ -522,20 +596,20 @@ ts(L, "【整台 Node】網路封包處理 CPU（softirq）",
         "壓測時跟著網路流量一起往上飆，代表大流量正在消耗 Node 的 CPU。粗略參考：持續超過 10% 值得注意，"
         "若集中在少數 CPU 核上，該核會先滿而讓網路變慢。"),
    minv=0)
-ts(L, "【整台 Node】conntrack 連線追蹤表使用率",
+ts(L, "【整台 Node】conntrack 使用率（÷ 表格上限）",
    [('node_nf_conntrack_entries{@NODE@} / node_nf_conntrack_entries_limit{@NODE@}', "{{instance}}")],
    "percentunit",
    desc(V_NODE,
         "Node 核心記錄每條網路連線的表格，所有 Pod 共用一張，有容量上限。大量短連線（例如每次都重新連 DB / Redis / Kafka）最容易吃滿。",
         "超過 70% 要注意；滿了之後新連線會被直接丟掉，同 Node 所有 Pod 都會連不出去。"),
    w=6, minv=0)
-ts(L, "【整台 Node】CPU 使用率",
+ts(L, "【整台 Node】CPU 使用率（÷ 總核數）",
    [('1 - avg by (instance) (rate(node_cpu_seconds_total{mode="idle", @NODE@}[@R@]))', "{{instance}}")],
    "percentunit",
    desc(V_NODE, "整台 Node 的 CPU 有多少時間在工作。",
         "長時間超過 80% 且 PSI CPU 也上升時，沒設 limit 或超用 request 的 Pod 會互相搶 CPU。"),
    w=6, minv=0)
-ts(L, "【整台 Node】可用記憶體比例",
+ts(L, "【整台 Node】剩餘可用記憶體（÷ 總記憶體）",
    [('node_memory_MemAvailable_bytes{@NODE@} / node_memory_MemTotal_bytes{@NODE@}', "{{instance}}")],
    "percentunit",
    desc(V_NODE, "整台 Node 還能給程式用的記憶體比例。",
@@ -601,9 +675,9 @@ def qvar(name, label, query, multi=False, include_all=False):
             "multi": multi, "includeAll": include_all, "hide": 0, "current": {}}
 
 
-def textbox(name, label, default="0"):
+def textbox(name, label, default="0", hide=0):
     return {"type": "textbox", "name": name, "label": label, "query": default,
-            "current": {"text": default, "value": default}, "hide": 0}
+            "current": {"text": default, "value": default}, "hide": hide}
 
 
 dash = {
@@ -630,9 +704,7 @@ dash = {
         qvar("node", "Node（自動帶出他所在的 Node）",
              'label_values(kube_pod_info{namespace="$namespace", pod=~"$workload-[a-z0-9]+-[a-z0-9]+"}, node)',
              multi=True, include_all=True),
-        textbox("nic_mbps", "網卡上限 Mbps（0 = 用 Node 回報值）"),
-        textbox("disk_mbps", "磁碟吞吐上限 MB/s（0 = 不計算）"),
-        textbox("disk_iops", "磁碟 IOPS 上限（0 = 不計算）"),
+        textbox("nic_mbps", "網卡上限 Mbps（0 = 用 Node 回報值）", hide=2),
     ]},
     "annotations": {"list": [{"builtIn": 1, "datasource": {"type": "grafana", "uid": "-- Grafana --"},
                               "enable": True, "hide": True, "iconColor": "rgba(0, 211, 255, 1)",

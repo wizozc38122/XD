@@ -255,7 +255,9 @@ text(L, """### 叢集風險總覽：先找出嫌疑對象，再進細節 Dashboa
 3. **點表格中的 `workload` 名稱**：會帶著 namespace、workload 與目前時間範圍，開啟「OCP 壓測影響評估」細節 Dashboard，查他所在 Node 有沒有被拖慢（細節 Dashboard 目前只支援 Deployment）。
 4. **第 3、4 區 Top 10 趨勢**：看是誰在什麼時間點飆起來，對照第 1 區 Node 變吃緊的時間。
 
-**注意**：表格是時間範圍**結束前 5 分鐘**的快照，要看壓測當下，請把時間範圍的結束點拉到壓測期間。用量排名高只代表是大戶，不代表造成影響，要進細節 Dashboard 對照 Node 壓力的時間點。預設排除 `openshift*`、`kube-*` 系統 namespace，可在上方「排除的 Namespace」清空。""", h=10)
+**百分比的分母都寫在欄位名稱的「÷ …」**：÷ 自己的 Request / Limit 是跟他自己的設定比；÷ 總核數、總記憶體、容量、表格上限是跟 Node 的容量比。
+
+**注意**：表格是時間範圍**結束前 5 分鐘**的快照，要看壓測當下，請把時間範圍的結束點拉到壓測期間。用量排名高只代表是大戶，不代表造成影響，要進細節 Dashboard 對照 Node 壓力的時間點。預設排除 `openshift*`、`kube-*` 系統 namespace，可在上方「排除的 Namespace」清空。""", h=11)
 L.newline()
 
 # ---------------------------------------------------------------- 1 nodes
@@ -263,35 +265,35 @@ row("1. 【Node】叢集各 Node 狀態：哪台機器正在變吃緊")
 L = Line()
 table(L, "【Node】各 Node 狀態（時間範圍結束前 5 分鐘）", ["instance"], [
     ("Pod 數", n_pods(), "none", None, 0, None),
-    ("CPU 使用率", n_cpu(W5), "percentunit", steps((Y, 0.8), (RD, 0.9)), 1, None),
-    ("可用記憶體", n_mem(), "percentunit", steps((Y, 0.1), (G, 0.2), base=RD), 1, None),
-    ("conntrack 使用率", n_conntrack(), "percentunit", steps((Y, 0.5), (RD, 0.7)), 1, None),
+    ("CPU 使用率（÷ 總核數）", n_cpu(W5), "percentunit", steps((Y, 0.8), (RD, 0.9)), 1, None),
+    ("剩餘記憶體（÷ 總記憶體）", n_mem(), "percentunit", steps((Y, 0.1), (G, 0.2), base=RD), 1, None),
+    ("conntrack（÷ 表格上限）", n_conntrack(), "percentunit", steps((Y, 0.5), (RD, 0.7)), 1, None),
     ("磁碟延遲（最慢的磁碟）", n_disk_latency(W5), "s", steps((Y, 0.01), (RD, 0.02)), None, None),
-    ("檔案系統使用率（最高）", n_fs(), "percentunit", steps((Y, 0.8), (RD, 0.85)), 1, None),
+    ("磁碟空間（÷ 容量，最高）", n_fs(), "percentunit", steps((Y, 0.8), (RD, 0.85)), 1, None),
     ("網路丟包", n_drops(W5), "pps", steps((Y, 1), (RD, 50)), 1, None),
-    ("iowait", n_iowait(W5), "percentunit", steps((Y, 0.05), (RD, 0.1)), 1, None),
-    ("網路封包處理 CPU", n_softirq(W5), "percentunit", steps((Y, 0.05), (RD, 0.1)), 1, None),
+    ("iowait（÷ CPU 時間）", n_iowait(W5), "percentunit", steps((Y, 0.05), (RD, 0.1)), 1, None),
+    ("網路封包處理 CPU（÷ CPU 時間）", n_softirq(W5), "percentunit", steps((Y, 0.05), (RD, 0.1)), 1, None),
     ("Node 壓力狀態", n_pressure(), "none", steps((RD, 1)), 0,
      [{"type": "value", "options": {"0": {"text": "正常"}, "1": {"text": "發生中"}}}]),
 ], desc(V_CLUSTER_NODE,
         "每台 Node 共用資源的目前狀態。conntrack、磁碟、網卡都是每台 Node 一份，所有 Pod 共用。"
         "「網路封包處理 CPU」是核心處理網路封包（softirq）的 CPU，不算在 Pod 的 CPU limit 裡。",
         "紅色、黃色就是正在吃緊的 Node。記下 Node 名稱，再到第 2 區找跑在上面的大戶，或進細節 Dashboard 看該 Node 的 Top 10 鄰居。"),
-    sort_by="conntrack 使用率", h=10, key_rename={"instance": "Node"})
+    sort_by="conntrack（÷ 表格上限）", h=10, key_rename={"instance": "Node"})
 L.newline()
 L = Line()
 NODE_HOW = "看哪台 Node 在什麼時間往上飆，再對照第 4 區 Workload 的 Top 10 趨勢，找同一時間上升的是誰。"
-ts(L, "【Node】conntrack 使用率 Top 10", f'topk(10, {n_conntrack()})', "{{instance}}", "percentunit",
+ts(L, "【Node】conntrack（÷ 表格上限）Top 10", f'topk(10, {n_conntrack()})', "{{instance}}", "percentunit",
    desc(V_CLUSTER_NODE, "連線追蹤表用了幾成。滿了之後該 Node 所有 Pod 的新連線都會被丟掉。", NODE_HOW), w=8)
 ts(L, "【Node】磁碟延遲 Top 10", f'topk(10, {n_disk_latency(WR)})', "{{instance}}", "s",
    desc(V_CLUSTER_NODE, "Node 本機磁碟每次讀寫平均要等多久，所有 Pod 共用。", NODE_HOW), w=8)
 ts(L, "【Node】網路丟包 Top 10", f'topk(10, {n_drops(WR)})', "{{instance}}", "pps",
    desc(V_CLUSTER_NODE, "實體網卡每秒丟掉的封包數，正常應接近 0。", NODE_HOW), w=8)
-ts(L, "【Node】iowait Top 10", f'topk(10, {n_iowait(WR)})', "{{instance}}", "percentunit",
+ts(L, "【Node】iowait（÷ CPU 時間）Top 10", f'topk(10, {n_iowait(WR)})', "{{instance}}", "percentunit",
    desc(V_CLUSTER_NODE, "CPU 閒著在等磁碟的時間比例，往上飆代表磁碟變慢。", NODE_HOW), w=8)
-ts(L, "【Node】檔案系統使用率 Top 10", f'topk(10, {n_fs()})', "{{instance}}", "percentunit",
+ts(L, "【Node】磁碟空間（÷ 容量）Top 10", f'topk(10, {n_fs()})', "{{instance}}", "percentunit",
    desc(V_CLUSTER_NODE, "Node 本機磁碟空間用了幾成，太高會觸發 DiskPressure 驅逐 Pod。", NODE_HOW), w=8)
-ts(L, "【Node】CPU 使用率 Top 10", f'topk(10, {n_cpu(WR)})', "{{instance}}", "percentunit",
+ts(L, "【Node】CPU 使用率（÷ 總核數）Top 10", f'topk(10, {n_cpu(WR)})', "{{instance}}", "percentunit",
    desc(V_CLUSTER_NODE, "整台 Node 的 CPU 有多少時間在工作。", NODE_HOW), w=8)
 L.newline()
 
@@ -305,9 +307,9 @@ L = Line()
 table(L, "【Workload】風險排行（時間範圍結束前 5 分鐘）", ["namespace", "workload", "workload_type"], [
     ("Pod 數", f'count by (namespace, workload, workload_type) ({WL})', "none", None, 0, None),
     ("CPU 用量（核）", by_wl(cpu(W5)), "none", None, 2, None),
-    ("CPU 用量 / Request", f'{by_wl(cpu(W5))} / {by_wl(cpu_req())}', "percentunit", steps((Y, 1.0), (RD, 1.5)), 0, None),
+    ("CPU（÷ 自己的 Request）", f'{by_wl(cpu(W5))} / {by_wl(cpu_req())}', "percentunit", steps((Y, 1.0), (RD, 1.5)), 0, None),
     ("最高 CPU throttling", by_wl(throttle(W5), "max"), "percentunit", steps((Y, 0.25), (RD, 0.5)), 0, None),
-    ("最高 記憶體 / Limit", by_wl(mem_limit(), "max"), "percentunit", steps((Y, 0.8), (RD, 0.9)), 0, None),
+    ("記憶體（÷ 自己的 Limit，最高）", by_wl(mem_limit(), "max"), "percentunit", steps((Y, 0.8), (RD, 0.9)), 0, None),
     ("重啟（1 小時）", by_wl(restarts()), "none", steps((Y, 1), (RD, 5)), 0, None),
     ("網路流量", by_wl(net(W5)), "Bps", None, 1, None),
     ("網路丟包", by_wl(drops(W5)), "pps", steps((Y, 1), (RD, 50)), 1, None),
@@ -315,22 +317,22 @@ table(L, "【Workload】風險排行（時間範圍結束前 5 分鐘）", ["nam
     ("可寫層用量", by_wl(fs_usage()), "bytes", None, 1, None),
 ], desc(V_CLUSTER_WL,
         "全叢集每個 Deployment / StatefulSet / DaemonSet 的用量與風險指標。",
-        "點表頭排序找出前幾名；紅色、黃色格子要注意。CPU 用量 / Request 超過 100% 代表在借用 Node 的共用 CPU；"
+        "點表頭排序找出前幾名；紅色、黃色格子要注意。CPU ÷ 自己的 Request 超過 100% 代表在借用 Node 的共用 CPU；"
         "網路丟包、磁碟寫入、可寫層用量是 limit 管不到、會影響同 Node 鄰居的資源。點 workload 名稱進細節 Dashboard 查證。"),
-    sort_by="CPU 用量 / Request", h=14, key_links={"workload": DETAIL_LINK})
+    sort_by="CPU（÷ 自己的 Request）", h=14, key_links={"workload": DETAIL_LINK})
 L.newline()
 
 # ---------------------------------------------------------------- 3/4 workload trends
 WL_HOW = "看誰在什麼時間往上飆，對照第 1 區 Node 變吃緊的時間點；右側圖例依最大值排序。"
 row("3. 【Workload】limit 相關 Top 10 趨勢（主要影響他自己）")
 L = Line()
-ts(L, "【Workload】CPU 用量 / Request Top 10",
+ts(L, "【Workload】CPU ÷ 自己的 Request Top 10",
    f'topk(10, {by_wl(cpu(WR))} / {by_wl(cpu_req())})', "{{namespace}}/{{workload}}", "percentunit",
    desc(V_CLUSTER_WL, "CPU 用量占保證額度的比例。超過 100% 代表在借用 Node 的閒置 CPU。", WL_HOW))
 ts(L, "【Workload】最高 CPU throttling Top 10",
    f'topk(10, {by_wl(throttle(WR), "max")})', "{{namespace}}/{{workload}}", "percentunit",
    desc(V_CLUSTER_WL, "該 Workload 中被 limit 擋最多的 Pod 的節流比例。只影響他自己。", WL_HOW))
-ts(L, "【Workload】最高 記憶體 / Limit Top 10",
+ts(L, "【Workload】記憶體 ÷ 自己的 Limit（最高）Top 10",
    f'topk(10, {by_wl(mem_limit(), "max")})', "{{namespace}}/{{workload}}", "percentunit",
    desc(V_CLUSTER_WL, "最接近 memory limit 的容器的使用比例，到 100% 會被 OOMKilled。", WL_HOW))
 ts(L, "【Workload】重啟次數 Top 10（每 1 小時）",
@@ -360,7 +362,7 @@ dash = {
     "tags": ["ocp", "loadtest", "capacity", "overview"],
     "timezone": "browser",
     "schemaVersion": 39,
-    "version": 2,
+    "version": 3,
     "editable": True,
     "graphTooltip": 1,
     "refresh": "1m",

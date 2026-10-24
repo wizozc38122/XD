@@ -9,7 +9,7 @@
   ],
   "timezone": "browser",
   "schemaVersion": 39,
-  "version": 2,
+  "version": 3,
   "editable": true,
   "graphTooltip": 1,
   "refresh": "1m",
@@ -96,10 +96,10 @@
       "title": "",
       "options": {
         "mode": "markdown",
-        "content": "### 叢集風險總覽：先找出嫌疑對象，再進細節 Dashboard 查證\n一個資料來源 = 一個 OCP 叢集。上方切換資料來源就是切換叢集。\n\n**建議流程**\n1. **第 1 區【Node】**：先看哪幾台 Node 正在變吃緊（conntrack、磁碟延遲、網路丟包、iowait）。\n2. **第 2 區【Workload】風險排行**：表頭可點擊排序，每欄右側的漏斗可以篩選。紅色、黃色格子就是要注意的地方。\n3. **點表格中的 `workload` 名稱**：會帶著 namespace、workload 與目前時間範圍，開啟「OCP 壓測影響評估」細節 Dashboard，查他所在 Node 有沒有被拖慢（細節 Dashboard 目前只支援 Deployment）。\n4. **第 3、4 區 Top 10 趨勢**：看是誰在什麼時間點飆起來，對照第 1 區 Node 變吃緊的時間。\n\n**注意**：表格是時間範圍**結束前 5 分鐘**的快照，要看壓測當下，請把時間範圍的結束點拉到壓測期間。用量排名高只代表是大戶，不代表造成影響，要進細節 Dashboard 對照 Node 壓力的時間點。預設排除 `openshift*`、`kube-*` 系統 namespace，可在上方「排除的 Namespace」清空。"
+        "content": "### 叢集風險總覽：先找出嫌疑對象，再進細節 Dashboard 查證\n一個資料來源 = 一個 OCP 叢集。上方切換資料來源就是切換叢集。\n\n**建議流程**\n1. **第 1 區【Node】**：先看哪幾台 Node 正在變吃緊（conntrack、磁碟延遲、網路丟包、iowait）。\n2. **第 2 區【Workload】風險排行**：表頭可點擊排序，每欄右側的漏斗可以篩選。紅色、黃色格子就是要注意的地方。\n3. **點表格中的 `workload` 名稱**：會帶著 namespace、workload 與目前時間範圍，開啟「OCP 壓測影響評估」細節 Dashboard，查他所在 Node 有沒有被拖慢（細節 Dashboard 目前只支援 Deployment）。\n4. **第 3、4 區 Top 10 趨勢**：看是誰在什麼時間點飆起來，對照第 1 區 Node 變吃緊的時間。\n\n**百分比的分母都寫在欄位名稱的「÷ …」**：÷ 自己的 Request / Limit 是跟他自己的設定比；÷ 總核數、總記憶體、容量、表格上限是跟 Node 的容量比。\n\n**注意**：表格是時間範圍**結束前 5 分鐘**的快照，要看壓測當下，請把時間範圍的結束點拉到壓測期間。用量排名高只代表是大戶，不代表造成影響，要進細節 Dashboard 對照 Node 壓力的時間點。預設排除 `openshift*`、`kube-*` 系統 namespace，可在上方「排除的 Namespace」清空。"
       },
       "gridPos": {
-        "h": 10,
+        "h": 11,
         "w": 24,
         "x": 0,
         "y": 0
@@ -114,7 +114,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 10
+        "y": 11
       },
       "panels": []
     },
@@ -262,14 +262,14 @@
             },
             "renameByName": {
               "Value #A": "Pod 數",
-              "Value #B": "CPU 使用率",
-              "Value #C": "可用記憶體",
-              "Value #D": "conntrack 使用率",
+              "Value #B": "CPU 使用率（÷ 總核數）",
+              "Value #C": "剩餘記憶體（÷ 總記憶體）",
+              "Value #D": "conntrack（÷ 表格上限）",
               "Value #E": "磁碟延遲（最慢的磁碟）",
-              "Value #F": "檔案系統使用率（最高）",
+              "Value #F": "磁碟空間（÷ 容量，最高）",
               "Value #G": "網路丟包",
-              "Value #H": "iowait",
-              "Value #I": "網路封包處理 CPU",
+              "Value #H": "iowait（÷ CPU 時間）",
+              "Value #I": "網路封包處理 CPU（÷ CPU 時間）",
               "Value #J": "Node 壓力狀態",
               "instance": "Node"
             },
@@ -316,7 +316,7 @@
           {
             "matcher": {
               "id": "byName",
-              "options": "CPU 使用率"
+              "options": "CPU 使用率（÷ 總核數）"
             },
             "properties": [
               {
@@ -369,7 +369,7 @@
           {
             "matcher": {
               "id": "byName",
-              "options": "可用記憶體"
+              "options": "剩餘記憶體（÷ 總記憶體）"
             },
             "properties": [
               {
@@ -422,7 +422,7 @@
           {
             "matcher": {
               "id": "byName",
-              "options": "conntrack 使用率"
+              "options": "conntrack（÷ 表格上限）"
             },
             "properties": [
               {
@@ -524,7 +524,7 @@
           {
             "matcher": {
               "id": "byName",
-              "options": "檔案系統使用率（最高）"
+              "options": "磁碟空間（÷ 容量，最高）"
             },
             "properties": [
               {
@@ -630,7 +630,7 @@
           {
             "matcher": {
               "id": "byName",
-              "options": "iowait"
+              "options": "iowait（÷ CPU 時間）"
             },
             "properties": [
               {
@@ -683,7 +683,7 @@
           {
             "matcher": {
               "id": "byName",
-              "options": "網路封包處理 CPU"
+              "options": "網路封包處理 CPU（÷ CPU 時間）"
             },
             "properties": [
               {
@@ -804,7 +804,7 @@
         "showHeader": true,
         "sortBy": [
           {
-            "displayName": "conntrack 使用率",
+            "displayName": "conntrack（÷ 表格上限）",
             "desc": true
           }
         ],
@@ -816,13 +816,13 @@
         "h": 10,
         "w": 24,
         "x": 0,
-        "y": 11
+        "y": 12
       }
     },
     {
       "id": 4,
       "type": "timeseries",
-      "title": "【Node】conntrack 使用率 Top 10",
+      "title": "【Node】conntrack（÷ 表格上限）Top 10",
       "description": "**視角**：叢集內每一台 Node（該 Node 上所有 Pod 加總）\n\n**這是什麼**：連線追蹤表用了幾成。滿了之後該 Node 所有 Pod 的新連線都會被丟掉。\n\n**怎麼看**：看哪台 Node 在什麼時間往上飆，再對照第 4 區 Workload 的 Top 10 趨勢，找同一時間上升的是誰。",
       "datasource": {
         "type": "prometheus",
@@ -874,7 +874,7 @@
         "h": 8,
         "w": 8,
         "x": 0,
-        "y": 21
+        "y": 22
       }
     },
     {
@@ -932,7 +932,7 @@
         "h": 8,
         "w": 8,
         "x": 8,
-        "y": 21
+        "y": 22
       }
     },
     {
@@ -990,13 +990,13 @@
         "h": 8,
         "w": 8,
         "x": 16,
-        "y": 21
+        "y": 22
       }
     },
     {
       "id": 7,
       "type": "timeseries",
-      "title": "【Node】iowait Top 10",
+      "title": "【Node】iowait（÷ CPU 時間）Top 10",
       "description": "**視角**：叢集內每一台 Node（該 Node 上所有 Pod 加總）\n\n**這是什麼**：CPU 閒著在等磁碟的時間比例，往上飆代表磁碟變慢。\n\n**怎麼看**：看哪台 Node 在什麼時間往上飆，再對照第 4 區 Workload 的 Top 10 趨勢，找同一時間上升的是誰。",
       "datasource": {
         "type": "prometheus",
@@ -1048,13 +1048,13 @@
         "h": 8,
         "w": 8,
         "x": 0,
-        "y": 29
+        "y": 30
       }
     },
     {
       "id": 8,
       "type": "timeseries",
-      "title": "【Node】檔案系統使用率 Top 10",
+      "title": "【Node】磁碟空間（÷ 容量）Top 10",
       "description": "**視角**：叢集內每一台 Node（該 Node 上所有 Pod 加總）\n\n**這是什麼**：Node 本機磁碟空間用了幾成，太高會觸發 DiskPressure 驅逐 Pod。\n\n**怎麼看**：看哪台 Node 在什麼時間往上飆，再對照第 4 區 Workload 的 Top 10 趨勢，找同一時間上升的是誰。",
       "datasource": {
         "type": "prometheus",
@@ -1106,13 +1106,13 @@
         "h": 8,
         "w": 8,
         "x": 8,
-        "y": 29
+        "y": 30
       }
     },
     {
       "id": 9,
       "type": "timeseries",
-      "title": "【Node】CPU 使用率 Top 10",
+      "title": "【Node】CPU 使用率（÷ 總核數）Top 10",
       "description": "**視角**：叢集內每一台 Node（該 Node 上所有 Pod 加總）\n\n**這是什麼**：整台 Node 的 CPU 有多少時間在工作。\n\n**怎麼看**：看哪台 Node 在什麼時間往上飆，再對照第 4 區 Workload 的 Top 10 趨勢，找同一時間上升的是誰。",
       "datasource": {
         "type": "prometheus",
@@ -1164,7 +1164,7 @@
         "h": 8,
         "w": 8,
         "x": 16,
-        "y": 29
+        "y": 30
       }
     },
     {
@@ -1176,7 +1176,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 37
+        "y": 38
       },
       "panels": []
     },
@@ -1184,7 +1184,7 @@
       "id": 11,
       "type": "table",
       "title": "【Workload】風險排行（時間範圍結束前 5 分鐘）",
-      "description": "**視角**：叢集內每一個 Workload（該 Workload 所有 Pod 合計）\n\n**這是什麼**：全叢集每個 Deployment / StatefulSet / DaemonSet 的用量與風險指標。\n\n**怎麼看**：點表頭排序找出前幾名；紅色、黃色格子要注意。CPU 用量 / Request 超過 100% 代表在借用 Node 的共用 CPU；網路丟包、磁碟寫入、可寫層用量是 limit 管不到、會影響同 Node 鄰居的資源。點 workload 名稱進細節 Dashboard 查證。",
+      "description": "**視角**：叢集內每一個 Workload（該 Workload 所有 Pod 合計）\n\n**這是什麼**：全叢集每個 Deployment / StatefulSet / DaemonSet 的用量與風險指標。\n\n**怎麼看**：點表頭排序找出前幾名；紅色、黃色格子要注意。CPU ÷ 自己的 Request 超過 100% 代表在借用 Node 的共用 CPU；網路丟包、磁碟寫入、可寫層用量是 limit 管不到、會影響同 Node 鄰居的資源。點 workload 名稱進細節 Dashboard 查證。",
       "datasource": {
         "type": "prometheus",
         "uid": "${datasource}"
@@ -1325,9 +1325,9 @@
             "renameByName": {
               "Value #A": "Pod 數",
               "Value #B": "CPU 用量（核）",
-              "Value #C": "CPU 用量 / Request",
+              "Value #C": "CPU（÷ 自己的 Request）",
               "Value #D": "最高 CPU throttling",
-              "Value #E": "最高 記憶體 / Limit",
+              "Value #E": "記憶體（÷ 自己的 Limit，最高）",
               "Value #F": "重啟（1 小時）",
               "Value #G": "網路流量",
               "Value #H": "網路丟包",
@@ -1395,7 +1395,7 @@
           {
             "matcher": {
               "id": "byName",
-              "options": "CPU 用量 / Request"
+              "options": "CPU（÷ 自己的 Request）"
             },
             "properties": [
               {
@@ -1501,7 +1501,7 @@
           {
             "matcher": {
               "id": "byName",
-              "options": "最高 記憶體 / Limit"
+              "options": "記憶體（÷ 自己的 Limit，最高）"
             },
             "properties": [
               {
@@ -1728,7 +1728,7 @@
         "showHeader": true,
         "sortBy": [
           {
-            "displayName": "CPU 用量 / Request",
+            "displayName": "CPU（÷ 自己的 Request）",
             "desc": true
           }
         ],
@@ -1740,7 +1740,7 @@
         "h": 14,
         "w": 24,
         "x": 0,
-        "y": 38
+        "y": 39
       }
     },
     {
@@ -1752,14 +1752,14 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 52
+        "y": 53
       },
       "panels": []
     },
     {
       "id": 13,
       "type": "timeseries",
-      "title": "【Workload】CPU 用量 / Request Top 10",
+      "title": "【Workload】CPU ÷ 自己的 Request Top 10",
       "description": "**視角**：叢集內每一個 Workload（該 Workload 所有 Pod 合計）\n\n**這是什麼**：CPU 用量占保證額度的比例。超過 100% 代表在借用 Node 的閒置 CPU。\n\n**怎麼看**：看誰在什麼時間往上飆，對照第 1 區 Node 變吃緊的時間點；右側圖例依最大值排序。",
       "datasource": {
         "type": "prometheus",
@@ -1811,7 +1811,7 @@
         "h": 8,
         "w": 12,
         "x": 0,
-        "y": 53
+        "y": 54
       }
     },
     {
@@ -1869,13 +1869,13 @@
         "h": 8,
         "w": 12,
         "x": 12,
-        "y": 53
+        "y": 54
       }
     },
     {
       "id": 15,
       "type": "timeseries",
-      "title": "【Workload】最高 記憶體 / Limit Top 10",
+      "title": "【Workload】記憶體 ÷ 自己的 Limit（最高）Top 10",
       "description": "**視角**：叢集內每一個 Workload（該 Workload 所有 Pod 合計）\n\n**這是什麼**：最接近 memory limit 的容器的使用比例，到 100% 會被 OOMKilled。\n\n**怎麼看**：看誰在什麼時間往上飆，對照第 1 區 Node 變吃緊的時間點；右側圖例依最大值排序。",
       "datasource": {
         "type": "prometheus",
@@ -1927,7 +1927,7 @@
         "h": 8,
         "w": 12,
         "x": 0,
-        "y": 61
+        "y": 62
       }
     },
     {
@@ -1985,7 +1985,7 @@
         "h": 8,
         "w": 12,
         "x": 12,
-        "y": 61
+        "y": 62
       }
     },
     {
@@ -1997,7 +1997,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 69
+        "y": 70
       },
       "panels": []
     },
@@ -2056,7 +2056,7 @@
         "h": 8,
         "w": 12,
         "x": 0,
-        "y": 70
+        "y": 71
       }
     },
     {
@@ -2114,7 +2114,7 @@
         "h": 8,
         "w": 12,
         "x": 12,
-        "y": 70
+        "y": 71
       }
     },
     {
@@ -2172,7 +2172,7 @@
         "h": 8,
         "w": 12,
         "x": 0,
-        "y": 78
+        "y": 79
       }
     },
     {
@@ -2230,7 +2230,7 @@
         "h": 8,
         "w": 12,
         "x": 12,
-        "y": 78
+        "y": 79
       }
     }
   ]
