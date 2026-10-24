@@ -8,7 +8,7 @@
   ],
   "timezone": "browser",
   "schemaVersion": 39,
-  "version": 2,
+  "version": 3,
   "editable": true,
   "graphTooltip": 1,
   "refresh": "30s",
@@ -23,6 +23,7 @@
         "name": "datasource",
         "label": "資料來源",
         "query": "prometheus",
+        "regex": "/^Prometheus.*OCP$/",
         "current": {},
         "hide": 0,
         "refresh": 1
@@ -1029,7 +1030,7 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "sum(rate(container_fs_writes_bytes_total{namespace=\"$namespace\", pod=~\"$workload-[a-z0-9]+-[a-z0-9]+\", container!=\"\", container!=\"POD\"}[$__rate_interval]))",
+          "expr": "sum((sum by (namespace, pod) (rate(container_fs_writes_bytes_total{namespace=\"$namespace\", pod=~\"$workload-[a-z0-9]+-[a-z0-9]+\", container!=\"\", container!=\"POD\"}[$__rate_interval])) or sum by (namespace, pod) (rate(container_fs_writes_bytes_total{namespace=\"$namespace\", pod=~\"$workload-[a-z0-9]+-[a-z0-9]+\", container=\"\", pod!=\"\"}[$__rate_interval])) or sum by (namespace, pod) (rate(container_blkio_device_usage_total{namespace=\"$namespace\", pod=~\"$workload-[a-z0-9]+-[a-z0-9]+\", operation=\"Write\", container=\"\", pod!=\"\"}[$__rate_interval]))))",
           "legendFormat": "寫入",
           "range": true,
           "instant": false,
@@ -1041,7 +1042,7 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "sum(rate(container_fs_reads_bytes_total{namespace=\"$namespace\", pod=~\"$workload-[a-z0-9]+-[a-z0-9]+\", container!=\"\", container!=\"POD\"}[$__rate_interval]))",
+          "expr": "sum((sum by (namespace, pod) (rate(container_fs_reads_bytes_total{namespace=\"$namespace\", pod=~\"$workload-[a-z0-9]+-[a-z0-9]+\", container!=\"\", container!=\"POD\"}[$__rate_interval])) or sum by (namespace, pod) (rate(container_fs_reads_bytes_total{namespace=\"$namespace\", pod=~\"$workload-[a-z0-9]+-[a-z0-9]+\", container=\"\", pod!=\"\"}[$__rate_interval])) or sum by (namespace, pod) (rate(container_blkio_device_usage_total{namespace=\"$namespace\", pod=~\"$workload-[a-z0-9]+-[a-z0-9]+\", operation=\"Read\", container=\"\", pod!=\"\"}[$__rate_interval]))))",
           "legendFormat": "讀取",
           "range": true,
           "instant": false,
@@ -1057,7 +1058,8 @@
             "fillOpacity": 12,
             "showPoints": "never",
             "spanNulls": true
-          }
+          },
+          "noValue": "無資料：叢集沒有收集 Pod 層級的磁碟 IO 指標，請改看第 4 區整台 Node 的磁碟面板"
         },
         "overrides": []
       },
@@ -1358,7 +1360,7 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "sum(rate(container_fs_writes_bytes_total{namespace=\"$namespace\", pod=~\"$workload-[a-z0-9]+-[a-z0-9]+\", container!=\"\", container!=\"POD\"}[$__rate_interval]) * on (namespace, pod) group_left () max by (namespace, pod) (kube_pod_info{node=~\"$node\"})) / sum(rate(node_disk_written_bytes_total{instance=~\"$node\", device=~\"sd[a-z]+|nvme[0-9]+n[0-9]+|vd[a-z]+|xvd[a-z]+\"}[$__rate_interval]))",
+          "expr": "sum((sum by (namespace, pod) (rate(container_fs_writes_bytes_total{namespace=\"$namespace\", pod=~\"$workload-[a-z0-9]+-[a-z0-9]+\", container!=\"\", container!=\"POD\"}[$__rate_interval])) or sum by (namespace, pod) (rate(container_fs_writes_bytes_total{namespace=\"$namespace\", pod=~\"$workload-[a-z0-9]+-[a-z0-9]+\", container=\"\", pod!=\"\"}[$__rate_interval])) or sum by (namespace, pod) (rate(container_blkio_device_usage_total{namespace=\"$namespace\", pod=~\"$workload-[a-z0-9]+-[a-z0-9]+\", operation=\"Write\", container=\"\", pod!=\"\"}[$__rate_interval]))) * on (namespace, pod) group_left () max by (namespace, pod) (kube_pod_info{node=~\"$node\"})) / sum(rate(node_disk_written_bytes_total{instance=~\"$node\", device=~\"sd[a-z]+|nvme[0-9]+n[0-9]+|vd[a-z]+|xvd[a-z]+\"}[$__rate_interval]))",
           "legendFormat": "寫入占 Node 磁碟",
           "range": true,
           "instant": false,
@@ -1375,7 +1377,8 @@
             "showPoints": "never",
             "spanNulls": true
           },
-          "min": 0
+          "min": 0,
+          "noValue": "無資料：叢集沒有收集 Pod 層級的磁碟 IO 指標，請改看第 4 區整台 Node 的磁碟面板"
         },
         "overrides": []
       },
@@ -1535,7 +1538,8 @@
             "showPoints": "never",
             "spanNulls": true
           },
-          "min": 0
+          "min": 0,
+          "noValue": "無資料：Node 核心未開啟 PSI，請看右邊「PSI 替代」面板"
         },
         "overrides": []
       },
@@ -2335,7 +2339,7 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "topk(10, sum by (namespace, pod) (rate(container_fs_writes_bytes_total{container!=\"\"}[$__rate_interval])) * on (namespace, pod) group_left () max by (namespace, pod) (kube_pod_info{node=~\"$node\"}))",
+          "expr": "topk(10, (sum by (namespace, pod) (rate(container_fs_writes_bytes_total{container!=\"\", container!=\"POD\"}[$__rate_interval])) or sum by (namespace, pod) (rate(container_fs_writes_bytes_total{container=\"\", pod!=\"\"}[$__rate_interval])) or sum by (namespace, pod) (rate(container_blkio_device_usage_total{operation=\"Write\", container=\"\", pod!=\"\"}[$__rate_interval]))) * on (namespace, pod) group_left () max by (namespace, pod) (kube_pod_info{node=~\"$node\"}))",
           "legendFormat": "{{namespace}}/{{pod}}",
           "range": true,
           "instant": false,
@@ -2352,7 +2356,8 @@
             "showPoints": "never",
             "spanNulls": true
           },
-          "min": 0
+          "min": 0,
+          "noValue": "無資料：叢集沒有收集 Pod 層級的磁碟 IO 指標，請改看第 4 區整台 Node 的磁碟面板"
         },
         "overrides": []
       },

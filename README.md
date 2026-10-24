@@ -20,7 +20,7 @@ Pod 已經有 CPU / 記憶體 limit，但下面這些是**整台 Node 共用、l
 
 1. Grafana → Dashboards → New → Import → 上傳 `ocp-loadtest-impact-dashboard.json`。
 2. 上方變數依序選：
-   - **資料來源**：OCP 的 Prometheus 或 Thanos Querier。
+   - **資料來源**：只會列出名稱符合 `Prometheus.*OCP`（開頭 `Prometheus`、結尾 `OCP`）的 Prometheus 資料來源。要改規則，修改 `gen_dashboard.py` 裡 datasource 變數的 `regex`。
    - **Namespace**、**Deployment**：要壓測的服務。
    - **Node**：會自動帶出該 Deployment 的 Pod 所在的 Node，預設全選。
 3. 時間範圍要**包含壓測前**的一段時間，才看得出壓測時有沒有往上飆。
@@ -139,7 +139,9 @@ working set 是 Linux 判斷要不要 OOM 的記憶體用量。碰到 memory lim
 
 | 狀況 | 原因與處理 |
 |---|---|
-| PSI 面板沒資料 | Node 核心沒開 PSI，改看替代面板 |
+| 資料來源下拉選單是空的 | 沒有名稱符合 `Prometheus.*OCP` 的資料來源（大小寫有區分），修改 datasource 變數的 `regex` |
+| PSI 面板沒資料 | Node 核心沒開 PSI，改看替代面板。要開啟需由平台團隊用 MachineConfig 加上 `psi=1` 核心參數，**套用時該 Node pool 會逐台重開機** |
+| 【他】【占比】【鄰居】的磁碟寫入沒資料 | 查詢會依序嘗試三種 Pod 層級的磁碟指標（見下方）。三種都沒有，代表叢集沒有收集 Pod 層級的磁碟 IO，只能看第 4 區整台 Node 的磁碟面板，用時間點對照 |
 | 所有【整台 Node】面板都沒資料 | 這些查詢假設 node-exporter 的 `instance` 標籤是 Node 名稱（OCP 預設如此）。如果你的環境是 `IP:9100`，要修改查詢 |
 | 網路相關面板沒資料 | 網卡名稱不是 `ens / eth / eno / enp / bond` 開頭，修改 `gen_dashboard.py` 的 `NIC` |
 | 磁碟相關面板沒資料 | 磁碟名稱不是 `sd* / nvme* / vd* / xvd*`，修改 `gen_dashboard.py` 的 `DEV` |
@@ -147,3 +149,19 @@ working set 是 Linux 判斷要不要 OOM 的記憶體用量。碰到 memory lim
 | 網路占比超過 100% | 同一台 Node 內 Pod 互傳不經過實體網卡，占比只當量級參考 |
 | 磁碟數字對不太上 | 容器層（cAdvisor）與 Node 層的統計方式不同，寫到 PVC 的量也不算在 Node 本機磁碟，只當量級參考 |
 | Router 面板沒資料 | 服務不經過 Router，或沒有權限查詢 Router 指標 |
+
+### 確認叢集有哪些 Pod 層級的磁碟指標
+
+在 Grafana Explore 分別執行下面三個查詢，有回傳數字就代表該指標有收集。磁碟寫入面板會依這個順序使用第一個有資料的：
+
+```promql
+count(container_fs_writes_bytes_total{container!="", container!="POD"})
+```
+
+```promql
+count(container_fs_writes_bytes_total{container="", pod!=""})
+```
+
+```promql
+count(container_blkio_device_usage_total{operation="Write", container="", pod!=""})
+```

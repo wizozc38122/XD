@@ -18,6 +18,19 @@ NODE = 'instance=~"$node"'
 ON_NODE = ' * on (namespace, pod) group_left () max by (namespace, pod) (kube_pod_info{node=~"$node"})'
 
 
+def pod_io(op, sel=""):
+    """Per-pod disk bytes/s. Falls back through the metrics clusters commonly keep:
+    container-level cAdvisor fs stats, then pod-level fs stats, then pod-level blkio."""
+    fs, blk = ("writes", "Write") if op == "write" else ("reads", "Read")
+    s = sel + ", " if sel else ""
+    return (f'(sum by (namespace, pod) (rate(container_fs_{fs}_bytes_total{{{s}container!="", container!="POD"}}[@R@]))'
+            f' or sum by (namespace, pod) (rate(container_fs_{fs}_bytes_total{{{s}container="", pod!=""}}[@R@]))'
+            f' or sum by (namespace, pod) (rate(container_blkio_device_usage_total{{{s}operation="{blk}", container="", pod!=""}}[@R@])))')
+
+
+NO_POD_IO = "無資料：叢集沒有收集 Pod 層級的磁碟 IO 指標，請改看第 4 區整台 Node 的磁碟面板"
+
+
 def q(s):
     return (s.replace("@POD@", POD).replace("@CT@", CT).replace("@R@", R)
             .replace("@DEV@", DEV).replace("@NIC@", NIC).replace("@NODE@", NODE)
@@ -80,12 +93,14 @@ class Line:
         self.h = 0
 
 
-def ts(line, title, items, unit, description, w=8, h=7, minv=None):
+def ts(line, title, items, unit, description, w=8, h=7, minv=None, no_value=None):
     custom = {"drawStyle": "line", "lineWidth": 1, "fillOpacity": 12,
               "showPoints": "never", "spanNulls": True}
     defaults = {"unit": unit, "custom": custom}
     if minv is not None:
         defaults["min"] = minv
+    if no_value:
+        defaults["noValue"] = no_value
     line.add({
         "id": nid(), "type": "timeseries", "title": title, "description": description,
         "datasource": DS, "targets": targets(items),
@@ -245,11 +260,12 @@ ts(L, "【他】網路丟包 / 錯誤",
         "正常應接近 0。壓測時開始出現，代表他自己的網路已經塞住，常見原因是流量太大或接收端處理不及。"),
    minv=0)
 ts(L, "【他】磁碟讀寫量",
-   [('sum(rate(container_fs_writes_bytes_total{@CT@}[@R@]))', "寫入"),
-    ('sum(rate(container_fs_reads_bytes_total{@CT@}[@R@]))', "讀取")],
+   [('sum(' + pod_io("write", POD) + ')', "寫入"),
+    ('sum(' + pod_io("read", POD) + ')', "讀取")],
    "Bps",
    desc(V_SELF, "他的容器每秒讀寫磁碟的量，包含寫 log、暫存檔、容器內寫檔。",
-        "和第 4 區「整台 Node 磁碟」對照。他寫得多、Node 磁碟延遲同時上升，就是 IO 影響的證據。數字用來看趨勢，不一定精確。"))
+        "和第 4 區「整台 Node 磁碟」對照。他寫得多、Node 磁碟延遲同時上升，就是 IO 影響的證據。數字用來看趨勢，不一定精確。"),
+   no_value=NO_POD_IO)
 ts(L, "【他】容器可寫層 / 暫存空間用量",
    [('sum(container_fs_usage_bytes{@CT@})', "已使用")],
    "bytes",
@@ -282,11 +298,11 @@ ts(L, "【占比】網路",
         "同一台 Node 內 Pod 互傳不經過實體網卡，所以可能超過 100%，只當量級參考。網卡名稱不是 ens/eth/eno/enp/bond 開頭時需修改查詢。"),
    w=6, minv=0)
 ts(L, "【占比】磁碟寫入",
-   [('sum(rate(container_fs_writes_bytes_total{@CT@}[@R@])@ON_NODE@) / sum(rate(node_disk_written_bytes_total{@NODE@, @DEV@}[@R@]))', "寫入占 Node 磁碟")],
+   [('sum(' + pod_io("write", POD) + '@ON_NODE@) / sum(rate(node_disk_written_bytes_total{@NODE@, @DEV@}[@R@]))', "寫入占 Node 磁碟")],
    "percentunit",
    desc(V_SHARE, "他的磁碟寫入量占 Node 本機磁碟總寫入量的比例。",
         "容器層與 Node 層的統計方式不同，只當量級參考。寫到 PVC（網路儲存）的量不算在 Node 本機磁碟。"),
-   w=6, minv=0)
+   w=6, minv=0, no_value=NO_POD_IO)
 ts(L, "【占比】記憶體",
    [('sum(container_memory_working_set_bytes{@CT@}@ON_NODE@) / sum(node_memory_MemTotal_bytes{@NODE@})', "占 Node 總記憶體")],
    "percentunit",
@@ -310,7 +326,7 @@ ts(L, "【整台 Node】PSI：有多少時間有工作在等資源",
    desc(V_NODE,
         "PSI（Pressure Stall Information）是 Linux 核心記錄的「有工作因為搶不到 CPU / 磁碟 IO / 記憶體而在等」的時間比例。比 CPU 使用率更直接反映「大家有沒有變慢」。",
         "壓測前後比較，往上飆就是 Node 開始吃緊。粗略參考：CPU 或 IO 持續超過 10% 值得注意。**沒有資料**代表 Node 核心沒開 PSI（RHCOS 預設可能關閉），請改看右邊的替代面板。"),
-   minv=0)
+   minv=0, no_value="無資料：Node 核心未開啟 PSI，請看右邊「PSI 替代」面板")
 ts(L, "【整台 Node】PSI 替代：iowait 與每核負載",
    [('avg by (instance) (rate(node_cpu_seconds_total{mode="iowait", @NODE@}[@R@]))', "{{instance}} iowait"),
     ('node_load1{@NODE@} / on (instance) count by (instance) (node_cpu_seconds_total{mode="idle", @NODE@})', "{{instance}} 每核負載")],
@@ -398,8 +414,9 @@ ts(L, "【鄰居】記憶體 Top 10",
    [('topk(10, sum by (namespace, pod) (container_memory_working_set_bytes{container!=""})' + JOIN + ')', "{{namespace}}/{{pod}}")],
    "bytes", desc(V_NEIGHBOR, "所選 Node 上記憶體用量最多的 10 個 Pod。", NB_HOW), w=12, h=8, minv=0)
 ts(L, "【鄰居】磁碟寫入 Top 10",
-   [('topk(10, sum by (namespace, pod) (rate(container_fs_writes_bytes_total{container!=""}[@R@]))' + JOIN + ')', "{{namespace}}/{{pod}}")],
-   "Bps", desc(V_NEIGHBOR, "所選 Node 上寫磁碟最多的 10 個 Pod。", NB_HOW), w=12, h=8, minv=0)
+   [('topk(10, ' + pod_io("write") + JOIN + ')', "{{namespace}}/{{pod}}")],
+   "Bps", desc(V_NEIGHBOR, "所選 Node 上寫磁碟最多的 10 個 Pod。", NB_HOW), w=12, h=8, minv=0,
+   no_value=NO_POD_IO)
 ts(L, "【鄰居】網路送出 Top 10",
    [('topk(10, sum by (namespace, pod) (rate(container_network_transmit_bytes_total[@R@]))' + JOIN + ')', "{{namespace}}/{{pod}}")],
    "Bps", desc(V_NEIGHBOR, "所選 Node 上網路送出最多的 10 個 Pod。", NB_HOW), w=12, h=8, minv=0)
@@ -443,14 +460,15 @@ dash = {
     "tags": ["ocp", "loadtest", "capacity"],
     "timezone": "browser",
     "schemaVersion": 39,
-    "version": 2,
+    "version": 3,
     "editable": True,
     "graphTooltip": 1,
     "refresh": "30s",
     "time": {"from": "now-3h", "to": "now"},
     "templating": {"list": [
         {"type": "datasource", "name": "datasource", "label": "資料來源",
-         "query": "prometheus", "current": {}, "hide": 0, "refresh": 1},
+         "query": "prometheus", "regex": "/^Prometheus.*OCP$/",
+         "current": {}, "hide": 0, "refresh": 1},
         qvar("namespace", "Namespace", "label_values(kube_pod_info, namespace)"),
         qvar("workload", "Deployment",
              'label_values(kube_deployment_spec_replicas{namespace="$namespace"}, deployment)'),
