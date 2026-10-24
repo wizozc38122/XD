@@ -6,8 +6,10 @@ Pod 已經有 CPU / 記憶體 limit，但下面這些是**整台 Node 共用、l
 
 - 本機磁碟 IO（寫 log、暫存檔、容器可寫層）
 - 本機磁碟空間
-- 網卡頻寬與封包處理
+- 網卡頻寬與封包處理（核心處理封包的 CPU 也不算在 Pod 的 CPU limit 裡）
 - conntrack 連線追蹤表
+
+OCP 沒有特別設定時，不會限制 Pod 的網路頻寬與磁碟讀寫速度，一個 Pod 可以用到整台 Node 的上限。
 
 ## 兩個 Dashboard 的分工
 
@@ -32,7 +34,7 @@ Pod 已經有 CPU / 記憶體 limit，但下面這些是**整台 Node 共用、l
 
 | 區塊 | 內容 |
 |---|---|
-| 1.【Node】各 Node 狀態 | 每台 Node 的 CPU、可用記憶體、conntrack、磁碟延遲、檔案系統、網路丟包、iowait、壓力狀態，加上各項 Top 10 趨勢 |
+| 1.【Node】各 Node 狀態 | 每台 Node 的 CPU、可用記憶體、conntrack、磁碟延遲、檔案系統、網路丟包、iowait、網路封包處理 CPU、壓力狀態，加上各項 Top 10 趨勢 |
 | 2.【Workload】風險排行 | 每個 Deployment / StatefulSet / DaemonSet 的 Pod 數、CPU 用量與 ÷ Request、throttling、記憶體 ÷ Limit、重啟、網路流量與丟包、磁碟寫入、可寫層用量 |
 | 3.【Workload】limit 相關 Top 10 | 主要影響他自己的指標隨時間的變化 |
 | 4.【Workload】共用資源 Top 10 | limit 管不到、會影響同 Node 鄰居的指標隨時間的變化 |
@@ -113,6 +115,18 @@ Pod 已經有 CPU / 記憶體 limit，但下面這些是**整台 Node 共用、l
 | 磁碟 IOPS | 上方「磁碟 IOPS 上限」，**沒有指標會回報，必須手動填** |
 | 磁碟空間 | 檔案系統容量，自動計算 |
 
+**上限要填多少**：先看第 3 區最下方的「【上限】參考」表格，列出每台 Node 回報的網卡速度，以及過去 30 天實際跑到的網路、磁碟峰值。峰值只代表「至少撐得住這麼多」：到 Grafana Explore 看峰值那段時間的磁碟延遲與網路丟包，都正常就代表上限更高；延遲已經明顯上升，這附近就是實際可用上限。也可以直接在 Node 上查規格：
+
+```bash
+oc debug node/<node名稱> -- chroot /host cat /sys/class/net/<網卡名稱>/speed
+```
+
+```bash
+oc debug node/<node名稱> -- chroot /host lsblk -d -o NAME,ROTA,SIZE,MODEL
+```
+
+第一個回傳網卡速度（Mbps）；第二個列出本機磁碟，`ROTA=0` 是 SSD。
+
 上限數值的注意事項：
 
 - **虛擬機的網卡速度不一定準**：VMware 的 vmxnet3 通常固定回報 10 Gbps，有些虛擬網卡則不回報。雲端或虛擬化平台常另外限制每台 VM 的頻寬，比網卡標示的低。知道實際可用頻寬時，請手動填入。
@@ -161,6 +175,10 @@ Linux 核心記錄的「有工作因為搶不到資源而在等」的時間比�
 ### 檔案系統使用率與 DiskPressure
 
 Node 本機磁碟空間用了幾成，容器映像、容器可寫層、log 都放在這裡。剩餘空間太少時，kubelet 會把 Node 標成 DiskPressure 並開始驅逐 Pod，同 Node 的其他服務也會被趕走。超過 85% 就要注意。
+
+### 網路封包處理 CPU（softirq）
+
+Node 核心處理網路封包（以及部分磁碟完成通知）所花的 CPU。這部分 CPU **不算在 Pod 的 CPU limit 裡**，所以就算他的 CPU 被限制住，大流量還是會吃掉整台 Node 的 CPU。壓測時跟著網路流量一起往上飆，就是大流量在消耗 Node 的 CPU。持續超過 10% 值得注意。
 
 ### 網路丟包 / 錯誤
 

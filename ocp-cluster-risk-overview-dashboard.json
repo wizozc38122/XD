@@ -9,7 +9,7 @@
   ],
   "timezone": "browser",
   "schemaVersion": 39,
-  "version": 1,
+  "version": 2,
   "editable": true,
   "graphTooltip": 1,
   "refresh": "1m",
@@ -122,7 +122,7 @@
       "id": 3,
       "type": "table",
       "title": "【Node】各 Node 狀態（時間範圍結束前 5 分鐘）",
-      "description": "**視角**：叢集內每一台 Node（該 Node 上所有 Pod 加總）\n\n**這是什麼**：每台 Node 共用資源的目前狀態。conntrack、磁碟、網卡都是每台 Node 一份，所有 Pod 共用。\n\n**怎麼看**：紅色、黃色就是正在吃緊的 Node。記下 Node 名稱，再到第 2 區找跑在上面的大戶，或進細節 Dashboard 看該 Node 的 Top 10 鄰居。",
+      "description": "**視角**：叢集內每一台 Node（該 Node 上所有 Pod 加總）\n\n**這是什麼**：每台 Node 共用資源的目前狀態。conntrack、磁碟、網卡都是每台 Node 一份，所有 Pod 共用。「網路封包處理 CPU」是核心處理網路封包（softirq）的 CPU，不算在 Pod 的 CPU limit 裡。\n\n**怎麼看**：紅色、黃色就是正在吃緊的 Node。記下 Node 名稱，再到第 2 區找跑在上面的大戶，或進細節 Dashboard 看該 Node 的 Top 10 鄰居。",
       "datasource": {
         "type": "prometheus",
         "uid": "${datasource}"
@@ -230,6 +230,18 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
+          "expr": "avg by (instance) (rate(node_cpu_seconds_total{mode=\"softirq\"}[5m]))",
+          "legendFormat": "",
+          "range": false,
+          "instant": true,
+          "format": "table"
+        },
+        {
+          "refId": "J",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
           "expr": "max by (instance) (label_replace(kube_node_status_condition{condition=~\"DiskPressure|MemoryPressure|PIDPressure\", status=\"true\"}, \"instance\", \"$1\", \"node\", \"(.*)\"))",
           "legendFormat": "",
           "range": false,
@@ -257,7 +269,8 @@
               "Value #F": "檔案系統使用率（最高）",
               "Value #G": "網路丟包",
               "Value #H": "iowait",
-              "Value #I": "Node 壓力狀態",
+              "Value #I": "網路封包處理 CPU",
+              "Value #J": "Node 壓力狀態",
               "instance": "Node"
             },
             "indexByName": {
@@ -270,7 +283,8 @@
               "Value #F": 6,
               "Value #G": 7,
               "Value #H": 8,
-              "Value #I": 9
+              "Value #I": 9,
+              "Value #J": 10
             }
           }
         }
@@ -617,6 +631,59 @@
             "matcher": {
               "id": "byName",
               "options": "iowait"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "percentunit"
+              },
+              {
+                "id": "decimals",
+                "value": 1
+              },
+              {
+                "id": "thresholds",
+                "value": {
+                  "mode": "absolute",
+                  "steps": [
+                    {
+                      "color": "green",
+                      "value": null
+                    },
+                    {
+                      "color": "yellow",
+                      "value": 0.05
+                    },
+                    {
+                      "color": "red",
+                      "value": 0.1
+                    }
+                  ]
+                }
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "thresholds"
+                }
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-background",
+                  "mode": "basic"
+                }
+              },
+              {
+                "id": "custom.displayMode",
+                "value": "color-background"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "網路封包處理 CPU"
             },
             "properties": [
               {

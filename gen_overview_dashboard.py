@@ -92,6 +92,10 @@ def n_iowait(w):
     return f'avg by (instance) (rate(node_cpu_seconds_total{{mode="iowait"}}[{w}]))'
 
 
+def n_softirq(w):
+    return f'avg by (instance) (rate(node_cpu_seconds_total{{mode="softirq"}}[{w}]))'
+
+
 def n_mem():
     return 'max by (instance) (node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes)'
 
@@ -266,10 +270,12 @@ table(L, "【Node】各 Node 狀態（時間範圍結束前 5 分鐘）", ["inst
     ("檔案系統使用率（最高）", n_fs(), "percentunit", steps((Y, 0.8), (RD, 0.85)), 1, None),
     ("網路丟包", n_drops(W5), "pps", steps((Y, 1), (RD, 50)), 1, None),
     ("iowait", n_iowait(W5), "percentunit", steps((Y, 0.05), (RD, 0.1)), 1, None),
+    ("網路封包處理 CPU", n_softirq(W5), "percentunit", steps((Y, 0.05), (RD, 0.1)), 1, None),
     ("Node 壓力狀態", n_pressure(), "none", steps((RD, 1)), 0,
      [{"type": "value", "options": {"0": {"text": "正常"}, "1": {"text": "發生中"}}}]),
 ], desc(V_CLUSTER_NODE,
-        "每台 Node 共用資源的目前狀態。conntrack、磁碟、網卡都是每台 Node 一份，所有 Pod 共用。",
+        "每台 Node 共用資源的目前狀態。conntrack、磁碟、網卡都是每台 Node 一份，所有 Pod 共用。"
+        "「網路封包處理 CPU」是核心處理網路封包（softirq）的 CPU，不算在 Pod 的 CPU limit 裡。",
         "紅色、黃色就是正在吃緊的 Node。記下 Node 名稱，再到第 2 區找跑在上面的大戶，或進細節 Dashboard 看該 Node 的 Top 10 鄰居。"),
     sort_by="conntrack 使用率", h=10, key_rename={"instance": "Node"})
 L.newline()
@@ -354,7 +360,7 @@ dash = {
     "tags": ["ocp", "loadtest", "capacity", "overview"],
     "timezone": "browser",
     "schemaVersion": 39,
-    "version": 1,
+    "version": 2,
     "editable": True,
     "graphTooltip": 1,
     "refresh": "1m",

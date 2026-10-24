@@ -8,7 +8,7 @@
   ],
   "timezone": "browser",
   "schemaVersion": 39,
-  "version": 5,
+  "version": 6,
   "editable": true,
   "graphTooltip": 1,
   "refresh": "30s",
@@ -1947,6 +1947,202 @@
     },
     {
       "id": 31,
+      "type": "table",
+      "title": "【上限】參考：Node 回報的網卡速度與過去 30 天峰值",
+      "description": "**視角**：所選的每台 Node（整台加總）\n\n**這是什麼**：Node 自己回報的網卡速度，以及過去 30 天實際跑到的最高網路、磁碟流量（每 5 分鐘平均）。\n\n**怎麼看**：用來決定上方輸入框要填多少。峰值只代表「至少撐得住這麼多」，不是上限：到 Grafana Explore 看峰值那段時間的磁碟延遲與網路丟包，延遲和丟包都正常就代表上限更高，延遲已明顯上升則這附近就是實際可用上限。這個表格會掃 30 天資料，載入可能較慢。",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${datasource}"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "expr": "max by (node) (label_replace(8 * max by (instance) (node_network_speed_bytes{instance=~\"$node\", device=~\"(ens|eth|eno|enp|bond)[a-z0-9]*\"}), \"node\", \"$1\", \"instance\", \"(.*)\"))",
+          "legendFormat": "",
+          "range": false,
+          "instant": true,
+          "format": "table"
+        },
+        {
+          "refId": "B",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "expr": "max by (node) (label_replace(max_over_time((8 * sum by (instance) (rate(node_network_transmit_bytes_total{instance=~\"$node\", device=~\"(ens|eth|eno|enp|bond)[a-z0-9]*\"}[5m])))[30d:5m]), \"node\", \"$1\", \"instance\", \"(.*)\"))",
+          "legendFormat": "",
+          "range": false,
+          "instant": true,
+          "format": "table"
+        },
+        {
+          "refId": "C",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "expr": "max by (node) (label_replace(max_over_time((8 * sum by (instance) (rate(node_network_receive_bytes_total{instance=~\"$node\", device=~\"(ens|eth|eno|enp|bond)[a-z0-9]*\"}[5m])))[30d:5m]), \"node\", \"$1\", \"instance\", \"(.*)\"))",
+          "legendFormat": "",
+          "range": false,
+          "instant": true,
+          "format": "table"
+        },
+        {
+          "refId": "D",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "expr": "max by (node) (label_replace(max_over_time((sum by (instance) (rate(node_disk_read_bytes_total{instance=~\"$node\", device=~\"sd[a-z]+|nvme[0-9]+n[0-9]+|vd[a-z]+|xvd[a-z]+\"}[5m]) + rate(node_disk_written_bytes_total{instance=~\"$node\", device=~\"sd[a-z]+|nvme[0-9]+n[0-9]+|vd[a-z]+|xvd[a-z]+\"}[5m])))[30d:5m]), \"node\", \"$1\", \"instance\", \"(.*)\"))",
+          "legendFormat": "",
+          "range": false,
+          "instant": true,
+          "format": "table"
+        },
+        {
+          "refId": "E",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "expr": "max by (node) (label_replace(max_over_time((sum by (instance) (rate(node_disk_reads_completed_total{instance=~\"$node\", device=~\"sd[a-z]+|nvme[0-9]+n[0-9]+|vd[a-z]+|xvd[a-z]+\"}[5m]) + rate(node_disk_writes_completed_total{instance=~\"$node\", device=~\"sd[a-z]+|nvme[0-9]+n[0-9]+|vd[a-z]+|xvd[a-z]+\"}[5m])))[30d:5m]), \"node\", \"$1\", \"instance\", \"(.*)\"))",
+          "legendFormat": "",
+          "range": false,
+          "instant": true,
+          "format": "table"
+        }
+      ],
+      "transformations": [
+        {
+          "id": "merge",
+          "options": {}
+        },
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": {
+              "Time": true
+            },
+            "renameByName": {
+              "node": "Node",
+              "Value #A": "網卡回報速度",
+              "Value #B": "30 天網路送出峰值",
+              "Value #C": "30 天網路接收峰值",
+              "Value #D": "30 天磁碟吞吐峰值",
+              "Value #E": "30 天磁碟 IOPS 峰值"
+            },
+            "indexByName": {
+              "node": 0,
+              "Value #A": 1,
+              "Value #B": 2,
+              "Value #C": 3,
+              "Value #D": 4,
+              "Value #E": 5
+            }
+          }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "網卡回報速度"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "bps"
+              },
+              {
+                "id": "decimals",
+                "value": 0
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "30 天網路送出峰值"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "bps"
+              },
+              {
+                "id": "decimals",
+                "value": 1
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "30 天網路接收峰值"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "bps"
+              },
+              {
+                "id": "decimals",
+                "value": 1
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "30 天磁碟吞吐峰值"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "Bps"
+              },
+              {
+                "id": "decimals",
+                "value": 1
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "30 天磁碟 IOPS 峰值"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "iops"
+              },
+              {
+                "id": "decimals",
+                "value": 0
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "showHeader": true
+      },
+      "gridPos": {
+        "h": 6,
+        "w": 24,
+        "x": 0,
+        "y": 72
+      }
+    },
+    {
+      "id": 32,
       "type": "row",
       "title": "4. 【整台 Node】共用資源壓力：所有 Pod 加總，不是他的用量，看壓測期間有沒有往上飆",
       "collapsed": false,
@@ -1954,12 +2150,12 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 72
+        "y": 78
       },
       "panels": []
     },
     {
-      "id": 32,
+      "id": 33,
       "type": "text",
       "title": "",
       "options": {
@@ -1970,11 +2166,11 @@
         "h": 3,
         "w": 24,
         "x": 0,
-        "y": 73
+        "y": 79
       }
     },
     {
-      "id": 33,
+      "id": 34,
       "type": "timeseries",
       "title": "【整台 Node】PSI：有多少時間有工作在等資源",
       "description": "**視角**：整台 Node（所有 Pod 加總），**不是他自己的用量**\n\n**這是什麼**：PSI（Pressure Stall Information）是 Linux 核心記錄的「有工作因為搶不到 CPU / 磁碟 IO / 記憶體而在等」的時間比例。比 CPU 使用率更直接反映「大家有沒有變慢」。\n\n**怎麼看**：壓測前後比較，往上飆就是 Node 開始吃緊。粗略參考：CPU 或 IO 持續超過 10% 值得注意。**沒有資料**代表 Node 核心沒開 PSI（RHCOS 預設可能關閉），請改看右邊的替代面板。",
@@ -2049,11 +2245,11 @@
         "h": 7,
         "w": 8,
         "x": 0,
-        "y": 76
+        "y": 82
       }
     },
     {
-      "id": 34,
+      "id": 35,
       "type": "timeseries",
       "title": "【整台 Node】PSI 替代：iowait 與每核負載",
       "description": "**視角**：整台 Node（所有 Pod 加總），**不是他自己的用量**\n\n**這是什麼**：iowait：CPU 閒著在等磁碟的時間比例。每核負載：排隊等 CPU 或 IO 的工作數 ÷ CPU 核數（100% 約等於每核一個工作）。\n\n**怎麼看**：PSI 沒資料時用這個。iowait 往上飆代表磁碟變慢；每核負載長時間超過 100% 代表工作在排隊。",
@@ -2115,11 +2311,11 @@
         "h": 7,
         "w": 8,
         "x": 8,
-        "y": 76
+        "y": 82
       }
     },
     {
-      "id": 35,
+      "id": 36,
       "type": "timeseries",
       "title": "【整台 Node】磁碟延遲（每次 IO 平均花多久）",
       "description": "**視角**：整台 Node（所有 Pod 加總），**不是他自己的用量**\n\n**這是什麼**：Node 本機磁碟每次讀寫平均要等多久，所有 Pod 共用這顆磁碟。**判斷磁碟有沒有拖慢大家，這個最準。**\n\n**怎麼看**：壓測中明顯往上飆就是磁碟變慢，同 Node 所有 Pod 都會受影響。粗略參考：SSD 通常數 ms 以內，超過 10–20 ms 就很慢。",
@@ -2169,11 +2365,11 @@
         "h": 7,
         "w": 8,
         "x": 16,
-        "y": 76
+        "y": 82
       }
     },
     {
-      "id": 36,
+      "id": 37,
       "type": "timeseries",
       "title": "【整台 Node】磁碟忙碌程度",
       "description": "**視角**：整台 Node（所有 Pod 加總），**不是他自己的用量**\n\n**這是什麼**：磁碟有在處理 IO 的時間比例（類似 iostat 的 %util）。\n\n**怎麼看**：接近 100% 可能飽和，但 SSD / 雲端磁碟可同時處理多筆 IO，100% 不一定代表慢，要搭配左邊的磁碟延遲一起看。",
@@ -2223,11 +2419,11 @@
         "h": 7,
         "w": 8,
         "x": 0,
-        "y": 83
+        "y": 89
       }
     },
     {
-      "id": 37,
+      "id": 38,
       "type": "timeseries",
       "title": "【整台 Node】磁碟每秒讀寫次數（IOPS）",
       "description": "**視角**：整台 Node（所有 Pod 加總），**不是他自己的用量**\n\n**這是什麼**：Node 本機磁碟每秒完成的讀寫次數。\n\n**怎麼看**：IOPS 上升而延遲沒變，代表磁碟還撐得住；IOPS 上不去但延遲飆升，代表已經到磁碟上限。",
@@ -2289,11 +2485,11 @@
         "h": 7,
         "w": 8,
         "x": 8,
-        "y": 83
+        "y": 89
       }
     },
     {
-      "id": 38,
+      "id": 39,
       "type": "timeseries",
       "title": "【整台 Node】檔案系統使用率",
       "description": "**視角**：整台 Node（所有 Pod 加總），**不是他自己的用量**\n\n**這是什麼**：Node 本機磁碟空間用了幾成，容器映像、容器可寫層和 log 都放在這裡。\n\n**怎麼看**：超過 85% 要注意；剩餘空間低於約 10–15% 時 kubelet 會開始驅逐 Pod（DiskPressure）。",
@@ -2343,11 +2539,11 @@
         "h": 7,
         "w": 8,
         "x": 16,
-        "y": 83
+        "y": 89
       }
     },
     {
-      "id": 39,
+      "id": 40,
       "type": "timeseries",
       "title": "【整台 Node】網路吞吐",
       "description": "**視角**：整台 Node（所有 Pod 加總），**不是他自己的用量**\n\n**這是什麼**：Node 實體網卡的總流量，所有 Pod 共用這張網卡。\n\n**怎麼看**：和第 2 區【他】的網路流量對照，看 Node 的流量上升是不是主要來自他。接近網卡頻寬上限時，所有 Pod 都會變慢。",
@@ -2409,11 +2605,11 @@
         "h": 7,
         "w": 8,
         "x": 0,
-        "y": 90
+        "y": 96
       }
     },
     {
-      "id": 40,
+      "id": 41,
       "type": "timeseries",
       "title": "【整台 Node】網路丟包 / 錯誤",
       "description": "**視角**：整台 Node（所有 Pod 加總），**不是他自己的用量**\n\n**這是什麼**：Node 實體網卡每秒丟掉或出錯的封包數。丟包通常是網卡或核心的緩衝區塞滿處理不及。\n\n**怎麼看**：正常應接近 0。壓測期間開始出現並往上升，代表網卡塞住，同 Node 所有 Pod 的網路都會受影響（重傳、延遲變高）。",
@@ -2475,11 +2671,65 @@
         "h": 7,
         "w": 8,
         "x": 8,
-        "y": 90
+        "y": 96
       }
     },
     {
-      "id": 41,
+      "id": 42,
+      "type": "timeseries",
+      "title": "【整台 Node】網路封包處理 CPU（softirq）",
+      "description": "**視角**：整台 Node（所有 Pod 加總），**不是他自己的用量**\n\n**這是什麼**：Node 核心處理網路封包（以及部分磁碟完成通知）所花的 CPU 時間比例。這部分 CPU **不會算在 Pod 的 CPU limit 裡**，所以他的 CPU 被限制住，大流量還是會吃掉整台 Node 的 CPU。\n\n**怎麼看**：壓測時跟著網路流量一起往上飆，代表大流量正在消耗 Node 的 CPU。粗略參考：持續超過 10% 值得注意，若集中在少數 CPU 核上，該核會先滿而讓網路變慢。",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${datasource}"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "expr": "avg by (instance) (rate(node_cpu_seconds_total{mode=\"softirq\", instance=~\"$node\"}[$__rate_interval]))",
+          "legendFormat": "{{instance}}",
+          "range": true,
+          "instant": false,
+          "format": "time_series"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 1,
+            "fillOpacity": 12,
+            "showPoints": "never",
+            "spanNulls": true
+          },
+          "min": 0
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "gridPos": {
+        "h": 7,
+        "w": 8,
+        "x": 16,
+        "y": 96
+      }
+    },
+    {
+      "id": 43,
       "type": "timeseries",
       "title": "【整台 Node】conntrack 連線追蹤表使用率",
       "description": "**視角**：整台 Node（所有 Pod 加總），**不是他自己的用量**\n\n**這是什麼**：Node 核心記錄每條網路連線的表格，所有 Pod 共用一張，有容量上限。大量短連線（例如每次都重新連 DB / Redis / Kafka）最容易吃滿。\n\n**怎麼看**：超過 70% 要注意；滿了之後新連線會被直接丟掉，同 Node 所有 Pod 都會連不出去。",
@@ -2527,13 +2777,13 @@
       },
       "gridPos": {
         "h": 7,
-        "w": 8,
-        "x": 16,
-        "y": 90
+        "w": 6,
+        "x": 0,
+        "y": 103
       }
     },
     {
-      "id": 42,
+      "id": 44,
       "type": "timeseries",
       "title": "【整台 Node】CPU 使用率",
       "description": "**視角**：整台 Node（所有 Pod 加總），**不是他自己的用量**\n\n**這是什麼**：整台 Node 的 CPU 有多少時間在工作。\n\n**怎麼看**：長時間超過 80% 且 PSI CPU 也上升時，沒設 limit 或超用 request 的 Pod 會互相搶 CPU。",
@@ -2581,13 +2831,13 @@
       },
       "gridPos": {
         "h": 7,
-        "w": 8,
-        "x": 0,
-        "y": 97
+        "w": 6,
+        "x": 6,
+        "y": 103
       }
     },
     {
-      "id": 43,
+      "id": 45,
       "type": "timeseries",
       "title": "【整台 Node】可用記憶體比例",
       "description": "**視角**：整台 Node（所有 Pod 加總），**不是他自己的用量**\n\n**這是什麼**：整台 Node 還能給程式用的記憶體比例。\n\n**怎麼看**：低於 10% 要注意，kubelet 可能開始驅逐 Pod（MemoryPressure）。",
@@ -2635,13 +2885,13 @@
       },
       "gridPos": {
         "h": 7,
-        "w": 8,
-        "x": 8,
-        "y": 97
+        "w": 6,
+        "x": 12,
+        "y": 103
       }
     },
     {
-      "id": 44,
+      "id": 46,
       "type": "timeseries",
       "title": "【整台 Node】Node 壓力狀態（1 = 發生中）",
       "description": "**視角**：整台 Node（所有 Pod 加總），**不是他自己的用量**\n\n**這是什麼**：kubelet 回報 Node 進入磁碟、記憶體或程序數不足的狀態。\n\n**怎麼看**：出現 1 代表 Node 已經嚴重吃緊，kubelet 會開始驅逐 Pod，影響同 Node 的所有服務。",
@@ -2689,13 +2939,13 @@
       },
       "gridPos": {
         "h": 7,
-        "w": 8,
-        "x": 16,
-        "y": 97
+        "w": 6,
+        "x": 18,
+        "y": 103
       }
     },
     {
-      "id": 45,
+      "id": 47,
       "type": "row",
       "title": "5. 【鄰居】所選 Node 上用量前 10 名（含他自己）",
       "collapsed": false,
@@ -2703,12 +2953,12 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 104
+        "y": 110
       },
       "panels": []
     },
     {
-      "id": 46,
+      "id": 48,
       "type": "timeseries",
       "title": "【鄰居】CPU Top 10",
       "description": "**視角**：所選 Node 上的所有 Pod 排名（含他自己）\n\n**這是什麼**：所選 Node 上 CPU 用量最多的 10 個 Pod。\n\n**怎麼看**：第 4 區往上飆的時候，看是誰同時上升。如果前幾名都是他，加上 Node 壓力同時上升，就是他造成的；如果是別人，就跟他無關。",
@@ -2758,11 +3008,11 @@
         "h": 8,
         "w": 12,
         "x": 0,
-        "y": 105
+        "y": 111
       }
     },
     {
-      "id": 47,
+      "id": 49,
       "type": "timeseries",
       "title": "【鄰居】記憶體 Top 10",
       "description": "**視角**：所選 Node 上的所有 Pod 排名（含他自己）\n\n**這是什麼**：所選 Node 上記憶體用量最多的 10 個 Pod。\n\n**怎麼看**：第 4 區往上飆的時候，看是誰同時上升。如果前幾名都是他，加上 Node 壓力同時上升，就是他造成的；如果是別人，就跟他無關。",
@@ -2812,11 +3062,11 @@
         "h": 8,
         "w": 12,
         "x": 12,
-        "y": 105
+        "y": 111
       }
     },
     {
-      "id": 48,
+      "id": 50,
       "type": "timeseries",
       "title": "【鄰居】磁碟寫入 Top 10",
       "description": "**視角**：所選 Node 上的所有 Pod 排名（含他自己）\n\n**這是什麼**：所選 Node 上寫磁碟最多的 10 個 Pod。\n\n**怎麼看**：第 4 區往上飆的時候，看是誰同時上升。如果前幾名都是他，加上 Node 壓力同時上升，就是他造成的；如果是別人，就跟他無關。",
@@ -2867,11 +3117,11 @@
         "h": 8,
         "w": 12,
         "x": 0,
-        "y": 113
+        "y": 119
       }
     },
     {
-      "id": 49,
+      "id": 51,
       "type": "timeseries",
       "title": "【鄰居】網路送出 Top 10",
       "description": "**視角**：所選 Node 上的所有 Pod 排名（含他自己）\n\n**這是什麼**：所選 Node 上網路送出最多的 10 個 Pod。\n\n**怎麼看**：第 4 區往上飆的時候，看是誰同時上升。如果前幾名都是他，加上 Node 壓力同時上升，就是他造成的；如果是別人，就跟他無關。",
@@ -2921,11 +3171,11 @@
         "h": 8,
         "w": 12,
         "x": 12,
-        "y": 113
+        "y": 119
       }
     },
     {
-      "id": 50,
+      "id": 52,
       "type": "row",
       "title": "6. 【共用】入口與 DNS（全叢集共用，不分 Node）",
       "collapsed": false,
@@ -2933,12 +3183,12 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 121
+        "y": 127
       },
       "panels": []
     },
     {
-      "id": 51,
+      "id": 53,
       "type": "timeseries",
       "title": "【共用】Router 回應數（依狀態碼，此 namespace）",
       "description": "**視角**：全叢集共用元件，不分 Node\n\n**這是什麼**：經過 OCP Router 進到這個 namespace 的請求數，依 HTTP 狀態碼分。\n\n**怎麼看**：5xx 上升代表後端出問題。沒資料代表此服務不經過 Router，或沒有權限查詢 Router 指標。",
@@ -2988,11 +3238,11 @@
         "h": 7,
         "w": 8,
         "x": 0,
-        "y": 122
+        "y": 128
       }
     },
     {
-      "id": 52,
+      "id": 54,
       "type": "timeseries",
       "title": "【共用】Router 後端排隊（此 namespace）",
       "description": "**視角**：全叢集共用元件，不分 Node\n\n**這是什麼**：請求在 Router 等待後端 Pod 接手的數量。\n\n**怎麼看**：大於 0 代表後端 Pod 處理不及，請求在入口排隊。",
@@ -3042,11 +3292,11 @@
         "h": 7,
         "w": 8,
         "x": 8,
-        "y": 122
+        "y": 128
       }
     },
     {
-      "id": 53,
+      "id": 55,
       "type": "timeseries",
       "title": "【共用】CoreDNS 請求量與 P99 延遲",
       "description": "**視角**：全叢集共用元件，不分 Node\n\n**這是什麼**：全叢集 DNS 服務的查詢量與最慢 1% 查詢的延遲。\n\n**怎麼看**：壓測時若每次連線都重新查 DNS，查詢量會飆高；P99 延遲上升時，全叢集的服務解析名稱都會變慢。",
@@ -3108,7 +3358,7 @@
         "h": 7,
         "w": 8,
         "x": 16,
-        "y": 122
+        "y": 128
       }
     }
   ]

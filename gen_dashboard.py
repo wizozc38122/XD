@@ -169,6 +169,30 @@ def table(line, title, expr, description, w=12, h=7):
     }, w, h)
 
 
+def multi_table(line, title, key, columns, description, w=24, h=6):
+    """One row per key value; columns: list of (name, expr, unit, decimals). Each column is an instant query."""
+    targets, rename, index, overrides = [], {key: "Node"}, {key: 0}, []
+    for i, (name, expr, unit, decimals) in enumerate(columns):
+        ref = chr(65 + i)
+        targets.append({"refId": ref, "datasource": DS, "expr": q(expr), "legendFormat": "",
+                        "range": False, "instant": True, "format": "table"})
+        rename[f"Value #{ref}"] = name
+        index[f"Value #{ref}"] = i + 1
+        overrides.append({"matcher": {"id": "byName", "options": name},
+                          "properties": [{"id": "unit", "value": unit}, {"id": "decimals", "value": decimals}]})
+    line.add({
+        "id": nid(), "type": "table", "title": title, "description": description,
+        "datasource": DS, "targets": targets,
+        "transformations": [
+            {"id": "merge", "options": {}},
+            {"id": "organize", "options": {"excludeByName": {"Time": True},
+                                           "renameByName": rename, "indexByName": index}},
+        ],
+        "fieldConfig": {"defaults": {}, "overrides": overrides},
+        "options": {"showHeader": True},
+    }, w, h)
+
+
 def text(line, content, w=24, h=8):
     line.add({"id": nid(), "type": "text", "title": "",
               "options": {"mode": "markdown", "content": content}}, w, h)
@@ -399,6 +423,30 @@ ts(L, "【上限】磁碟空間：整台 vs 他",
         "整台超過約 85–90% 時，kubelet 會進入 DiskPressure 並開始驅逐 Pod。他的線持續往上爬，代表他一直在寫檔或 log。"),
    minv=0, thresholds=steps((Y, 0.8), (RD, 0.85)))
 L.newline()
+L = Line()
+NIC_BITS = "8 * " + 'max by (instance) (node_network_speed_bytes{@NODE@, @NIC@})'
+
+
+def peak_30d(expr):
+    return f'max_over_time(({expr})[30d:5m])'
+
+
+multi_table(L, "【上限】參考：Node 回報的網卡速度與過去 30 天峰值", "node", [
+    ("網卡回報速度", as_node(NIC_BITS), "bps", 0),
+    ("30 天網路送出峰值", as_node(peak_30d("8 * " + NODE_TX.replace("@R@", "5m"))), "bps", 1),
+    ("30 天網路接收峰值", as_node(peak_30d("8 * " + NODE_RX.replace("@R@", "5m"))), "bps", 1),
+    ("30 天磁碟吞吐峰值", as_node(peak_30d(
+        'sum by (instance) (rate(node_disk_read_bytes_total{@NODE@, @DEV@}[5m]) + rate(node_disk_written_bytes_total{@NODE@, @DEV@}[5m]))')),
+     "Bps", 1),
+    ("30 天磁碟 IOPS 峰值", as_node(peak_30d(
+        'sum by (instance) (rate(node_disk_reads_completed_total{@NODE@, @DEV@}[5m]) + rate(node_disk_writes_completed_total{@NODE@, @DEV@}[5m]))')),
+     "iops", 0),
+], desc("所選的每台 Node（整台加總）",
+        "Node 自己回報的網卡速度，以及過去 30 天實際跑到的最高網路、磁碟流量（每 5 分鐘平均）。",
+        "用來決定上方輸入框要填多少。峰值只代表「至少撐得住這麼多」，不是上限：到 Grafana Explore 看峰值那段時間的磁碟延遲與網路丟包，"
+        "延遲和丟包都正常就代表上限更高，延遲已明顯上升則這附近就是實際可用上限。這個表格會掃 30 天資料，載入可能較慢。"),
+    h=6)
+L.newline()
 
 # ---------------------------------------------------------------- 4 node
 row("4. 【整台 Node】共用資源壓力：所有 Pod 加總，不是他的用量，看壓測期間有沒有往上飆")
@@ -465,31 +513,40 @@ ts(L, "【整台 Node】網路丟包 / 錯誤",
    desc(V_NODE, "Node 實體網卡每秒丟掉或出錯的封包數。丟包通常是網卡或核心的緩衝區塞滿處理不及。",
         "正常應接近 0。壓測期間開始出現並往上升，代表網卡塞住，同 Node 所有 Pod 的網路都會受影響（重傳、延遲變高）。"),
    minv=0)
+ts(L, "【整台 Node】網路封包處理 CPU（softirq）",
+   [('avg by (instance) (rate(node_cpu_seconds_total{mode="softirq", @NODE@}[@R@]))', "{{instance}}")],
+   "percentunit",
+   desc(V_NODE,
+        "Node 核心處理網路封包（以及部分磁碟完成通知）所花的 CPU 時間比例。這部分 CPU **不會算在 Pod 的 CPU limit 裡**，"
+        "所以他的 CPU 被限制住，大流量還是會吃掉整台 Node 的 CPU。",
+        "壓測時跟著網路流量一起往上飆，代表大流量正在消耗 Node 的 CPU。粗略參考：持續超過 10% 值得注意，"
+        "若集中在少數 CPU 核上，該核會先滿而讓網路變慢。"),
+   minv=0)
 ts(L, "【整台 Node】conntrack 連線追蹤表使用率",
    [('node_nf_conntrack_entries{@NODE@} / node_nf_conntrack_entries_limit{@NODE@}', "{{instance}}")],
    "percentunit",
    desc(V_NODE,
         "Node 核心記錄每條網路連線的表格，所有 Pod 共用一張，有容量上限。大量短連線（例如每次都重新連 DB / Redis / Kafka）最容易吃滿。",
         "超過 70% 要注意；滿了之後新連線會被直接丟掉，同 Node 所有 Pod 都會連不出去。"),
-   minv=0)
+   w=6, minv=0)
 ts(L, "【整台 Node】CPU 使用率",
    [('1 - avg by (instance) (rate(node_cpu_seconds_total{mode="idle", @NODE@}[@R@]))', "{{instance}}")],
    "percentunit",
    desc(V_NODE, "整台 Node 的 CPU 有多少時間在工作。",
         "長時間超過 80% 且 PSI CPU 也上升時，沒設 limit 或超用 request 的 Pod 會互相搶 CPU。"),
-   minv=0)
+   w=6, minv=0)
 ts(L, "【整台 Node】可用記憶體比例",
    [('node_memory_MemAvailable_bytes{@NODE@} / node_memory_MemTotal_bytes{@NODE@}', "{{instance}}")],
    "percentunit",
    desc(V_NODE, "整台 Node 還能給程式用的記憶體比例。",
         "低於 10% 要注意，kubelet 可能開始驅逐 Pod（MemoryPressure）。"),
-   minv=0)
+   w=6, minv=0)
 ts(L, "【整台 Node】Node 壓力狀態（1 = 發生中）",
    [('max by (node, condition) (kube_node_status_condition{condition=~"DiskPressure|MemoryPressure|PIDPressure", status="true", node=~"$node"})', "{{node}} {{condition}}")],
    "none",
    desc(V_NODE, "kubelet 回報 Node 進入磁碟、記憶體或程序數不足的狀態。",
         "出現 1 代表 Node 已經嚴重吃緊，kubelet 會開始驅逐 Pod，影響同 Node 的所有服務。"),
-   minv=0)
+   w=6, minv=0)
 L.newline()
 
 # ---------------------------------------------------------------- 5 neighbours
@@ -555,7 +612,7 @@ dash = {
     "tags": ["ocp", "loadtest", "capacity"],
     "timezone": "browser",
     "schemaVersion": 39,
-    "version": 5,
+    "version": 6,
     "editable": True,
     "graphTooltip": 1,
     "refresh": "30s",
