@@ -52,6 +52,17 @@ python gen_dashboard.py kafka-dev-troubleshoot-dashboard.json "Prometheus-(SIT|U
 - **Lag 佔保留量** = 還沒讀的筆數 ÷ Kafka 這個 partition 現在還留著的筆數（取最糟的 partition）。
   - 只用 offset 算（kafka-exporter），不是 segment，也跟 retention 是依時間還是大小無關，不需要 jmx。
   - 例：還留著 1,000 筆、其中 950 筆沒讀 = 95%，再刪一點就會刪到沒讀的。
+  - 各情境顯示：
+
+    | 情況 | 顯示 |
+    |---|---|
+    | 有成員、≤ 100% | 百分比（70% 黃、85% 紅） |
+    | 有成員、超過 100% | 已掉資料（紅） |
+    | 成員 0、有 lag | 沒人在讀（灰）。沒人讀的 group 遲早都會到 100%，百分比沒意義所以不顯示；確認程式該不該在跑，不用了就 `kafka-consumer-groups --delete --group <group>` |
+    | 成員 0、超過 100% | 已掉資料（沒人讀）（橘）：沒人讀的期間資料已被刪 |
+    | lag 0 | 0% |
+
+  - **100% 不一定很急**：Kafka 是整個 segment 一起刪，還在寫的那個 segment 不會刪。partition 只留幾筆時（例：留 6 筆、6 筆都沒讀 = 100%）通常要等好幾天才會刪，搭配 Lag 筆數看。
   - **已掉資料**（超過 100%）：沒讀的資料已經被刪了，救不回來。consumer 會收到 `OFFSET_OUT_OF_RANGE`，之後從哪讀看 `auto.offset.reset`（earliest = 跳到最舊還留著的、latest = 跳到最新、none = 報錯）。
   - Kafka 的資料是整個 topic 共用一份，被刪的那段所有 group（包括之後新訂閱的）都讀不到；百分比是每個 group 各自算，已經追上的 group 不受影響。
   - topic 的 retention 設多少，dashboard 看不到，要用 `kafka-configs --describe --entity-type topics --entity-name <topic>` 查。

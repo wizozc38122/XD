@@ -171,7 +171,7 @@
       },
       "options": {
         "mode": "markdown",
-        "content": "### 這個 Dashboard 怎麼用\n上方先選 **環境 (Prometheus)** → **Cluster**，再視需要選 **Topic** / **Consumer Group**（預設全部）。每張圖標題旁的 **ⓘ** 都有「是什麼／正常／不正常時」說明；② 的速度用 **速度取樣** 區間的平均。\n\n| 症狀 | 先看哪裡 |\n|---|---|\n| 消費很慢、資料處理延遲、lag 一直漲 | ② **Consumer Group 現況**（追上要多久、還落後多久的資料）→ **消費 vs 寫入速度** → ④ 讀取延遲 |\n| Consumer 收不到資料 | ② **成員數**（0 = 沒有程式在讀）、**卡住的 partition** → ④ **錯誤回應** |\n| 寫入失敗、timeout、NOT_ENOUGH_REPLICAS | ① 健康總覽（離線 partition / ISR 不足）→ ④ **錯誤回應** → ③ **寫入延遲拆解** |\n| 寫入變慢 | ③ **寫入延遲拆解**（慢在排隊、寫磁碟還是等副本）→ ⑤ **被限速** → ⑥ Broker 資源 |\n| 權限錯誤（TOPIC / GROUP_AUTHORIZATION_FAILED） | ④ **權限被拒（依錯誤 / 請求類型）** |\n| 登入失敗（SaslAuthenticationException） | ④ **登入失敗** |\n| 想知道哪個帳號（專案）流量最大、有沒有被限速 | ⑤ **各帳號** 開頭的圖表、**連線的 client 程式** |\n| Topic 是否滿載、partition 不均、磁碟夠不夠 | ② **Topic 總表** → **熱點 partition** → **磁碟幾小時後滿** |\n| 資料會不會還沒讀就被刪掉 | ② Consumer Group 現況 **Lag 佔保留量**（接近 100% 就會掉資料） |\n\n- **這裡看不到的**：哪個帳號被拒（看 broker 的 authorizer log）、每則訊息的端到端延遲（要應用程式埋點）、Topic 設定（`kafka-configs --describe`）\n- **面板顯示「jmx exporter 設定沒收 X」**：請維運在 jmx exporter 設定的 `includeObjectNames` 加上 X\n- **⑤ 各帳號沒資料**：broker 要設預設帳號 quota（設很大就不會限速），例如：\n\n```\nkafka-configs --alter --entity-type users --entity-default \\\n  --add-config producer_byte_rate=1073741824,consumer_byte_rate=1073741824,request_percentage=10000\n```"
+        "content": "### 這個 Dashboard 怎麼用\n上方先選 **環境 (Prometheus)** → **Cluster**，再視需要選 **Topic** / **Consumer Group**（預設全部）。每張圖標題旁的 **ⓘ** 都有「是什麼／正常／不正常時」說明；② 的速度用 **速度取樣** 區間的平均。\n\n| 症狀 | 先看哪裡 |\n|---|---|\n| 消費很慢、資料處理延遲、lag 一直漲 | ② **Consumer Group 現況**（追上要多久、還落後多久的資料）→ **消費 vs 寫入速度** → ④ 讀取延遲 |\n| Consumer 收不到資料 | ② **成員數**（0 = 沒有程式在讀）、**卡住的 partition** → ④ **錯誤回應** |\n| 寫入失敗、timeout、NOT_ENOUGH_REPLICAS | ① 健康總覽（離線 partition / ISR 不足）→ ④ **錯誤回應** → ③ **寫入延遲拆解** |\n| 寫入變慢 | ③ **寫入延遲拆解**（慢在排隊、寫磁碟還是等副本）→ ⑤ **被限速** → ⑥ Broker 資源 |\n| 權限錯誤（TOPIC / GROUP_AUTHORIZATION_FAILED） | ④ **權限被拒（依錯誤 / 請求類型）** |\n| 登入失敗（SaslAuthenticationException） | ④ **登入失敗** |\n| 想知道哪個帳號（專案）流量最大、有沒有被限速 | ⑤ **各帳號** 開頭的圖表、**連線的 client 程式** |\n| Topic 是否滿載、partition 不均、磁碟夠不夠 | ② **Topic 總表** → **熱點 partition** → **磁碟幾小時後滿** |\n| 資料會不會還沒讀就被刪掉 | ② Consumer Group 現況 **Lag 佔保留量**（有人在讀、接近 100% 就快掉資料；超過 = 已掉資料） |\n\n- **這裡看不到的**：哪個帳號被拒（看 broker 的 authorizer log）、每則訊息的端到端延遲（要應用程式埋點）、Topic 設定（`kafka-configs --describe`）\n- **面板顯示「jmx exporter 設定沒收 X」**：請維運在 jmx exporter 設定的 `includeObjectNames` 加上 X\n- **⑤ 各帳號沒資料**：broker 要設預設帳號 quota（設很大就不會限速），例如：\n\n```\nkafka-configs --alter --entity-type users --entity-default \\\n  --add-config producer_byte_rate=1073741824,consumer_byte_rate=1073741824,request_percentage=10000\n```"
       }
     },
     {
@@ -762,7 +762,7 @@
       "id": 12,
       "type": "table",
       "title": "Consumer Group 現況（現在）",
-      "description": "**是什麼**：每個 group × topic 現在追得怎樣。速度都是上方「速度取樣」區間的平均。\n\n**欄位**：\n- **Lag**：還沒讀的訊息數\n- **成員**：連著的 consumer 數，0 = 沒人在讀\n- **消費/秒、寫入/秒**：每秒讀完（commit）/ 寫入幾筆\n- **還落後**：Lag ÷ 寫入速度 ≈ 正在處理多久以前的資料（寫入很少時偏大）；沒有新寫入 = 取樣區間內沒寫入，算不出來\n- **追上需要**：Lag ÷（消費 − 寫入）。已跟上 = 沒有 lag 或還落後不到 30 秒；沒人在讀 = 有 lag 但沒有 consumer；追不上 = 消費沒有比寫入快；> 1 天 = 兩邊幾乎一樣快，lag 不會明顯下降\n- **Lag 佔保留量**：還沒讀的筆數 ÷ Kafka 這個 partition 現在還留著的筆數（取最糟的 partition）。只用 offset 算，不是 segment，也跟 retention 是依時間還是大小無關。例：還留著 1,000 筆、其中 950 筆沒讀 = 95%，再刪一點就會刪到沒讀的；**已掉資料** = 超過 100%，沒讀的已經被刪了（consumer 會收到 OFFSET_OUT_OF_RANGE）。retention 設多少要用 `kafka-configs --describe --entity-type topics --entity-name <topic>` 查\n- **Lag 趨勢**：lag 每秒的變化（筆/秒，速度取樣區間平均）。正數 = 越落越多；負數 = 正在追上（例：-2.6 = 每秒少 2.6 筆）；在 0 附近小幅正負跳動 = 持平（consumer 每隔幾秒才 commit 一次）；沒人在讀時 ≈ 寫入速度（寫進來的都變 lag），也沒有寫入時才是 0\n\n**正常**：成員 ≥ 1、追上需要顯示「已跟上」。\n\n**不正常時**：\n- 成員 0 → 程式沒在跑\n- 追不上、Lag 趨勢 > 0 → 處理太慢：加 consumer（不能超過 partition 數）或加快處理\n- Lag 佔保留量接近 100% → 沒讀到的資料快被刪掉；顯示「已掉資料」→ 已經刪了，consumer 會依 auto.offset.reset 跳到最舊或最新\n- 還落後 / 追上需要跳動很大 → 把「速度取樣」調長（短 = 反應快但跳動大，長 = 穩但慢半拍）",
+      "description": "**是什麼**：每個 group × topic 現在追得怎樣。速度都是上方「速度取樣」區間的平均。\n\n**欄位**：\n- **Lag**：還沒讀的訊息數\n- **成員**：連著的 consumer 數，0 = 沒人在讀\n- **消費/秒、寫入/秒**：每秒讀完（commit）/ 寫入幾筆\n- **還落後**：Lag ÷ 寫入速度 ≈ 正在處理多久以前的資料（寫入很少時偏大）；沒有新寫入 = 取樣區間內沒寫入，算不出來\n- **追上需要**：Lag ÷（消費 − 寫入）。已跟上 = 沒有 lag 或還落後不到 30 秒；沒人在讀 = 有 lag 但沒有 consumer；追不上 = 消費沒有比寫入快；> 1 天 = 兩邊幾乎一樣快，lag 不會明顯下降\n- **Lag 佔保留量**：還沒讀的筆數 ÷ Kafka 這個 partition 現在還留著的筆數（取最糟的 partition）。例：還留著 1,000 筆、其中 950 筆沒讀 = 95%。只用 offset 算，看不出 Kafka 什麼時候會刪（retention 設多少要用 `kafka-configs --describe --entity-type topics --entity-name <topic>` 查）。\n  - **0% ~ 70%**：離會被刪的資料還很遠\n  - **接近 100%**（有成員）：快讀不到就被刪了 → 加快消費\n  - **100% 不一定很急**：Kafka 是整個 segment 一起刪，還在寫的那個 segment 不會刪。partition 只留幾筆時（例：留 6 筆、6 筆都沒讀 = 100%）通常要等好幾天才會刪，搭配 Lag 筆數看\n  - **已掉資料**（有成員、超過 100%）：沒讀的已經被刪了，consumer 會收到 OFFSET_OUT_OF_RANGE，依 auto.offset.reset 跳到最舊或最新\n  - **沒人在讀**（成員 0、有 lag）：沒人讀的 group 遲早都會到 100%，% 沒意義，所以不顯示。確認程式該不該在跑；不用了就刪掉 group（`kafka-consumer-groups --delete --group <group>`）\n  - **已掉資料（沒人讀）**（成員 0、超過 100%）：沒人讀的期間資料已被刪；程式重開時會依 auto.offset.reset 跳過被刪的部分\n- **Lag 趨勢**：lag 每秒的變化（筆/秒，速度取樣區間平均）。正數 = 越落越多；負數 = 正在追上（例：-2.6 = 每秒少 2.6 筆）；在 0 附近小幅正負跳動 = 持平（consumer 每隔幾秒才 commit 一次）；沒人在讀時 ≈ 寫入速度（寫進來的都變 lag），也沒有寫入時才是 0\n\n**正常**：成員 ≥ 1、追上需要顯示「已跟上」。\n\n**不正常時**：\n- 成員 0 → 程式沒在跑\n- 追不上、Lag 趨勢 > 0 → 處理太慢：加 consumer（不能超過 partition 數）或加快處理\n- Lag 佔保留量接近 100%（有成員）→ 沒讀到的資料快被刪掉；「已掉資料」→ 已經刪了；「沒人在讀」→ 先處理成員 0（各情境見欄位說明）\n- 還落後 / 追上需要跳動很大 → 把「速度取樣」調長（短 = 反應快但跳動大，長 = 穩但慢半拍）",
       "datasource": {
         "type": "prometheus",
         "uid": "${datasource}"
@@ -858,7 +858,7 @@
             "uid": "${datasource}"
           },
           "editorMode": "code",
-          "expr": "max by(consumergroup,topic)(clamp_min(kafka_consumergroup_lag{cluster=\"$cluster\",topic=~\"$topic\",consumergroup=~\"$consumergroup\"}, 0) / on(topic,partition) group_left() clamp_min((kafka_topic_partition_current_offset{cluster=\"$cluster\",topic=~\"$topic\"} - kafka_topic_partition_oldest_offset{cluster=\"$cluster\",topic=~\"$topic\"}), 1))",
+          "expr": "(max by(consumergroup,topic)(clamp_min(kafka_consumergroup_lag{cluster=\"$cluster\",topic=~\"$topic\",consumergroup=~\"$consumergroup\"}, 0) / on(topic,partition) group_left() clamp_min((kafka_topic_partition_current_offset{cluster=\"$cluster\",topic=~\"$topic\"} - kafka_topic_partition_oldest_offset{cluster=\"$cluster\",topic=~\"$topic\"}), 1)) and on(consumergroup) (max by(consumergroup)(kafka_consumergroup_members{cluster=\"$cluster\",consumergroup=~\"$consumergroup\"}) > 0)) or ((max by(consumergroup,topic)(clamp_min(kafka_consumergroup_lag{cluster=\"$cluster\",topic=~\"$topic\",consumergroup=~\"$consumergroup\"}, 0) / on(topic,partition) group_left() clamp_min((kafka_topic_partition_current_offset{cluster=\"$cluster\",topic=~\"$topic\"} - kafka_topic_partition_oldest_offset{cluster=\"$cluster\",topic=~\"$topic\"}), 1)) > 1) * 0 - 3 and on(consumergroup) (max by(consumergroup)(kafka_consumergroup_members{cluster=\"$cluster\",consumergroup=~\"$consumergroup\"}) == 0)) or ((max by(consumergroup,topic)(clamp_min(kafka_consumergroup_lag{cluster=\"$cluster\",topic=~\"$topic\",consumergroup=~\"$consumergroup\"}, 0) / on(topic,partition) group_left() clamp_min((kafka_topic_partition_current_offset{cluster=\"$cluster\",topic=~\"$topic\"} - kafka_topic_partition_oldest_offset{cluster=\"$cluster\",topic=~\"$topic\"}), 1)) > 0) * 0 - 2 and on(consumergroup) (max by(consumergroup)(kafka_consumergroup_members{cluster=\"$cluster\",consumergroup=~\"$consumergroup\"}) == 0)) or max by(consumergroup,topic)(clamp_min(kafka_consumergroup_lag{cluster=\"$cluster\",topic=~\"$topic\",consumergroup=~\"$consumergroup\"}, 0) / on(topic,partition) group_left() clamp_min((kafka_topic_partition_current_offset{cluster=\"$cluster\",topic=~\"$topic\"} - kafka_topic_partition_oldest_offset{cluster=\"$cluster\",topic=~\"$topic\"}), 1))",
           "legendFormat": "__auto",
           "refId": "G",
           "range": false,
@@ -1179,6 +1179,21 @@
                 "id": "mappings",
                 "value": [
                   {
+                    "type": "value",
+                    "options": {
+                      "-2": {
+                        "text": "沒人在讀",
+                        "color": "#8e8e8e",
+                        "index": 0
+                      },
+                      "-3": {
+                        "text": "已掉資料（沒人讀）",
+                        "color": "orange",
+                        "index": 1
+                      }
+                    }
+                  },
+                  {
                     "type": "range",
                     "options": {
                       "from": 1.000001,
@@ -1186,7 +1201,7 @@
                       "result": {
                         "text": "已掉資料",
                         "color": "red",
-                        "index": 0
+                        "index": 2
                       }
                     }
                   }

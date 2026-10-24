@@ -175,7 +175,7 @@ GUIDE = """### 這個 Dashboard 怎麼用
 | 登入失敗（SaslAuthenticationException） | ④ **登入失敗** |
 | 想知道哪個帳號（專案）流量最大、有沒有被限速 | ⑤ **各帳號** 開頭的圖表、**連線的 client 程式** |
 | Topic 是否滿載、partition 不均、磁碟夠不夠 | ② **Topic 總表** → **熱點 partition** → **磁碟幾小時後滿** |
-| 資料會不會還沒讀就被刪掉 | ② Consumer Group 現況 **Lag 佔保留量**（接近 100% 就會掉資料） |
+| 資料會不會還沒讀就被刪掉 | ② Consumer Group 現況 **Lag 佔保留量**（有人在讀、接近 100% 就快掉資料；超過 = 已掉資料） |
 
 - **這裡看不到的**：哪個帳號被拒（看 broker 的 authorizer log）、每則訊息的端到端延遲（要應用程式埋點）、Topic 設定（`kafka-configs --describe`）
 - **面板顯示「jmx exporter 設定沒收 X」**：請維運在 jmx exporter 設定的 `includeObjectNames` 加上 X
@@ -244,6 +244,7 @@ LAGS = f'sum by(consumergroup,topic)(clamp_min({LAG}, 0))'
 MEMBERS = f'max by(consumergroup)(kafka_consumergroup_members{{{C},consumergroup=~"$consumergroup"}})'
 # 還落後 = lag / 寫入速度;取樣區間內沒有寫入就沒有值 (不能拿 0 除)
 BEHIND = f'({LAGS} / on(topic) group_left() ({PROD_RATE} > 0))'
+RATIO = f'max by(consumergroup,topic)(clamp_min({LAG}, 0) / on(topic,partition) group_left() clamp_min({RETAINED}, 1))'
 cg_targets = [
     tgt(f'sum by(consumergroup,topic)(clamp_min({LAG}, 0))', ref="A", instant=True, fmt="table"),
     tgt(f'max by(consumergroup,topic)({LAG}) * 0 + on(consumergroup) group_left() '
@@ -260,8 +261,12 @@ cg_targets = [
         f'or ({LAGS} * 0 - 1 and on(consumergroup,topic) ({BEHIND} < 30)) '
         f'or ({LAGS} / (({CONS_RATE}) - on(topic) group_left() {PROD_RATE} > 0))',
         ref="F", instant=True, fmt="table"),
-    # lag 佔保留量:取最糟的 partition
-    tgt(f'max by(consumergroup,topic)(clamp_min({LAG}, 0) / on(topic,partition) group_left() clamp_min({RETAINED}, 1))',
+    # lag 佔保留量:取最糟的 partition。沒人讀的 group 遲早都是 100%,% 沒意義 → 依序 (or 左邊優先):
+    # 有成員 → %;沒成員且 > 100% → 已掉資料 (沒人讀) (-3);沒成員且有 lag → 沒人在讀 (-2);其餘 (lag 0) → %
+    tgt(f'({RATIO} and on(consumergroup) ({MEMBERS} > 0)) '
+        f'or (({RATIO} > 1) * 0 - 3 and on(consumergroup) ({MEMBERS} == 0)) '
+        f'or (({RATIO} > 0) * 0 - 2 and on(consumergroup) ({MEMBERS} == 0)) '
+        f'or {RATIO}',
         ref="G", instant=True, fmt="table"),
     tgt(f'sum by(consumergroup,topic)(deriv({LAG}[{RW}]))', ref="H", instant=True, fmt="table"),
 ]
@@ -271,7 +276,7 @@ panels.append(table(
          "成員 ≥ 1、追上需要顯示「已跟上」。",
          "成員 0 → 程式沒在跑",
          "追不上、Lag 趨勢 > 0 → 處理太慢：加 consumer（不能超過 partition 數）或加快處理",
-         "Lag 佔保留量接近 100% → 沒讀到的資料快被刪掉；顯示「已掉資料」→ 已經刪了，consumer 會依 auto.offset.reset 跳到最舊或最新",
+         "Lag 佔保留量接近 100%（有成員）→ 沒讀到的資料快被刪掉；「已掉資料」→ 已經刪了；「沒人在讀」→ 先處理成員 0（各情境見欄位說明）",
          "還落後 / 追上需要跳動很大 → 把「速度取樣」調長（短 = 反應快但跳動大，長 = 穩但慢半拍）",
          cols=[("Lag", "還沒讀的訊息數"),
                ("成員", "連著的 consumer 數，0 = 沒人在讀"),
@@ -280,10 +285,17 @@ panels.append(table(
                ("追上需要", "Lag ÷（消費 − 寫入）。已跟上 = 沒有 lag 或還落後不到 30 秒；沒人在讀 = 有 lag 但沒有 consumer；"
                           "追不上 = 消費沒有比寫入快；> 1 天 = 兩邊幾乎一樣快，lag 不會明顯下降"),
                ("Lag 佔保留量", "還沒讀的筆數 ÷ Kafka 這個 partition 現在還留著的筆數（取最糟的 partition）。"
-                            "只用 offset 算，不是 segment，也跟 retention 是依時間還是大小無關。"
-                            "例：還留著 1,000 筆、其中 950 筆沒讀 = 95%，再刪一點就會刪到沒讀的；"
-                            "**已掉資料** = 超過 100%，沒讀的已經被刪了（consumer 會收到 OFFSET_OUT_OF_RANGE）。"
-                            "retention 設多少要用 `kafka-configs --describe --entity-type topics --entity-name <topic>` 查"),
+                            "例：還留著 1,000 筆、其中 950 筆沒讀 = 95%。只用 offset 算，看不出 Kafka 什麼時候會刪"
+                            "（retention 設多少要用 `kafka-configs --describe --entity-type topics --entity-name <topic>` 查）。\n"
+                            "  - **0% ~ 70%**：離會被刪的資料還很遠\n"
+                            "  - **接近 100%**（有成員）：快讀不到就被刪了 → 加快消費\n"
+                            "  - **100% 不一定很急**：Kafka 是整個 segment 一起刪，還在寫的那個 segment 不會刪。"
+                            "partition 只留幾筆時（例：留 6 筆、6 筆都沒讀 = 100%）通常要等好幾天才會刪，搭配 Lag 筆數看\n"
+                            "  - **已掉資料**（有成員、超過 100%）：沒讀的已經被刪了，consumer 會收到 OFFSET_OUT_OF_RANGE，"
+                            "依 auto.offset.reset 跳到最舊或最新\n"
+                            "  - **沒人在讀**（成員 0、有 lag）：沒人讀的 group 遲早都會到 100%，% 沒意義，所以不顯示。"
+                            "確認程式該不該在跑；不用了就刪掉 group（`kafka-consumer-groups --delete --group <group>`）\n"
+                            "  - **已掉資料（沒人讀）**（成員 0、超過 100%）：沒人讀的期間資料已被刪；程式重開時會依 auto.offset.reset 跳過被刪的部分"),
                ("Lag 趨勢", "lag 每秒的變化（筆/秒，速度取樣區間平均）。正數 = 越落越多；負數 = 正在追上（例：-2.6 = 每秒少 2.6 筆）；"
                           "在 0 附近小幅正負跳動 = 持平（consumer 每隔幾秒才 commit 一次）；"
                           "沒人在讀時 ≈ 寫入速度（寫進來的都變 lag），也沒有寫入時才是 0")]),
@@ -313,8 +325,10 @@ panels.append(table(
         col("Lag 佔保留量", [{"id": "unit", "value": "percentunit"}, {"id": "min", "value": 0}, {"id": "max", "value": 1},
                             {"id": "thresholds", "value": PCT}, cell("gauge"), {"id": "custom.width", "value": 160},
                             # > 100% = consumer 停的位置比最舊還留著的資料更舊 → 沒讀的已被刪
-                            {"id": "mappings", "value": [{"type": "range", "options": {
-                                "from": 1.000001, "to": None, "result": {"text": "已掉資料", "color": "red", "index": 0}}}]}]),
+                            {"id": "mappings", "value": vmap({"-2": ("沒人在讀", "#8e8e8e"),
+                                                              "-3": ("已掉資料（沒人讀）", "orange")}) + [
+                                {"type": "range", "options": {
+                                    "from": 1.000001, "to": None, "result": {"text": "已掉資料", "color": "red", "index": 2}}}]}]),
         col("Lag 趨勢", [{"id": "decimals", "value": 1},
                                  {"id": "thresholds", "value": steps(("green", None), ("orange", 1))}, cell("color-text")]),
     ]))
