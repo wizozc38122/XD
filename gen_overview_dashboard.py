@@ -557,11 +557,16 @@ ts(L, "【Workload】重啟次數 Top 10（每 1 小時）",
 L.newline()
 row("4. 【Workload】共用資源 Top 10 趨勢（limit 管不到，會影響同 Node 鄰居）")
 L = Line()
-# 只算沒設 CPU Limit 的容器:這些容器的 CPU 沒有上限
-NOLIM_CPU = (f'sum by (namespace, pod) ({cpu_ct(WR)} unless on (namespace, pod, container) {spec("limits", "cpu")})')
+# 只算沒設 Limit 的容器:這些容器的用量沒有上限 (有設 Limit 的被自己的 Limit 管住,在第 3 區)
+NOLIM_CPU = f'sum by (namespace, pod) ({unlimited(cpu_ct(WR), "cpu")})'
+NOLIM_MEM = f'sum by (namespace, pod) ({unlimited(mem_ct(), "memory")})'
 ts(L, "【Workload】沒設 CPU Limit 的容器 CPU 用量（核）Top 10",
    f'topk(10, {by_wl(NOLIM_CPU)})', "{{namespace}}/{{workload}}", "none",
    desc(V_CLUSTER_WL, "沒設 CPU Limit 的容器用了幾核。這些容器沒有上限，Node 忙的時候會跟鄰居搶 CPU。", WL_HOW))
+ts(L, "【Workload】沒設記憶體 Limit 的容器記憶體用量 Top 10",
+   f'topk(10, {by_wl(NOLIM_MEM)})', "{{namespace}}/{{workload}}", "bytes",
+   desc(V_CLUSTER_WL, "沒設記憶體 Limit 的容器用了多少記憶體。這些容器沒有上限，一直長會讓 Node 記憶體不足，"
+        "觸發 MemoryPressure 驅逐同 Node 的 Pod，或讓鄰居被 OOMKilled。", WL_HOW))
 ts(L, "【Workload】網路流量 Top 10",
    f'topk(10, {by_wl(net(WR))})', "{{namespace}}/{{workload}}", "Bps",
    desc(V_CLUSTER_WL, "送出加接收的網路流量，所在 Node 的網卡由所有 Pod 共用。", WL_HOW))

@@ -4362,7 +4362,7 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "topk(10, sum by (namespace, workload, workload_type) ((sum by (namespace, pod) (max by (namespace, pod, container) (rate(container_cpu_usage_seconds_total{container!=\"\", container!=\"POD\", namespace=~\"$namespace\", namespace!~\"$exclude\"}[$__rate_interval])) unless on (namespace, pod, container) max by (namespace, pod, container) (kube_pod_container_resource_limits{resource=\"cpu\", namespace=~\"$namespace\", namespace!~\"$exclude\"} > 0))) * on (namespace, pod) group_left (workload, workload_type) max by (namespace, pod, workload, workload_type) (label_replace(label_replace(label_replace(kube_pod_owner{owner_kind=\"ReplicaSet\", namespace=~\"$namespace\", namespace!~\"$exclude\"}, \"replicaset\", \"$1\", \"owner_name\", \"(.*)\") * on (namespace, replicaset) group_left (owner_deploy) max by (namespace, replicaset, owner_deploy) (label_replace(kube_replicaset_owner{owner_kind=\"Deployment\", namespace=~\"$namespace\", namespace!~\"$exclude\"}, \"owner_deploy\", \"$1\", \"owner_name\", \"(.*)\")), \"workload\", \"$1\", \"owner_deploy\", \"(.*)\"), \"workload_type\", \"Deployment\", \"namespace\", \".*\") or label_replace(label_replace(kube_pod_owner{owner_kind=~\"StatefulSet|DaemonSet\", namespace=~\"$namespace\", namespace!~\"$exclude\"}, \"workload\", \"$1\", \"owner_name\", \"(.*)\"), \"workload_type\", \"$1\", \"owner_kind\", \"(.*)\"))))",
+          "expr": "topk(10, sum by (namespace, workload, workload_type) ((sum by (namespace, pod) ((max by (namespace, pod, container) (rate(container_cpu_usage_seconds_total{container!=\"\", container!=\"POD\", namespace=~\"$namespace\", namespace!~\"$exclude\"}[$__rate_interval])) unless on (namespace, pod, container) max by (namespace, pod, container) (kube_pod_container_resource_limits{resource=\"cpu\", namespace=~\"$namespace\", namespace!~\"$exclude\"} > 0)))) * on (namespace, pod) group_left (workload, workload_type) max by (namespace, pod, workload, workload_type) (label_replace(label_replace(label_replace(kube_pod_owner{owner_kind=\"ReplicaSet\", namespace=~\"$namespace\", namespace!~\"$exclude\"}, \"replicaset\", \"$1\", \"owner_name\", \"(.*)\") * on (namespace, replicaset) group_left (owner_deploy) max by (namespace, replicaset, owner_deploy) (label_replace(kube_replicaset_owner{owner_kind=\"Deployment\", namespace=~\"$namespace\", namespace!~\"$exclude\"}, \"owner_deploy\", \"$1\", \"owner_name\", \"(.*)\")), \"workload\", \"$1\", \"owner_deploy\", \"(.*)\"), \"workload_type\", \"Deployment\", \"namespace\", \".*\") or label_replace(label_replace(kube_pod_owner{owner_kind=~\"StatefulSet|DaemonSet\", namespace=~\"$namespace\", namespace!~\"$exclude\"}, \"workload\", \"$1\", \"owner_name\", \"(.*)\"), \"workload_type\", \"$1\", \"owner_kind\", \"(.*)\"))))",
           "legendFormat": "{{namespace}}/{{workload}}",
           "range": true,
           "instant": false
@@ -4406,6 +4406,64 @@
     },
     {
       "id": 23,
+      "type": "timeseries",
+      "title": "【Workload】沒設記憶體 Limit 的容器記憶體用量 Top 10",
+      "description": "**視角**：叢集內每一個 Workload（該 Workload 所有 Pod 合計）\n\n**這是什麼**：沒設記憶體 Limit 的容器用了多少記憶體。這些容器沒有上限，一直長會讓 Node 記憶體不足，觸發 MemoryPressure 驅逐同 Node 的 Pod，或讓鄰居被 OOMKilled。\n\n**怎麼看**：看誰在什麼時間往上飆，對照第 1 區 Node 變吃緊的時間點；右側圖例依最大值排序。",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${datasource}"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "expr": "topk(10, sum by (namespace, workload, workload_type) ((sum by (namespace, pod) ((max by (namespace, pod, container) (container_memory_working_set_bytes{container!=\"\", container!=\"POD\", namespace=~\"$namespace\", namespace!~\"$exclude\"}) unless on (namespace, pod, container) max by (namespace, pod, container) (kube_pod_container_resource_limits{resource=\"memory\", namespace=~\"$namespace\", namespace!~\"$exclude\"} > 0)))) * on (namespace, pod) group_left (workload, workload_type) max by (namespace, pod, workload, workload_type) (label_replace(label_replace(label_replace(kube_pod_owner{owner_kind=\"ReplicaSet\", namespace=~\"$namespace\", namespace!~\"$exclude\"}, \"replicaset\", \"$1\", \"owner_name\", \"(.*)\") * on (namespace, replicaset) group_left (owner_deploy) max by (namespace, replicaset, owner_deploy) (label_replace(kube_replicaset_owner{owner_kind=\"Deployment\", namespace=~\"$namespace\", namespace!~\"$exclude\"}, \"owner_deploy\", \"$1\", \"owner_name\", \"(.*)\")), \"workload\", \"$1\", \"owner_deploy\", \"(.*)\"), \"workload_type\", \"Deployment\", \"namespace\", \".*\") or label_replace(label_replace(kube_pod_owner{owner_kind=~\"StatefulSet|DaemonSet\", namespace=~\"$namespace\", namespace!~\"$exclude\"}, \"workload\", \"$1\", \"owner_name\", \"(.*)\"), \"workload_type\", \"$1\", \"owner_kind\", \"(.*)\"))))",
+          "legendFormat": "{{namespace}}/{{workload}}",
+          "range": true,
+          "instant": false
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "bytes",
+          "min": 0,
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 1,
+            "fillOpacity": 10,
+            "showPoints": "never",
+            "spanNulls": true
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "right",
+          "calcs": [
+            "max"
+          ],
+          "sortBy": "Max",
+          "sortDesc": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 98
+      }
+    },
+    {
+      "id": 24,
       "type": "timeseries",
       "title": "【Workload】網路流量 Top 10",
       "description": "**視角**：叢集內每一個 Workload（該 Workload 所有 Pod 合計）\n\n**這是什麼**：送出加接收的網路流量，所在 Node 的網卡由所有 Pod 共用。\n\n**怎麼看**：看誰在什麼時間往上飆，對照第 1 區 Node 變吃緊的時間點；右側圖例依最大值排序。",
@@ -4458,12 +4516,12 @@
       "gridPos": {
         "h": 8,
         "w": 12,
-        "x": 12,
-        "y": 98
+        "x": 0,
+        "y": 106
       }
     },
     {
-      "id": 24,
+      "id": 25,
       "type": "timeseries",
       "title": "【Workload】網路丟包 Top 10",
       "description": "**視角**：叢集內每一個 Workload（該 Workload 所有 Pod 合計）\n\n**這是什麼**：Pod 網路介面上每秒丟掉的封包數，正常應接近 0。\n\n**怎麼看**：看誰在什麼時間往上飆，對照第 1 區 Node 變吃緊的時間點；右側圖例依最大值排序。",
@@ -4516,12 +4574,12 @@
       "gridPos": {
         "h": 8,
         "w": 12,
-        "x": 0,
+        "x": 12,
         "y": 106
       }
     },
     {
-      "id": 25,
+      "id": 26,
       "type": "timeseries",
       "title": "【Workload】磁碟寫入 Top 10",
       "description": "**視角**：叢集內每一個 Workload（該 Workload 所有 Pod 合計）\n\n**這是什麼**：寫入 Node 本機磁碟的量（log、暫存檔、容器內寫檔）。沒資料代表叢集沒有收集 Pod 層級磁碟 IO。\n\n**怎麼看**：看誰在什麼時間往上飆，對照第 1 區 Node 變吃緊的時間點；右側圖例依最大值排序。",
@@ -4574,12 +4632,12 @@
       "gridPos": {
         "h": 8,
         "w": 12,
-        "x": 12,
-        "y": 106
+        "x": 0,
+        "y": 114
       }
     },
     {
-      "id": 26,
+      "id": 27,
       "type": "timeseries",
       "title": "【Workload】可寫層用量 Top 10",
       "description": "**視角**：叢集內每一個 Workload（該 Workload 所有 Pod 合計）\n\n**這是什麼**：容器在 Node 本機磁碟上佔用的空間，持續成長可能把 Node 磁碟寫滿。\n\n**怎麼看**：看誰在什麼時間往上飆，對照第 1 區 Node 變吃緊的時間點；右側圖例依最大值排序。",
@@ -4632,7 +4690,7 @@
       "gridPos": {
         "h": 8,
         "w": 12,
-        "x": 0,
+        "x": 12,
         "y": 114
       }
     }

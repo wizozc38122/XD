@@ -54,7 +54,7 @@ OCP 沒有特別設定時，不會限制 Pod 的網路頻寬與磁碟讀寫速�
 | 2.【Workload】Pod 之間分配不均 | 2 個 Pod 以上的 Workload：CPU、網路最忙 Pod 佔全部幾 %、是平均的幾倍；記憶體最多的 Pod 是平均的幾倍 |
 | 2.【Workload】共用資源與重啟 | 重啟、網路流量與丟包、磁碟寫入、可寫層用量 |
 | 3.【Workload】Limit 相關 Top 10 | CPU / 記憶體用量 ÷ Limit、throttling、重啟隨時間的變化 |
-| 4.【Workload】共用資源 Top 10 | 沒設 CPU Limit 的容器 CPU 用量、網路、磁碟這些 limit 管不到、會影響同 Node 鄰居的指標隨時間的變化 |
+| 4.【Workload】共用資源 Top 10 | 沒設 Limit 的容器 CPU、記憶體用量，網路、磁碟這些 limit 管不到、會影響同 Node 鄰居的指標隨時間的變化 |
 
 注意事項：
 
