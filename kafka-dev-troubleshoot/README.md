@@ -50,15 +50,15 @@ kafka-exporter 的 scrape 間隔不是 15 秒時，用 `--scrape` 指定（例�
 **Kafka 即時現況**
 
 - Kafka 本身有沒有壞
-- Consumer 追得上嗎：追得上嗎（Lag、成員、追上需要、還落後）、近 5m 寫入 / 消費、會不會沒讀就被刪、有 lag 的 Partition
-- Topic：規模、流量
-- 連線與副本：連線的 client 程式、副本沒跟上的 Partition、Leader 不在首選、磁碟幾小時後滿
+- Consumer 追得上嗎：**Consumer Group 現況**（一列看完：成員、寫入 / 消費 / Lag 增減（筆/秒）、Lag、還落後、追上需要、Lag 佔保留量、沒 commit 數）、有 lag 的 Partition、副本沒跟上的 Partition
+- Topic：**Topic 現況**（寫入 / 讀取速度、不均度、Partition、副本、磁碟、保留訊息、副本不足）
+- 連線與副本：連線的 client 程式、Leader 不在首選、磁碟幾小時後滿
 
 **Kafka 問題排查**
 
 1. 使用說明：依症狀找方向（預設收合）
 2. ① Kafka 本身有沒有壞（期間最糟）
-3. ② Consumer 有沒有追上、Topic 是否滿載：4 張期間表格 + 走勢圖
+3. ② Consumer 有沒有追上、Topic 是否滿載：期間總量與平均、期間最高 / 最低 兩張表 + 走勢圖
 4. ③ 延遲：寫入 / 讀取慢在哪一段
 5. ④ 錯誤與權限：應用程式收到什麼錯誤
 6. ⑤ 各帳號（專案）與連線（預設收合）
@@ -71,22 +71,20 @@ kafka-exporter 的 scrape 間隔不是 15 秒時，用 `--scrape` 指定（例�
 
 - ① **期間最糟**：每格是期間內最高（Broker 數、Active Controller 取最低）。每次 scrape 都看，短暫尖峰也抓得到；小走勢圖看得出是什麼時候。
 - ② 期間表格：
-  - **期間落後多少**：最高 Lag、最高還落後、**落後的時間**（期間 lag 超過 30 秒寫入量的總時間，實際量到的；壓測時 ≈ 從開始落後到追上花了多久）。
-  - **期間寫入 / 消費**：範圍頭尾相減，期間寫入 − 期間消費 = Lag 變化。範圍開始時 group 還沒 commit 過會顯示「範圍開頭還沒有」，把範圍開頭往後調。
-  - **期間處理速度**：最高消費/秒 ≈ consumer 目前配置能處理的上限；明顯低於最高寫入/秒就是瓶頸。
-  - **期間 consumer 與保留**：最少成員、成員變動次數、最高佔保留量。
+  - **期間總量與平均**：期間寫入、期間消費、Lag 變化、平均寫入 / 消費（筆/秒）、**落後的時間**（期間 lag 超過 30 秒寫入量的總時間，實際量到的；壓測時 ≈ 從開始落後到追上花了多久）。期間寫入 − 期間消費 = Lag 變化。範圍開始時 group 還沒 commit 過會顯示「範圍開頭還沒有」，把範圍開頭往後調。
+  - **期間最高 / 最低**：最高寫入 / 消費（筆/秒）、最高 Lag、最高還落後、最高 Lag 佔保留量、最少成員、成員變動次數。最高消費 ≈ consumer 目前配置能處理的上限；明顯低於最高寫入就是瓶頸。
   - 時間範圍很長（例如 7 天）時會算比較久。
 - ② 走勢圖：Lag、速度、**預估追上需要**、還落後、成員數、Lag 佔保留量是什麼時候開始變化的。圖例的 Mean / Max 是整個範圍的值。
 
 ## 幾個容易誤會的數字
 
-- **寫入、消費、Lag 變化**（即時的「近 5m」、問題排查的「期間」）：都是區間頭尾相減的筆數，所以一定對得上：**寫入 − 消費 = Lag 變化**（四捨五入可能差 1）。
+- **寫入、消費、Lag 增減 / 變化**（即時現況的筆/秒、問題排查的「期間」筆數）：都是區間頭尾相減（即時現況再除以秒數），所以同一列一定對得上：**寫入 − 消費 = Lag 增減**（四捨五入可能差一點）。
   - 資料每次 scrape 才一筆，consumer 又是每隔幾秒才 commit，lag 本來就是鋸齒狀。頭尾各取一小段平均（4 次 scrape，最少 1 分鐘）再相減，鋸齒才不會被當成增減。
   - kafka-exporter 算 lag 時，log end 是另外跟 broker 要的，跟 topic 的 offset 指標不是同一個瞬間。所以寫入用「lag + commit 位置」還原 lag 用的那個 log end，三個數字才會剛好對上。
   - 只算這個 group 頭尾都 commit 過的 partition，所以寫入可能比 Topic 流量表少。
   - **Lag 變化**在 ±10 筆內視為持平。
   - **消費**是負數 = offset 被往回重設（重讀）。
-- **沒 commit 的 Partition**：group 在這個 topic 還沒 commit 過的 partition 數。kafka-exporter 對這些 partition 回報 lag = -1，所以 Lag 算 0、寫入 / 消費 / Lag 變化也不算它們；> 0 時這些 partition 的積壓看不到，確認是不是沒有 consumer 分到，或程式只在處理到資料時才 commit。整個 topic 都沒 commit 過時，exporter 不會列出這個 group × topic。
+- **沒 commit 數**：group 在這個 topic 還沒 commit 過的 partition 數。kafka-exporter 對這些 partition 回報 lag = -1，所以 Lag 算 0、寫入 / 消費 / Lag 變化也不算它們；> 0 時這些 partition 的積壓看不到，確認是不是沒有 consumer 分到，或程式只在處理到資料時才 commit。整個 topic 都沒 commit 過時，exporter 不會列出這個 group × topic。
 - **追上需要**（即時）：Lag ÷ 比較區間內 lag 減少的速度。依序判斷：
   1. 沒有 lag → 已跟上
   2. 有 lag 但沒有 consumer → 沒人在讀
