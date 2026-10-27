@@ -125,10 +125,10 @@
       "title": "",
       "options": {
         "mode": "markdown",
-        "content": "### 這個 Dashboard 怎麼用\n**目的**：壓測期間，判斷 `$workload`（namespace `$namespace`）是否拖慢**同一台 Node** 上的其他服務。重點是 CPU / 記憶體 limit **管不到**的共用資源：網路、磁碟 IO、conntrack。\n\n**面板標題前綴代表「在看誰」，一張圖只看一個對象：**\n\n| 前綴 | 看的是 |\n|---|---|\n| 【他】 | 他自己的 Pod（**主要看這個**） |\n| 【整台 Node】 | 他所在 Node 的所有 Pod 加總，**不是他的用量** |\n| 【鄰居】 | 同 Node 上所有 Pod 排名 |\n| 【共用】 | 全叢集共用元件（Router、DNS） |\n\n**所有百分比的分母都寫在標題的「÷ …」，三種意思完全不同：**\n\n| 分母 | 回答的問題 | 在哪裡 |\n|---|---|---|\n| ÷ 自己的 Request / Limit | 他有沒有超出自己的設定 | 第 1、2 區 |\n| ÷ Node 目前用量 | 他是不是大戶。⚠️ 只剩他在跑時一定接近 100%，**不代表資源快滿** | 3A |\n| ÷ Node 容量 | 離滿還有多遠，**壓測主要看這個** | 3B（他）、3D（整台） |\n\n另外 3C（他）、3E（整台）用虛線畫出**壓測前 7 天峰值**，看現在是不是比平常最忙的時候還高。\n\n**判讀**：只有「他的用量上升」**且**「整台 Node 的壓力指標在同一時間往上飆」**且**「鄰居也受影響」三者時間對得上，才算他影響了整體。整台 Node 指標本身沒辦法告訴你是誰造成的，要搭配【他】和【鄰居】一起看。\n\n**建議操作**：選 namespace 與 Deployment → `Node` 會自動帶出他所在的 Node → 時間範圍框住壓測**前後**（要有壓測前的基準才看得出飆升）。每個面板右上角的 ⓘ 有說明。"
+        "content": "**目的**：壓測時判斷 `$workload`（`$namespace`）有沒有拖慢**同一台 Node** 上的其他服務。重點是 limit 管不到的共用資源：網路、磁碟 IO、conntrack。\n\n**標題前綴 = 在看誰**：【他】他自己的 Pod（主要看這個）｜【整台 Node】他所在 Node 的所有 Pod 加總，不是他的用量｜【鄰居】同 Node 所有 Pod 排名｜【共用】Router、DNS\n\n**百分比先看分母（標題的「÷ …」）**：÷ 自己的 Request / Limit → 有沒有超出自己的設定（1、2 區）｜÷ Node 目前用量 → 是不是大戶，不代表快滿（3A）｜÷ Node 容量 → 離滿還多遠，**主要看這個**（3B 他、3D 整台）｜3C、3E 的虛線 = 壓測前 7 天峰值\n\n**判讀**：「他的用量上升」「整台 Node 壓力上升」「鄰居受影響」三者時間對得上，才算他影響了整體。\n\n**操作**：選 Namespace、Deployment（Node 會自動帶出）→ 時間範圍要包含壓測**前後**。每個面板的 ⓘ 有說明。"
       },
       "gridPos": {
-        "h": 16,
+        "h": 10,
         "w": 24,
         "x": 0,
         "y": 0
@@ -143,7 +143,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 16
+        "y": 10
       },
       "panels": []
     },
@@ -205,14 +205,14 @@
         "h": 4,
         "w": 4,
         "x": 0,
-        "y": 17
+        "y": 11
       }
     },
     {
       "id": 4,
       "type": "stat",
       "title": "【他】CPU 用量 ÷ 自己的 Request",
-      "description": "**視角**：他自己（這個 Deployment 的 Pod 合計）\n\n**這是什麼**：實際 CPU 用量占「保證額度（request）」的比例。\n\n**怎麼看**：100% 以下：在自己的保證額度內。超過 100%：正在借用 Node 的閒置 CPU，Node 吃緊時最容易和鄰居互相搶。",
+      "description": "**視角**：他自己（這個 Deployment 的 Pod 合計）\n\n**這是什麼**：CPU 用量占 request（保證額度）的比例，只算有設 request 的容器。\n\n**怎麼看**：超過 100% = 正在借用 Node 的閒置 CPU，Node 吃緊時會和鄰居互搶。沒設 request 則沒有資料。",
       "datasource": {
         "type": "prometheus",
         "uid": "${datasource}"
@@ -224,7 +224,7 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "sum(max by (namespace, pod, container) (rate(container_cpu_usage_seconds_total{namespace=\"$namespace\", pod=~\"$workload-[a-z0-9]+-[a-z0-9]+\", container!=\"\", container!=\"POD\"}[$__rate_interval]))) / sum(kube_pod_container_resource_requests{resource=\"cpu\", namespace=\"$namespace\", pod=~\"$workload-[a-z0-9]+-[a-z0-9]+\"})",
+          "expr": "sum(max by (namespace, pod, container) (rate(container_cpu_usage_seconds_total{namespace=\"$namespace\", pod=~\"$workload-[a-z0-9]+-[a-z0-9]+\", container!=\"\", container!=\"POD\"}[$__rate_interval])) and on (namespace, pod, container) max by (namespace, pod, container) (kube_pod_container_resource_requests{resource=\"cpu\", namespace=\"$namespace\", pod=~\"$workload-[a-z0-9]+-[a-z0-9]+\"} > 0)) / sum(max by (namespace, pod, container) (kube_pod_container_resource_requests{resource=\"cpu\", namespace=\"$namespace\", pod=~\"$workload-[a-z0-9]+-[a-z0-9]+\"} > 0))",
           "legendFormat": "",
           "range": true,
           "instant": false,
@@ -273,14 +273,14 @@
         "h": 4,
         "w": 4,
         "x": 4,
-        "y": 17
+        "y": 11
       }
     },
     {
       "id": 5,
       "type": "stat",
       "title": "【他】記憶體 ÷ 自己的 Limit（最高的容器）",
-      "description": "**視角**：他自己（這個 Deployment 的 Pod 合計）\n\n**這是什麼**：記憶體用量最接近上限的那個容器，用量占 limit 的比例。\n\n**怎麼看**：超過 90% 要注意，到 100% 會被 OOMKilled。沒設 memory limit 則沒有資料。",
+      "description": "**視角**：他自己（這個 Deployment 的 Pod 合計）\n\n**這是什麼**：最接近 limit 的那個容器，記憶體用量占 limit 的比例。\n\n**怎麼看**：到 100% 會被 OOMKilled。沒設 memory limit（或設 0）則沒有資料。",
       "datasource": {
         "type": "prometheus",
         "uid": "${datasource}"
@@ -292,7 +292,7 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "max(max by (namespace, pod, container) (container_memory_working_set_bytes{namespace=\"$namespace\", pod=~\"$workload-[a-z0-9]+-[a-z0-9]+\", container!=\"\", container!=\"POD\"}) / on (namespace, pod, container) max by (namespace, pod, container) (kube_pod_container_resource_limits{resource=\"memory\", namespace=\"$namespace\", pod=~\"$workload-[a-z0-9]+-[a-z0-9]+\"}))",
+          "expr": "max(max by (namespace, pod, container) (container_memory_working_set_bytes{namespace=\"$namespace\", pod=~\"$workload-[a-z0-9]+-[a-z0-9]+\", container!=\"\", container!=\"POD\"}) / on (namespace, pod, container) max by (namespace, pod, container) (kube_pod_container_resource_limits{resource=\"memory\", namespace=\"$namespace\", pod=~\"$workload-[a-z0-9]+-[a-z0-9]+\"} > 0))",
           "legendFormat": "",
           "range": true,
           "instant": false,
@@ -341,14 +341,14 @@
         "h": 4,
         "w": 4,
         "x": 8,
-        "y": 17
+        "y": 11
       }
     },
     {
       "id": 6,
       "type": "stat",
       "title": "【他】CPU throttling（最高的 Pod）",
-      "description": "**視角**：他自己（這個 Deployment 的 Pod 合計）\n\n**這是什麼**：CPU 想用但被 limit 擋下的時間比例。\n\n**怎麼看**：超過 25% 通常已讓他自己變慢。被節流**只影響他自己**，不會拖累鄰居。",
+      "description": "**視角**：他自己（這個 Deployment 的 Pod 合計）\n\n**這是什麼**：CPU 想用但被 limit 擋下的時間比例。\n\n**怎麼看**：超過 25% 通常已讓他自己變慢；只影響他自己，不會拖累鄰居。",
       "datasource": {
         "type": "prometheus",
         "uid": "${datasource}"
@@ -409,14 +409,14 @@
         "h": 4,
         "w": 4,
         "x": 12,
-        "y": 17
+        "y": 11
       }
     },
     {
       "id": 7,
       "type": "stat",
       "title": "【他】近 1 小時重啟次數",
-      "description": "**視角**：他自己（這個 Deployment 的 Pod 合計）\n\n**這是什麼**：所有 Pod 近 1 小時重啟次數合計。\n\n**怎麼看**：大於 0 要看下方的 OOMKilled 面板，或檢查 probe 是否失敗。",
+      "description": "**視角**：他自己（這個 Deployment 的 Pod 合計）\n\n**這是什麼**：所有 Pod 近 1 小時重啟次數合計。\n\n**怎麼看**：大於 0 → 看 2B 重啟紀錄的原因。",
       "datasource": {
         "type": "prometheus",
         "uid": "${datasource}"
@@ -474,14 +474,14 @@
         "h": 4,
         "w": 4,
         "x": 16,
-        "y": 17
+        "y": 11
       }
     },
     {
       "id": 8,
       "type": "stat",
       "title": "【他】CPU ÷ 所選 Node 總核數",
-      "description": "**視角**：他 ÷ 所選 Node 的 CPU 容量合計\n\n**這是什麼**：他用掉所選 Node CPU 總核數的幾成。分母是容量，所以其他服務停掉時也不會被灌高。\n\n**怎麼看**：每台 Node 分開看請到 3B；整台 Node 是否快滿請看 3D。",
+      "description": "**視角**：他 ÷ 所選 Node 的 CPU 容量合計\n\n**這是什麼**：他用掉所選 Node 總核數的幾成（分母是容量，其他服務停掉也不會被灌高）。\n\n**怎麼看**：每台 Node 分開看 3B；整台 Node 快不快滿看 3D。",
       "datasource": {
         "type": "prometheus",
         "uid": "${datasource}"
@@ -542,7 +542,7 @@
         "h": 4,
         "w": 4,
         "x": 20,
-        "y": 17
+        "y": 11
       }
     },
     {
@@ -596,7 +596,7 @@
         "h": 7,
         "w": 12,
         "x": 0,
-        "y": 21
+        "y": 15
       }
     },
     {
@@ -644,7 +644,7 @@
         "h": 7,
         "w": 12,
         "x": 12,
-        "y": 21
+        "y": 15
       }
     },
     {
@@ -656,7 +656,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 28
+        "y": 22
       },
       "panels": []
     },
@@ -688,7 +688,7 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "sum(kube_pod_container_resource_requests{resource=\"cpu\", namespace=\"$namespace\", pod=~\"$workload-[a-z0-9]+-[a-z0-9]+\"})",
+          "expr": "sum(max by (namespace, pod, container) (kube_pod_container_resource_requests{resource=\"cpu\", namespace=\"$namespace\", pod=~\"$workload-[a-z0-9]+-[a-z0-9]+\"} > 0))",
           "legendFormat": "request 合計",
           "range": true,
           "instant": false,
@@ -700,7 +700,7 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "sum(kube_pod_container_resource_limits{resource=\"cpu\", namespace=\"$namespace\", pod=~\"$workload-[a-z0-9]+-[a-z0-9]+\"})",
+          "expr": "sum(max by (namespace, pod, container) (kube_pod_container_resource_limits{resource=\"cpu\", namespace=\"$namespace\", pod=~\"$workload-[a-z0-9]+-[a-z0-9]+\"} > 0))",
           "legendFormat": "limit 合計",
           "range": true,
           "instant": false,
@@ -746,7 +746,7 @@
         "h": 7,
         "w": 12,
         "x": 0,
-        "y": 29
+        "y": 23
       }
     },
     {
@@ -777,7 +777,7 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "sum(kube_pod_container_resource_requests{resource=\"memory\", namespace=\"$namespace\", pod=~\"$workload-[a-z0-9]+-[a-z0-9]+\"})",
+          "expr": "sum(max by (namespace, pod, container) (kube_pod_container_resource_requests{resource=\"memory\", namespace=\"$namespace\", pod=~\"$workload-[a-z0-9]+-[a-z0-9]+\"} > 0))",
           "legendFormat": "request 合計",
           "range": true,
           "instant": false,
@@ -789,7 +789,7 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "sum(kube_pod_container_resource_limits{resource=\"memory\", namespace=\"$namespace\", pod=~\"$workload-[a-z0-9]+-[a-z0-9]+\"})",
+          "expr": "sum(max by (namespace, pod, container) (kube_pod_container_resource_limits{resource=\"memory\", namespace=\"$namespace\", pod=~\"$workload-[a-z0-9]+-[a-z0-9]+\"} > 0))",
           "legendFormat": "limit 合計",
           "range": true,
           "instant": false,
@@ -823,7 +823,7 @@
         "h": 7,
         "w": 12,
         "x": 12,
-        "y": 29
+        "y": 23
       }
     },
     {
@@ -877,7 +877,7 @@
         "h": 7,
         "w": 8,
         "x": 0,
-        "y": 36
+        "y": 30
       }
     },
     {
@@ -942,7 +942,7 @@
         "h": 7,
         "w": 8,
         "x": 8,
-        "y": 36
+        "y": 30
       }
     },
     {
@@ -1032,7 +1032,7 @@
         "h": 7,
         "w": 8,
         "x": 16,
-        "y": 36
+        "y": 30
       }
     },
     {
@@ -1096,9 +1096,9 @@
       },
       "gridPos": {
         "h": 7,
-        "w": 8,
+        "w": 12,
         "x": 0,
-        "y": 43
+        "y": 37
       }
     },
     {
@@ -1149,16 +1149,29 @@
       },
       "gridPos": {
         "h": 7,
-        "w": 8,
-        "x": 8,
-        "y": 43
+        "w": 12,
+        "x": 12,
+        "y": 37
       }
     },
     {
       "id": 19,
+      "type": "row",
+      "title": "2B. 【他】重啟紀錄與原因",
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 44
+      },
+      "panels": []
+    },
+    {
+      "id": 20,
       "type": "timeseries",
-      "title": "【他】重啟與 OOMKilled",
-      "description": "**視角**：他自己（這個 Deployment 的 Pod 合計）\n\n**這是什麼**：每 5 分鐘內的重啟次數，以及上次是因為記憶體超過 limit 被殺的容器數。\n\n**怎麼看**：有 OOMKilled 代表 memory limit 不夠或有記憶體堆積。",
+      "title": "【他】重啟次數（依上次結束原因，每 5 分鐘）",
+      "description": "**視角**：他自己（這個 Deployment 的 Pod 合計）\n\n**這是什麼**：每 5 分鐘重啟幾次，依容器上次結束的原因分開；以及目前卡在等待狀態（CrashLoopBackOff 等）的容器數、被驅逐的 Pod 數。\n\n**怎麼看**：OOMKilled → 記憶體超過 limit；Error → 程式異常結束（exit code 看右表）；CrashLoopBackOff → 一直啟動失敗，Kubernetes 拉長重試間隔。Evicted → Node 資源不足被趕走，看第 4 區。",
       "datasource": {
         "type": "prometheus",
         "uid": "${datasource}"
@@ -1170,8 +1183,8 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "sum by (pod) (increase(kube_pod_container_status_restarts_total{namespace=\"$namespace\", pod=~\"$workload-[a-z0-9]+-[a-z0-9]+\"}[5m]))",
-          "legendFormat": "重啟 {{pod}}",
+          "expr": "sum by (reason) (max by (namespace, pod, container) (increase(kube_pod_container_status_restarts_total{namespace=\"$namespace\", pod=~\"$workload-[a-z0-9]+-[a-z0-9]+\"}[5m])) * on (namespace, pod, container) group_left (reason) max by (namespace, pod, container, reason) (kube_pod_container_status_last_terminated_reason{namespace=\"$namespace\", pod=~\"$workload-[a-z0-9]+-[a-z0-9]+\"} == 1))",
+          "legendFormat": "重啟：{{reason}}",
           "range": true,
           "instant": false,
           "format": "time_series"
@@ -1182,8 +1195,20 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "sum(kube_pod_container_status_last_terminated_reason{namespace=\"$namespace\", pod=~\"$workload-[a-z0-9]+-[a-z0-9]+\", reason=\"OOMKilled\"})",
-          "legendFormat": "上次因 OOMKilled 結束的容器數",
+          "expr": "count by (reason) (kube_pod_container_status_waiting_reason{namespace=\"$namespace\", pod=~\"$workload-[a-z0-9]+-[a-z0-9]+\"} == 1)",
+          "legendFormat": "等待中：{{reason}}",
+          "range": true,
+          "instant": false,
+          "format": "time_series"
+        },
+        {
+          "refId": "C",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "expr": "count(kube_pod_status_reason{namespace=\"$namespace\", pod=~\"$workload-[a-z0-9]+-[a-z0-9]+\", reason=\"Evicted\"} == 1)",
+          "legendFormat": "被驅逐（Evicted）的 Pod",
           "range": true,
           "instant": false,
           "format": "time_series"
@@ -1214,14 +1239,282 @@
         }
       },
       "gridPos": {
-        "h": 7,
-        "w": 8,
-        "x": 16,
-        "y": 43
+        "h": 8,
+        "w": 10,
+        "x": 0,
+        "y": 45
       }
     },
     {
-      "id": 20,
+      "id": 21,
+      "type": "table",
+      "title": "【他】重啟紀錄（每個容器）",
+      "description": "**視角**：他自己（這個 Deployment 的 Pod 合計）\n\n**這是什麼**：每個 Pod 的每個容器：時間範圍內重啟幾次、累計幾次、上次為什麼結束、exit code、多久前、目前是不是卡在等待。\n\n**怎麼看**：**上次結束原因**：OOMKilled = 記憶體超過 limit；Error = 程式異常結束；Completed = 程式自己結束（常駐服務不該這樣）。**exit code 137** 但不是 OOMKilled → 通常是 liveness probe 失敗被殺；143 → 收到終止訊號（重新部署、縮容）。probe 失敗的細節不在 Prometheus，要看 `oc describe pod` 的 Events。沒資料的欄位 = kube-state-metrics 版本太舊沒有這個指標。",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${datasource}"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "expr": "max by (pod, container) (increase(kube_pod_container_status_restarts_total{namespace=\"$namespace\", pod=~\"$workload-[a-z0-9]+-[a-z0-9]+\"}[$__range]))",
+          "legendFormat": "",
+          "range": false,
+          "instant": true,
+          "format": "table"
+        },
+        {
+          "refId": "B",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "expr": "max by (pod, container) (max by (namespace, pod, container) (kube_pod_container_status_restarts_total{namespace=\"$namespace\", pod=~\"$workload-[a-z0-9]+-[a-z0-9]+\"}))",
+          "legendFormat": "",
+          "range": false,
+          "instant": true,
+          "format": "table"
+        },
+        {
+          "refId": "C",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "expr": "max by (pod, container, last_reason) (label_replace(kube_pod_container_status_last_terminated_reason{namespace=\"$namespace\", pod=~\"$workload-[a-z0-9]+-[a-z0-9]+\"} == 1, \"last_reason\", \"$1\", \"reason\", \"(.*)\"))",
+          "legendFormat": "",
+          "range": false,
+          "instant": true,
+          "format": "table"
+        },
+        {
+          "refId": "D",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "expr": "max by (pod, container) (kube_pod_container_status_last_terminated_exitcode{namespace=\"$namespace\", pod=~\"$workload-[a-z0-9]+-[a-z0-9]+\"})",
+          "legendFormat": "",
+          "range": false,
+          "instant": true,
+          "format": "table"
+        },
+        {
+          "refId": "E",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "expr": "max by (pod, container) (kube_pod_container_status_last_terminated_timestamp{namespace=\"$namespace\", pod=~\"$workload-[a-z0-9]+-[a-z0-9]+\"}) * 1000",
+          "legendFormat": "",
+          "range": false,
+          "instant": true,
+          "format": "table"
+        },
+        {
+          "refId": "F",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "expr": "max by (pod, container, waiting) (label_replace(kube_pod_container_status_waiting_reason{namespace=\"$namespace\", pod=~\"$workload-[a-z0-9]+-[a-z0-9]+\"} == 1, \"waiting\", \"$1\", \"reason\", \"(.*)\"))",
+          "legendFormat": "",
+          "range": false,
+          "instant": true,
+          "format": "table"
+        }
+      ],
+      "transformations": [
+        {
+          "id": "merge",
+          "options": {}
+        },
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": {
+              "Time": true,
+              "Value #C": true,
+              "Value #F": true
+            },
+            "renameByName": {
+              "pod": "Pod",
+              "container": "容器",
+              "last_reason": "上次結束原因",
+              "waiting": "目前等待原因",
+              "Value #A": "時間範圍內重啟",
+              "Value #B": "累計重啟",
+              "Value #D": "上次 exit code",
+              "Value #E": "上次結束"
+            },
+            "indexByName": {
+              "pod": 0,
+              "container": 1,
+              "Value #A": 2,
+              "Value #B": 3,
+              "last_reason": 4,
+              "Value #D": 5,
+              "Value #E": 6,
+              "waiting": 7
+            }
+          }
+        },
+        {
+          "id": "sortBy",
+          "options": {
+            "sort": [
+              {
+                "field": "時間範圍內重啟",
+                "desc": true
+              }
+            ]
+          }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "align": "auto"
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "時間範圍內重啟"
+            },
+            "properties": [
+              {
+                "id": "decimals",
+                "value": 0
+              },
+              {
+                "id": "noValue",
+                "value": "0"
+              },
+              {
+                "id": "thresholds",
+                "value": {
+                  "mode": "absolute",
+                  "steps": [
+                    {
+                      "color": "green",
+                      "value": null
+                    },
+                    {
+                      "color": "red",
+                      "value": 1
+                    }
+                  ]
+                }
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-text"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "累計重啟"
+            },
+            "properties": [
+              {
+                "id": "decimals",
+                "value": 0
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "上次 exit code"
+            },
+            "properties": [
+              {
+                "id": "mappings",
+                "value": [
+                  {
+                    "type": "value",
+                    "options": {
+                      "0": {
+                        "text": "0（正常結束）",
+                        "index": 0
+                      },
+                      "1": {
+                        "text": "1（程式錯誤）",
+                        "color": "orange",
+                        "index": 1
+                      },
+                      "126": {
+                        "text": "126（無法執行）",
+                        "color": "orange",
+                        "index": 2
+                      },
+                      "127": {
+                        "text": "127（找不到指令）",
+                        "color": "orange",
+                        "index": 3
+                      },
+                      "137": {
+                        "text": "137（被強制終止）",
+                        "color": "red",
+                        "index": 4
+                      },
+                      "139": {
+                        "text": "139（Segfault）",
+                        "color": "red",
+                        "index": 5
+                      },
+                      "143": {
+                        "text": "143（收到終止訊號）",
+                        "index": 6
+                      }
+                    }
+                  }
+                ]
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-text"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "上次結束"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "dateTimeFromNow"
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "showHeader": true
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 14,
+        "x": 10,
+        "y": 45
+      }
+    },
+    {
+      "id": 22,
       "type": "row",
       "title": "3A. 【他】÷ Node 目前用量：他是不是這台 Node 的大戶（⚠️ 不代表資源快滿）",
       "collapsed": false,
@@ -1229,27 +1522,27 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 50
+        "y": 53
       },
       "panels": []
     },
     {
-      "id": 21,
+      "id": 23,
       "type": "text",
       "title": "",
       "options": {
         "mode": "markdown",
-        "content": "**分母是 Node「目前實際的總用量」，不是容量。** 只回答「這台 Node 現在用掉的資源，有幾成是他用的」。\n\n⚠️ 壓測時如果其他服務很閒或已停掉，只剩他在跑，這裡會接近 **100%**，但資源可能其實很空。**要判斷資源快不快滿，請看 3B（他 ÷ 容量）和 3D（整台 ÷ 容量）。**"
+        "content": "**分母是 Node 目前的總用量，不是容量**：只回答「這台 Node 現在用掉的資源有幾成是他的」。\n\n⚠️ 其他服務很閒或停掉時這裡一定接近 100%，**不代表資源快滿**；快不快滿看 3B、3D。"
       },
       "gridPos": {
-        "h": 3,
+        "h": 2,
         "w": 24,
         "x": 0,
-        "y": 51
+        "y": 54
       }
     },
     {
-      "id": 22,
+      "id": 24,
       "type": "timeseries",
       "title": "【他】CPU ÷ Node 目前 CPU 用量",
       "description": "**視角**：他 ÷ 這台 Node **目前實際的總用量**（每台 Node 一條線，只算他跑在該 Node 上的 Pod）\n\n**這是什麼**：這台 Node 正在使用的 CPU，有幾成是他用的。\n\n**怎麼看**：接近 100% 只代表這台 Node 目前的用量幾乎都是他的；其他服務停掉時一定會這樣。資源快不快滿請看 3B、3D。",
@@ -1299,11 +1592,11 @@
         "h": 7,
         "w": 6,
         "x": 0,
-        "y": 54
+        "y": 56
       }
     },
     {
-      "id": 23,
+      "id": 25,
       "type": "timeseries",
       "title": "【他】記憶體 ÷ Node 目前記憶體用量",
       "description": "**視角**：他 ÷ 這台 Node **目前實際的總用量**（每台 Node 一條線，只算他跑在該 Node 上的 Pod）\n\n**這是什麼**：這台 Node 已被使用的記憶體，有幾成是他用的。\n\n**怎麼看**：接近 100% 只代表這台 Node 目前的用量幾乎都是他的；其他服務停掉時一定會這樣。資源快不快滿請看 3B、3D。",
@@ -1353,11 +1646,11 @@
         "h": 7,
         "w": 6,
         "x": 6,
-        "y": 54
+        "y": 56
       }
     },
     {
-      "id": 24,
+      "id": 26,
       "type": "timeseries",
       "title": "【他】網路 ÷ Node 目前網卡流量",
       "description": "**視角**：他 ÷ 這台 Node **目前實際的總用量**（每台 Node 一條線，只算他跑在該 Node 上的 Pod）\n\n**這是什麼**：這台 Node 實體網卡目前的流量，有幾成是他的。\n\n**怎麼看**：接近 100% 只代表這台 Node 目前的用量幾乎都是他的；其他服務停掉時一定會這樣。資源快不快滿請看 3B、3D。同一台 Node 內 Pod 互傳不經過實體網卡，所以可能超過 100%，只當量級參考。",
@@ -1419,11 +1712,11 @@
         "h": 7,
         "w": 6,
         "x": 12,
-        "y": 54
+        "y": 56
       }
     },
     {
-      "id": 25,
+      "id": 27,
       "type": "timeseries",
       "title": "【他】磁碟寫入 ÷ Node 目前磁碟寫入量",
       "description": "**視角**：他 ÷ 這台 Node **目前實際的總用量**（每台 Node 一條線，只算他跑在該 Node 上的 Pod）\n\n**這是什麼**：這台 Node 本機磁碟目前的寫入量，有幾成是他寫的。\n\n**怎麼看**：接近 100% 只代表這台 Node 目前的用量幾乎都是他的；其他服務停掉時一定會這樣。資源快不快滿請看 3B、3D。容器層與 Node 層的統計方式不同，寫到 PVC（網路儲存）的量也不算在 Node 本機磁碟，只當量級參考。",
@@ -1474,11 +1767,11 @@
         "h": 7,
         "w": 6,
         "x": 18,
-        "y": 54
+        "y": 56
       }
     },
     {
-      "id": 26,
+      "id": 28,
       "type": "row",
       "title": "3B. 【他】÷ Node 容量：他自己用掉 Node 容量的幾成（主要看這區）",
       "collapsed": false,
@@ -1486,27 +1779,27 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 61
+        "y": 63
       },
       "panels": []
     },
     {
-      "id": 27,
+      "id": 29,
       "type": "text",
       "title": "",
       "options": {
         "mode": "markdown",
-        "content": "**分母是他所在 Node 的「容量」**（CPU 總核數、總記憶體、網卡速度、磁碟忙碌時間、檔案系統容量，全部自動取得），每台 Node 一條線。\n\n其他服務停掉也不會被灌高，**這才是「他用掉多少資源」的真實比例**。整台 Node 快不快滿，請看 3D。"
+        "content": "**分母是他所在 Node 的容量**（總核數、總記憶體、網卡速度、磁碟忙碌時間、檔案系統容量），每台 Node 一條線。\n\n其他服務停掉也不會被灌高，這才是他用掉多少資源的真實比例；整台 Node 快不快滿看 3D。"
       },
       "gridPos": {
-        "h": 3,
+        "h": 2,
         "w": 24,
         "x": 0,
-        "y": 62
+        "y": 64
       }
     },
     {
-      "id": 28,
+      "id": 30,
       "type": "timeseries",
       "title": "【他】CPU ÷ Node 總核數",
       "description": "**視角**：他 ÷ 這台 Node 的**容量**（每台 Node 一條線，只算他跑在該 Node 上的 Pod）\n\n**這是什麼**：他在這台 Node 上的 Pod，CPU 實際用量占總核數的幾成。\n\n**怎麼看**：越高代表他一個人就吃掉這台 Node 越多容量；接近紅色虛線代表光是他就快把這項資源吃滿。他的 CPU 有 limit 保護，不會超過他的 limit 合計。",
@@ -1576,11 +1869,11 @@
         "h": 7,
         "w": 8,
         "x": 0,
-        "y": 65
+        "y": 66
       }
     },
     {
-      "id": 29,
+      "id": 31,
       "type": "timeseries",
       "title": "【他】記憶體 ÷ Node 總記憶體",
       "description": "**視角**：他 ÷ 這台 Node 的**容量**（每台 Node 一條線，只算他跑在該 Node 上的 Pod）\n\n**這是什麼**：他在這台 Node 上的 Pod，記憶體 working set 占總記憶體的幾成。\n\n**怎麼看**：越高代表他一個人就吃掉這台 Node 越多容量；接近紅色虛線代表光是他就快把這項資源吃滿。他的記憶體有 limit 保護，不會超過他的 limit 合計。",
@@ -1650,11 +1943,11 @@
         "h": 7,
         "w": 8,
         "x": 8,
-        "y": 65
+        "y": 66
       }
     },
     {
-      "id": 30,
+      "id": 32,
       "type": "timeseries",
       "title": "【他】網路 ÷ 網卡上限",
       "description": "**視角**：他 ÷ 這台 Node 的**容量**（每台 Node 一條線，只算他跑在該 Node 上的 Pod）\n\n**這是什麼**：他的網路流量占網卡速度的幾成，送出與接收各自有上限，所以分開畫。\n\n**怎麼看**：越高代表他一個人就吃掉這台 Node 越多容量；接近紅色虛線代表光是他就快把這項資源吃滿。容量是 Node 回報的網卡速度；虛擬機常固定回報 10 Gbps，實際可用頻寬可能更低，請搭配第 4 區「網路丟包」一起看。",
@@ -1737,11 +2030,11 @@
         "h": 7,
         "w": 8,
         "x": 16,
-        "y": 65
+        "y": 66
       }
     },
     {
-      "id": 31,
+      "id": 33,
       "type": "timeseries",
       "title": "【他】磁碟忙碌程度（估算）÷ 總時間",
       "description": "**視角**：他 ÷ 這台 Node 的**容量**（每台 Node 一條線，只算他跑在該 Node 上的 Pod）\n\n**這是什麼**：磁碟的讀寫速度與 IOPS 上限沒有指標會回報，所以用「磁碟忙碌時間 ÷ 總時間」代表磁碟容量。這是**估算值** = 整台磁碟忙碌率 × 他占目前磁碟讀寫量的比例。\n\n**怎麼看**：越高代表他一個人就吃掉這台 Node 越多容量；接近紅色虛線代表光是他就快把這項資源吃滿。SSD 和雲端磁碟可同時處理多筆 IO，請搭配第 4 區「磁碟延遲」一起看。",
@@ -1812,11 +2105,11 @@
         "h": 7,
         "w": 8,
         "x": 0,
-        "y": 72
+        "y": 73
       }
     },
     {
-      "id": 32,
+      "id": 34,
       "type": "timeseries",
       "title": "【他】磁碟空間 ÷ 檔案系統容量",
       "description": "**視角**：他 ÷ 這台 Node 的**容量**（每台 Node 一條線，只算他跑在該 Node 上的 Pod）\n\n**這是什麼**：他的容器可寫層（暫存檔、容器內寫的檔案、log）占 Node 本機檔案系統容量的幾成。\n\n**怎麼看**：持續往上爬代表他一直在寫檔或 log，可能把 Node 磁碟寫滿，觸發 DiskPressure 並驅逐其他 Pod。",
@@ -1886,11 +2179,11 @@
         "h": 7,
         "w": 8,
         "x": 8,
-        "y": 72
+        "y": 73
       }
     },
     {
-      "id": 33,
+      "id": 35,
       "type": "row",
       "title": "3C. 【他】目前 vs 他自己壓測前 7 天峰值：他比平常最忙時高多少",
       "collapsed": false,
@@ -1898,27 +2191,27 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 79
+        "y": 80
       },
       "panels": []
     },
     {
-      "id": 34,
+      "id": 36,
       "type": "text",
       "title": "",
       "options": {
         "mode": "markdown",
-        "content": "**實線 = 他現在的用量，虛線 = 時間範圍開始前 7 天內，他自己的最高值**（Pod 合計、每 5 分鐘平均）。實線遠高於虛線，代表這次壓測讓他用到平常沒到過的量。\n\n⚠️ 時間範圍的**起點要設在壓測開始前**，虛線才不會被壓測本身墊高。"
+        "content": "**實線 = 他現在，虛線 = 時間範圍開始前 7 天他自己的最高值**（Pod 合計、每 5 分鐘平均）。實線遠高於虛線 = 壓測讓他用到平常沒到過的量。\n\n⚠️ 時間範圍的**起點要在壓測開始前**，虛線才不會被壓測本身墊高。"
       },
       "gridPos": {
-        "h": 3,
+        "h": 2,
         "w": 24,
         "x": 0,
-        "y": 80
+        "y": 81
       }
     },
     {
-      "id": 35,
+      "id": 37,
       "type": "timeseries",
       "title": "【他】CPU 用量（核）",
       "description": "**視角**：他的 Pod 合計：目前（實線）vs 他自己壓測前 7 天峰值（虛線）\n\n**這是什麼**：他所有 Pod 合計的 CPU 用量（核）。\n\n**怎麼看**：實線高出虛線越多，代表這次壓測讓他用得比平常最忙時多越多；再到 3D、3E 看整台 Node 是否因此變吃緊。",
@@ -2011,7 +2304,7 @@
       }
     },
     {
-      "id": 36,
+      "id": 38,
       "type": "timeseries",
       "title": "【他】記憶體用量",
       "description": "**視角**：他的 Pod 合計：目前（實線）vs 他自己壓測前 7 天峰值（虛線）\n\n**這是什麼**：他所有 Pod 合計的記憶體 working set。\n\n**怎麼看**：實線高出虛線越多，代表這次壓測讓他用得比平常最忙時多越多；再到 3D、3E 看整台 Node 是否因此變吃緊。",
@@ -2104,7 +2397,7 @@
       }
     },
     {
-      "id": 37,
+      "id": 39,
       "type": "timeseries",
       "title": "【他】網路送出 TX",
       "description": "**視角**：他的 Pod 合計：目前（實線）vs 他自己壓測前 7 天峰值（虛線）\n\n**這是什麼**：他所有 Pod 合計的送出流量（bits/s）。\n\n**怎麼看**：實線高出虛線越多，代表這次壓測讓他用得比平常最忙時多越多；再到 3D、3E 看整台 Node 是否因此變吃緊。",
@@ -2197,7 +2490,7 @@
       }
     },
     {
-      "id": 38,
+      "id": 40,
       "type": "timeseries",
       "title": "【他】網路接收 RX",
       "description": "**視角**：他的 Pod 合計：目前（實線）vs 他自己壓測前 7 天峰值（虛線）\n\n**這是什麼**：他所有 Pod 合計的接收流量（bits/s）。\n\n**怎麼看**：實線高出虛線越多，代表這次壓測讓他用得比平常最忙時多越多；再到 3D、3E 看整台 Node 是否因此變吃緊。",
@@ -2290,7 +2583,7 @@
       }
     },
     {
-      "id": 39,
+      "id": 41,
       "type": "timeseries",
       "title": "【他】磁碟讀寫量",
       "description": "**視角**：他的 Pod 合計：目前（實線）vs 他自己壓測前 7 天峰值（虛線）\n\n**這是什麼**：他所有 Pod 合計的磁碟讀寫量。沒資料代表叢集沒有收集 Pod 層級的磁碟 IO。\n\n**怎麼看**：實線高出虛線越多，代表這次壓測讓他用得比平常最忙時多越多；再到 3D、3E 看整台 Node 是否因此變吃緊。",
@@ -2383,7 +2676,7 @@
       }
     },
     {
-      "id": 40,
+      "id": 42,
       "type": "timeseries",
       "title": "【他】容器可寫層用量",
       "description": "**視角**：他的 Pod 合計：目前（實線）vs 他自己壓測前 7 天峰值（虛線）\n\n**這是什麼**：他所有容器在 Node 本機磁碟上佔用的空間。\n\n**怎麼看**：實線高出虛線越多，代表這次壓測讓他用得比平常最忙時多越多；再到 3D、3E 看整台 Node 是否因此變吃緊。",
@@ -2476,7 +2769,7 @@
       }
     },
     {
-      "id": 41,
+      "id": 43,
       "type": "row",
       "title": "3D. 【整台 Node】÷ 容量：他所在的 Node 快不快滿（所有 Pod 加總，不是他的用量）",
       "collapsed": false,
@@ -2489,7 +2782,7 @@
       "panels": []
     },
     {
-      "id": 42,
+      "id": 44,
       "type": "timeseries",
       "title": "【整台 Node】CPU ÷ 總核數",
       "description": "**視角**：整台 Node ÷ **容量**（所有 Pod 加總，**不是他的用量**），每台 Node 一條線\n\n**這是什麼**：整台 Node 實際在用的 CPU 占總核數的幾成（不含閒置與 iowait）。\n\n**怎麼看**：接近紅色虛線代表這項資源快滿，同 Node 所有 Pod 都會受影響。和 3B 對照：3B 他的比例越接近這裡，代表用量主要來自他。CPU 快滿時，超用 request 的 Pod 會互相搶 CPU。",
@@ -2563,7 +2856,7 @@
       }
     },
     {
-      "id": 43,
+      "id": 45,
       "type": "timeseries",
       "title": "【整台 Node】記憶體 ÷ 總記憶體",
       "description": "**視角**：整台 Node ÷ **容量**（所有 Pod 加總，**不是他的用量**），每台 Node 一條線\n\n**這是什麼**：整台 Node 已使用的記憶體（總記憶體 − 可用記憶體，含系統程式）占總記憶體的幾成。\n\n**怎麼看**：接近紅色虛線代表這項資源快滿，同 Node 所有 Pod 都會受影響。和 3B 對照：3B 他的比例越接近這裡，代表用量主要來自他。太高時 kubelet 可能開始驅逐 Pod（MemoryPressure）。",
@@ -2637,7 +2930,7 @@
       }
     },
     {
-      "id": 44,
+      "id": 46,
       "type": "timeseries",
       "title": "【整台 Node】網路 ÷ 網卡上限",
       "description": "**視角**：整台 Node ÷ **容量**（所有 Pod 加總，**不是他的用量**），每台 Node 一條線\n\n**這是什麼**：整台 Node 實體網卡的流量占網卡速度的幾成，送出與接收各自有上限，所以分開畫。\n\n**怎麼看**：接近紅色虛線代表這項資源快滿，同 Node 所有 Pod 都會受影響。和 3B 對照：3B 他的比例越接近這裡，代表用量主要來自他。容量是 Node 回報的網卡速度；虛擬機常固定回報 10 Gbps，實際可用頻寬可能更低，請搭配第 4 區「網路丟包」一起看。",
@@ -2724,7 +3017,7 @@
       }
     },
     {
-      "id": 45,
+      "id": 47,
       "type": "timeseries",
       "title": "【整台 Node】磁碟忙碌程度 ÷ 總時間",
       "description": "**視角**：整台 Node ÷ **容量**（所有 Pod 加總，**不是他的用量**），每台 Node 一條線\n\n**這是什麼**：Node 上最忙的那顆本機磁碟，有在處理 IO 的時間占總時間的幾成。\n\n**怎麼看**：接近紅色虛線代表這項資源快滿，同 Node 所有 Pod 都會受影響。和 3B 對照：3B 他的比例越接近這裡，代表用量主要來自他。SSD 和雲端磁碟可同時處理多筆 IO，到 100% 不一定真的慢：忙碌率高且第 4 區磁碟延遲上升，才是真的滿了。",
@@ -2798,7 +3091,7 @@
       }
     },
     {
-      "id": 46,
+      "id": 48,
       "type": "timeseries",
       "title": "【整台 Node】磁碟空間 ÷ 檔案系統容量",
       "description": "**視角**：整台 Node ÷ **容量**（所有 Pod 加總，**不是他的用量**），每台 Node 一條線\n\n**這是什麼**：Node 本機檔案系統用了幾成，容器映像、容器可寫層和 log 都放在這裡。\n\n**怎麼看**：超過約 85–90% 時，kubelet 會進入 DiskPressure 並開始驅逐 Pod。",
@@ -2872,7 +3165,7 @@
       }
     },
     {
-      "id": 47,
+      "id": 49,
       "type": "row",
       "title": "3E. 【整台 Node】目前 vs 整台壓測前 7 天峰值：Node 有沒有比平常最忙時還忙",
       "collapsed": false,
@@ -2885,7 +3178,7 @@
       "panels": []
     },
     {
-      "id": 48,
+      "id": 50,
       "type": "text",
       "title": "",
       "options": {
@@ -2900,7 +3193,7 @@
       }
     },
     {
-      "id": 49,
+      "id": 51,
       "type": "timeseries",
       "title": "【整台 Node】CPU 用量（核）",
       "description": "**視角**：整台 Node（所有 Pod 加總）：目前（實線）vs 這台 Node 壓測前 7 天峰值（虛線），每台 Node 各一組\n\n**這是什麼**：使用中的 CPU 核數（不含閒置與 iowait）。\n\n**怎麼看**：實線超過同一台 Node 的虛線，代表比過去一週最忙時還忙；再對照 3C 看他是不是同時也超出平常。",
@@ -2993,7 +3286,7 @@
       }
     },
     {
-      "id": 50,
+      "id": 52,
       "type": "timeseries",
       "title": "【整台 Node】記憶體用量",
       "description": "**視角**：整台 Node（所有 Pod 加總）：目前（實線）vs 這台 Node 壓測前 7 天峰值（虛線），每台 Node 各一組\n\n**這是什麼**：已使用的記憶體（總記憶體 − 可用記憶體）。\n\n**怎麼看**：實線超過同一台 Node 的虛線，代表比過去一週最忙時還忙；再對照 3C 看他是不是同時也超出平常。",
@@ -3086,7 +3379,7 @@
       }
     },
     {
-      "id": 51,
+      "id": 53,
       "type": "timeseries",
       "title": "【整台 Node】網路送出 TX",
       "description": "**視角**：整台 Node（所有 Pod 加總）：目前（實線）vs 這台 Node 壓測前 7 天峰值（虛線），每台 Node 各一組\n\n**這是什麼**：實體網卡送出方向的流量（bits/s）。\n\n**怎麼看**：實線超過同一台 Node 的虛線，代表比過去一週最忙時還忙；再對照 3C 看他是不是同時也超出平常。",
@@ -3179,7 +3472,7 @@
       }
     },
     {
-      "id": 52,
+      "id": 54,
       "type": "timeseries",
       "title": "【整台 Node】網路接收 RX",
       "description": "**視角**：整台 Node（所有 Pod 加總）：目前（實線）vs 這台 Node 壓測前 7 天峰值（虛線），每台 Node 各一組\n\n**這是什麼**：實體網卡接收方向的流量（bits/s）。\n\n**怎麼看**：實線超過同一台 Node 的虛線，代表比過去一週最忙時還忙；再對照 3C 看他是不是同時也超出平常。",
@@ -3272,7 +3565,7 @@
       }
     },
     {
-      "id": 53,
+      "id": 55,
       "type": "timeseries",
       "title": "【整台 Node】磁碟吞吐（讀 + 寫）",
       "description": "**視角**：整台 Node（所有 Pod 加總）：目前（實線）vs 這台 Node 壓測前 7 天峰值（虛線），每台 Node 各一組\n\n**這是什麼**：Node 本機磁碟每秒讀寫量。\n\n**怎麼看**：實線超過同一台 Node 的虛線，代表比過去一週最忙時還忙；再對照 3C 看他是不是同時也超出平常。",
@@ -3365,7 +3658,7 @@
       }
     },
     {
-      "id": 54,
+      "id": 56,
       "type": "timeseries",
       "title": "【整台 Node】磁碟 IOPS",
       "description": "**視角**：整台 Node（所有 Pod 加總）：目前（實線）vs 這台 Node 壓測前 7 天峰值（虛線），每台 Node 各一組\n\n**這是什麼**：Node 本機磁碟每秒讀寫次數。\n\n**怎麼看**：實線超過同一台 Node 的虛線，代表比過去一週最忙時還忙；再對照 3C 看他是不是同時也超出平常。",
@@ -3458,7 +3751,7 @@
       }
     },
     {
-      "id": 55,
+      "id": 57,
       "type": "table",
       "title": "【整台 Node】參考：網卡速度與最近 7 天峰值",
       "description": "**視角**：所選的每台 Node（整台加總）\n\n**這是什麼**：Node 自己回報的網卡速度，以及到時間範圍結束為止、最近 7 天實際跑到的最高網路、磁碟流量（每 5 分鐘平均）。\n\n**怎麼看**：峰值只代表「至少撐得住這麼多」，不是上限：峰值那段時間的磁碟延遲與網路丟包都正常，就代表上限更高；延遲已明顯上升，則這附近就是實際可用上限。網卡速度遠高於峰值，代表網卡還有很多餘裕。",
@@ -3654,7 +3947,7 @@
       }
     },
     {
-      "id": 56,
+      "id": 58,
       "type": "row",
       "title": "4. 【整台 Node】共用資源壓力：所有 Pod 加總，不是他的用量，看壓測期間有沒有往上飆",
       "collapsed": false,
@@ -3667,22 +3960,22 @@
       "panels": []
     },
     {
-      "id": 57,
+      "id": 59,
       "type": "text",
       "title": "",
       "options": {
         "mode": "markdown",
-        "content": "**這一區看的是整台 Node 的狀態（所有 Pod 加總），不是他自己用了多少。** 用途是確認：他所在的 Node 在壓測期間有沒有變吃緊。\n\n看法：比較**壓測前**與**壓測中**的曲線。壓測一開始就往上飆，再對照第 2 區【他】的用量和第 5 區【鄰居】，判斷是不是他造成的。壓測前後都很平，就代表 Node 沒被拖慢。"
+        "content": "**整台 Node 的狀態（所有 Pod 加總），不是他的用量。** 比較壓測前與壓測中：\n\n壓測一開始就往上飆 → 對照第 2 區【他】和第 5 區【鄰居】判斷是不是他造成的；前後都很平 → Node 沒被拖慢。"
       },
       "gridPos": {
-        "h": 3,
+        "h": 2,
         "w": 24,
         "x": 0,
         "y": 136
       }
     },
     {
-      "id": 58,
+      "id": 60,
       "type": "timeseries",
       "title": "【整台 Node】PSI：有多少時間有工作在等資源",
       "description": "**視角**：整台 Node（所有 Pod 加總），**不是他自己的用量**\n\n**這是什麼**：PSI（Pressure Stall Information）是 Linux 核心記錄的「有工作因為搶不到 CPU / 磁碟 IO / 記憶體而在等」的時間比例。比 CPU 使用率更直接反映「大家有沒有變慢」。\n\n**怎麼看**：壓測前後比較，往上飆就是 Node 開始吃緊。粗略參考：CPU 或 IO 持續超過 10% 值得注意。**沒有資料**代表 Node 核心沒開 PSI（RHCOS 預設可能關閉），請改看右邊的替代面板。",
@@ -3757,11 +4050,11 @@
         "h": 7,
         "w": 8,
         "x": 0,
-        "y": 139
+        "y": 138
       }
     },
     {
-      "id": 59,
+      "id": 61,
       "type": "timeseries",
       "title": "【整台 Node】PSI 替代：iowait 與每核負載",
       "description": "**視角**：整台 Node（所有 Pod 加總），**不是他自己的用量**\n\n**這是什麼**：iowait：CPU 閒著在等磁碟的時間比例。每核負載：排隊等 CPU 或 IO 的工作數 ÷ CPU 核數（100% 約等於每核一個工作）。\n\n**怎麼看**：PSI 沒資料時用這個。iowait 往上飆代表磁碟變慢；每核負載長時間超過 100% 代表工作在排隊。",
@@ -3823,11 +4116,11 @@
         "h": 7,
         "w": 8,
         "x": 8,
-        "y": 139
+        "y": 138
       }
     },
     {
-      "id": 60,
+      "id": 62,
       "type": "timeseries",
       "title": "【整台 Node】磁碟延遲（每次 IO 平均花多久）",
       "description": "**視角**：整台 Node（所有 Pod 加總），**不是他自己的用量**\n\n**這是什麼**：Node 本機磁碟每次讀寫平均要等多久，所有 Pod 共用這顆磁碟。**判斷磁碟有沒有拖慢大家，這個最準。**\n\n**怎麼看**：壓測中明顯往上飆就是磁碟變慢，同 Node 所有 Pod 都會受影響。粗略參考：SSD 通常數 ms 以內，超過 10–20 ms 就很慢。",
@@ -3877,11 +4170,11 @@
         "h": 7,
         "w": 8,
         "x": 16,
-        "y": 139
+        "y": 138
       }
     },
     {
-      "id": 61,
+      "id": 63,
       "type": "timeseries",
       "title": "【整台 Node】磁碟忙碌程度（÷ 總時間）",
       "description": "**視角**：整台 Node（所有 Pod 加總），**不是他自己的用量**\n\n**這是什麼**：磁碟有在處理 IO 的時間比例（類似 iostat 的 %util）。\n\n**怎麼看**：接近 100% 可能飽和，但 SSD / 雲端磁碟可同時處理多筆 IO，100% 不一定代表慢，要搭配左邊的磁碟延遲一起看。",
@@ -3931,11 +4224,11 @@
         "h": 7,
         "w": 8,
         "x": 0,
-        "y": 146
+        "y": 145
       }
     },
     {
-      "id": 62,
+      "id": 64,
       "type": "timeseries",
       "title": "【整台 Node】磁碟每秒讀寫次數（IOPS）",
       "description": "**視角**：整台 Node（所有 Pod 加總），**不是他自己的用量**\n\n**這是什麼**：Node 本機磁碟每秒完成的讀寫次數。\n\n**怎麼看**：IOPS 上升而延遲沒變，代表磁碟還撐得住；IOPS 上不去但延遲飆升，代表已經到磁碟上限。",
@@ -3997,11 +4290,11 @@
         "h": 7,
         "w": 8,
         "x": 8,
-        "y": 146
+        "y": 145
       }
     },
     {
-      "id": 63,
+      "id": 65,
       "type": "timeseries",
       "title": "【整台 Node】檔案系統使用率（÷ 容量）",
       "description": "**視角**：整台 Node（所有 Pod 加總），**不是他自己的用量**\n\n**這是什麼**：Node 本機磁碟空間用了幾成，容器映像、容器可寫層和 log 都放在這裡。\n\n**怎麼看**：超過 85% 要注意；剩餘空間低於約 10–15% 時 kubelet 會開始驅逐 Pod（DiskPressure）。",
@@ -4051,11 +4344,11 @@
         "h": 7,
         "w": 8,
         "x": 16,
-        "y": 146
+        "y": 145
       }
     },
     {
-      "id": 64,
+      "id": 66,
       "type": "timeseries",
       "title": "【整台 Node】網路吞吐",
       "description": "**視角**：整台 Node（所有 Pod 加總），**不是他自己的用量**\n\n**這是什麼**：Node 實體網卡的總流量，所有 Pod 共用這張網卡。\n\n**怎麼看**：和第 2 區【他】的網路流量對照，看 Node 的流量上升是不是主要來自他。接近網卡頻寬上限時，所有 Pod 都會變慢。",
@@ -4117,11 +4410,11 @@
         "h": 7,
         "w": 8,
         "x": 0,
-        "y": 153
+        "y": 152
       }
     },
     {
-      "id": 65,
+      "id": 67,
       "type": "timeseries",
       "title": "【整台 Node】網路丟包 / 錯誤",
       "description": "**視角**：整台 Node（所有 Pod 加總），**不是他自己的用量**\n\n**這是什麼**：Node 實體網卡每秒丟掉或出錯的封包數。丟包通常是網卡或核心的緩衝區塞滿處理不及。\n\n**怎麼看**：正常應接近 0。壓測期間開始出現並往上升，代表網卡塞住，同 Node 所有 Pod 的網路都會受影響（重傳、延遲變高）。",
@@ -4183,11 +4476,11 @@
         "h": 7,
         "w": 8,
         "x": 8,
-        "y": 153
+        "y": 152
       }
     },
     {
-      "id": 66,
+      "id": 68,
       "type": "timeseries",
       "title": "【整台 Node】網路封包處理 CPU（softirq，÷ 總 CPU 時間）",
       "description": "**視角**：整台 Node（所有 Pod 加總），**不是他自己的用量**\n\n**這是什麼**：Node 核心處理網路封包（以及部分磁碟完成通知）所花的 CPU 時間比例。這部分 CPU **不會算在 Pod 的 CPU limit 裡**，所以他的 CPU 被限制住，大流量還是會吃掉整台 Node 的 CPU。\n\n**怎麼看**：壓測時跟著網路流量一起往上飆，代表大流量正在消耗 Node 的 CPU。粗略參考：持續超過 10% 值得注意，若集中在少數 CPU 核上，該核會先滿而讓網路變慢。",
@@ -4237,11 +4530,11 @@
         "h": 7,
         "w": 8,
         "x": 16,
-        "y": 153
+        "y": 152
       }
     },
     {
-      "id": 67,
+      "id": 69,
       "type": "timeseries",
       "title": "【整台 Node】conntrack 使用率（÷ 表格上限）",
       "description": "**視角**：整台 Node（所有 Pod 加總），**不是他自己的用量**\n\n**這是什麼**：Node 核心記錄每條網路連線的表格，所有 Pod 共用一張，有容量上限。大量短連線（例如每次都重新連 DB / Redis / Kafka）最容易吃滿。\n\n**怎麼看**：超過 70% 要注意；滿了之後新連線會被直接丟掉，同 Node 所有 Pod 都會連不出去。",
@@ -4291,11 +4584,11 @@
         "h": 7,
         "w": 6,
         "x": 0,
-        "y": 160
+        "y": 159
       }
     },
     {
-      "id": 68,
+      "id": 70,
       "type": "timeseries",
       "title": "【整台 Node】CPU 使用率（÷ 總核數）",
       "description": "**視角**：整台 Node（所有 Pod 加總），**不是他自己的用量**\n\n**這是什麼**：整台 Node 的 CPU 有多少時間在工作。\n\n**怎麼看**：長時間超過 80% 且 PSI CPU 也上升時，沒設 limit 或超用 request 的 Pod 會互相搶 CPU。",
@@ -4345,14 +4638,14 @@
         "h": 7,
         "w": 6,
         "x": 6,
-        "y": 160
+        "y": 159
       }
     },
     {
-      "id": 69,
+      "id": 71,
       "type": "timeseries",
-      "title": "【整台 Node】剩餘可用記憶體（÷ 總記憶體）",
-      "description": "**視角**：整台 Node（所有 Pod 加總），**不是他自己的用量**\n\n**這是什麼**：整台 Node 還能給程式用的記憶體比例。\n\n**怎麼看**：低於 10% 要注意，kubelet 可能開始驅逐 Pod（MemoryPressure）。",
+      "title": "【整台 Node】記憶體使用率（÷ 總記憶體）",
+      "description": "**視角**：整台 Node（所有 Pod 加總），**不是他自己的用量**\n\n**這是什麼**：整台 Node 已用掉的記憶體比例（總記憶體 − 可用記憶體）。\n\n**怎麼看**：超過 90% 要注意，kubelet 可能開始驅逐 Pod（MemoryPressure）。",
       "datasource": {
         "type": "prometheus",
         "uid": "${datasource}"
@@ -4364,7 +4657,7 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "node_memory_MemAvailable_bytes{instance=~\"$node\"} / node_memory_MemTotal_bytes{instance=~\"$node\"}",
+          "expr": "1 - node_memory_MemAvailable_bytes{instance=~\"$node\"} / node_memory_MemTotal_bytes{instance=~\"$node\"}",
           "legendFormat": "{{instance}}",
           "range": true,
           "instant": false,
@@ -4399,11 +4692,11 @@
         "h": 7,
         "w": 6,
         "x": 12,
-        "y": 160
+        "y": 159
       }
     },
     {
-      "id": 70,
+      "id": 72,
       "type": "timeseries",
       "title": "【整台 Node】Node 壓力狀態（1 = 發生中）",
       "description": "**視角**：整台 Node（所有 Pod 加總），**不是他自己的用量**\n\n**這是什麼**：kubelet 回報 Node 進入磁碟、記憶體或程序數不足的狀態。\n\n**怎麼看**：出現 1 代表 Node 已經嚴重吃緊，kubelet 會開始驅逐 Pod，影響同 Node 的所有服務。",
@@ -4453,11 +4746,11 @@
         "h": 7,
         "w": 6,
         "x": 18,
-        "y": 160
+        "y": 159
       }
     },
     {
-      "id": 71,
+      "id": 73,
       "type": "row",
       "title": "5. 【鄰居】所選 Node 上用量前 10 名（含他自己）",
       "collapsed": false,
@@ -4465,12 +4758,12 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 167
+        "y": 166
       },
       "panels": []
     },
     {
-      "id": 72,
+      "id": 74,
       "type": "timeseries",
       "title": "【鄰居】CPU Top 10",
       "description": "**視角**：所選 Node 上的所有 Pod 排名（含他自己）\n\n**這是什麼**：所選 Node 上 CPU 用量最多的 10 個 Pod。\n\n**怎麼看**：第 4 區往上飆的時候，看是誰同時上升。如果前幾名都是他，加上 Node 壓力同時上升，就是他造成的；如果是別人，就跟他無關。",
@@ -4520,11 +4813,11 @@
         "h": 8,
         "w": 12,
         "x": 0,
-        "y": 168
+        "y": 167
       }
     },
     {
-      "id": 73,
+      "id": 75,
       "type": "timeseries",
       "title": "【鄰居】記憶體 Top 10",
       "description": "**視角**：所選 Node 上的所有 Pod 排名（含他自己）\n\n**這是什麼**：所選 Node 上記憶體用量最多的 10 個 Pod。\n\n**怎麼看**：第 4 區往上飆的時候，看是誰同時上升。如果前幾名都是他，加上 Node 壓力同時上升，就是他造成的；如果是別人，就跟他無關。",
@@ -4574,11 +4867,11 @@
         "h": 8,
         "w": 12,
         "x": 12,
-        "y": 168
+        "y": 167
       }
     },
     {
-      "id": 74,
+      "id": 76,
       "type": "timeseries",
       "title": "【鄰居】磁碟寫入 Top 10",
       "description": "**視角**：所選 Node 上的所有 Pod 排名（含他自己）\n\n**這是什麼**：所選 Node 上寫磁碟最多的 10 個 Pod。\n\n**怎麼看**：第 4 區往上飆的時候，看是誰同時上升。如果前幾名都是他，加上 Node 壓力同時上升，就是他造成的；如果是別人，就跟他無關。",
@@ -4629,11 +4922,11 @@
         "h": 8,
         "w": 12,
         "x": 0,
-        "y": 176
+        "y": 175
       }
     },
     {
-      "id": 75,
+      "id": 77,
       "type": "timeseries",
       "title": "【鄰居】網路送出 Top 10",
       "description": "**視角**：所選 Node 上的所有 Pod 排名（含他自己）\n\n**這是什麼**：所選 Node 上網路送出最多的 10 個 Pod。\n\n**怎麼看**：第 4 區往上飆的時候，看是誰同時上升。如果前幾名都是他，加上 Node 壓力同時上升，就是他造成的；如果是別人，就跟他無關。",
@@ -4683,11 +4976,11 @@
         "h": 8,
         "w": 12,
         "x": 12,
-        "y": 176
+        "y": 175
       }
     },
     {
-      "id": 76,
+      "id": 78,
       "type": "row",
       "title": "6. 【共用】入口與 DNS（全叢集共用，不分 Node）",
       "collapsed": false,
@@ -4695,12 +4988,12 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 184
+        "y": 183
       },
       "panels": []
     },
     {
-      "id": 77,
+      "id": 79,
       "type": "timeseries",
       "title": "【共用】Router 回應數（依狀態碼，此 namespace）",
       "description": "**視角**：全叢集共用元件，不分 Node\n\n**這是什麼**：經過 OCP Router 進到這個 namespace 的請求數，依 HTTP 狀態碼分。\n\n**怎麼看**：5xx 上升代表後端出問題。沒資料代表此服務不經過 Router，或沒有權限查詢 Router 指標。",
@@ -4750,11 +5043,11 @@
         "h": 7,
         "w": 8,
         "x": 0,
-        "y": 185
+        "y": 184
       }
     },
     {
-      "id": 78,
+      "id": 80,
       "type": "timeseries",
       "title": "【共用】Router 後端排隊（此 namespace）",
       "description": "**視角**：全叢集共用元件，不分 Node\n\n**這是什麼**：請求在 Router 等待後端 Pod 接手的數量。\n\n**怎麼看**：大於 0 代表後端 Pod 處理不及，請求在入口排隊。",
@@ -4804,14 +5097,14 @@
         "h": 7,
         "w": 8,
         "x": 8,
-        "y": 185
+        "y": 184
       }
     },
     {
-      "id": 79,
+      "id": 81,
       "type": "timeseries",
       "title": "【共用】CoreDNS 請求量與 P99 延遲",
-      "description": "**視角**：全叢集共用元件，不分 Node\n\n**這是什麼**：全叢集 DNS 服務的查詢量與最慢 1% 查詢的延遲。\n\n**怎麼看**：壓測時若每次連線都重新查 DNS，查詢量會飆高；P99 延遲上升時，全叢集的服務解析名稱都會變慢。",
+      "description": "**視角**：全叢集共用元件，不分 Node\n\n**這是什麼**：全叢集 DNS 服務的查詢量（左軸）與最慢 1% 查詢的延遲（右軸）。\n\n**怎麼看**：壓測時若每次連線都重新查 DNS，查詢量會飆高；P99 延遲上升時，全叢集的服務解析名稱都會變慢。",
       "datasource": {
         "type": "prometheus",
         "uid": "${datasource}"
@@ -4854,7 +5147,24 @@
           },
           "min": 0
         },
-        "overrides": []
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "P99 延遲（秒）"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "s"
+              },
+              {
+                "id": "custom.axisPlacement",
+                "value": "right"
+              }
+            ]
+          }
+        ]
       },
       "options": {
         "legend": {
@@ -4870,7 +5180,7 @@
         "h": 7,
         "w": 8,
         "x": 16,
-        "y": 185
+        "y": 184
       }
     }
   ]

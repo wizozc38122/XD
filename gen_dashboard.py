@@ -33,6 +33,11 @@ PERIODS = one('rate(container_cpu_cfs_periods_total{@CT@}[@R@])')
 FS_USE = one('container_fs_usage_bytes{@CT@}', "namespace, pod, container, device")
 
 
+def spec(kind, resource):
+    """Request or limit per container. 0 means "not set" to Kubernetes and would divide by zero, so it is dropped."""
+    return one(f'kube_pod_container_resource_{kind}{{resource="{resource}", @POD@}} > 0')
+
+
 def net(metric, sel="@POD@"):
     return one(f'rate(container_network_{metric}{{{sel}}}[@R@])', "namespace, pod, interface")
 
@@ -237,31 +242,15 @@ def steps(*pairs):
 
 # ---------------------------------------------------------------- guide
 L = Line()
-text(L, """### 這個 Dashboard 怎麼用
-**目的**：壓測期間，判斷 `$workload`（namespace `$namespace`）是否拖慢**同一台 Node** 上的其他服務。重點是 CPU / 記憶體 limit **管不到**的共用資源：網路、磁碟 IO、conntrack。
+text(L, """**目的**：壓測時判斷 `$workload`（`$namespace`）有沒有拖慢**同一台 Node** 上的其他服務。重點是 limit 管不到的共用資源：網路、磁碟 IO、conntrack。
 
-**面板標題前綴代表「在看誰」，一張圖只看一個對象：**
+**標題前綴 = 在看誰**：【他】他自己的 Pod（主要看這個）｜【整台 Node】他所在 Node 的所有 Pod 加總，不是他的用量｜【鄰居】同 Node 所有 Pod 排名｜【共用】Router、DNS
 
-| 前綴 | 看的是 |
-|---|---|
-| 【他】 | 他自己的 Pod（**主要看這個**） |
-| 【整台 Node】 | 他所在 Node 的所有 Pod 加總，**不是他的用量** |
-| 【鄰居】 | 同 Node 上所有 Pod 排名 |
-| 【共用】 | 全叢集共用元件（Router、DNS） |
+**百分比先看分母（標題的「÷ …」）**：÷ 自己的 Request / Limit → 有沒有超出自己的設定（1、2 區）｜÷ Node 目前用量 → 是不是大戶，不代表快滿（3A）｜÷ Node 容量 → 離滿還多遠，**主要看這個**（3B 他、3D 整台）｜3C、3E 的虛線 = 壓測前 7 天峰值
 
-**所有百分比的分母都寫在標題的「÷ …」，三種意思完全不同：**
+**判讀**：「他的用量上升」「整台 Node 壓力上升」「鄰居受影響」三者時間對得上，才算他影響了整體。
 
-| 分母 | 回答的問題 | 在哪裡 |
-|---|---|---|
-| ÷ 自己的 Request / Limit | 他有沒有超出自己的設定 | 第 1、2 區 |
-| ÷ Node 目前用量 | 他是不是大戶。⚠️ 只剩他在跑時一定接近 100%，**不代表資源快滿** | 3A |
-| ÷ Node 容量 | 離滿還有多遠，**壓測主要看這個** | 3B（他）、3D（整台） |
-
-另外 3C（他）、3E（整台）用虛線畫出**壓測前 7 天峰值**，看現在是不是比平常最忙的時候還高。
-
-**判讀**：只有「他的用量上升」**且**「整台 Node 的壓力指標在同一時間往上飆」**且**「鄰居也受影響」三者時間對得上，才算他影響了整體。整台 Node 指標本身沒辦法告訴你是誰造成的，要搭配【他】和【鄰居】一起看。
-
-**建議操作**：選 namespace 與 Deployment → `Node` 會自動帶出他所在的 Node → 時間範圍框住壓測**前後**（要有壓測前的基準才看得出飆升）。每個面板右上角的 ⓘ 有說明。""", w=24, h=16)
+**操作**：選 Namespace、Deployment（Node 會自動帶出）→ 時間範圍要包含壓測**前後**。每個面板的 ⓘ 有說明。""", w=24, h=10)
 L.newline()
 
 # ---------------------------------------------------------------- 1 summary
@@ -273,32 +262,30 @@ stat(L, "【他】可用副本數",
      desc(V_SELF, "目前 Ready 的 Pod 數量。", "壓測中如果 HPA 擴容，副本數會上升，Pod 也可能被排到新的 Node。"),
      decimals=0)
 stat(L, "【他】CPU 用量 ÷ 自己的 Request",
-     f'sum({CPU_USE}) / sum(kube_pod_container_resource_requests{{resource="cpu", @POD@}})',
+     f'sum({CPU_USE} and on (namespace, pod, container) {spec("requests", "cpu")}) / sum({spec("requests", "cpu")})',
      "percentunit", steps((Y, 1.0), (RD, 1.5)),
-     desc(V_SELF, "實際 CPU 用量占「保證額度（request）」的比例。",
-          "100% 以下：在自己的保證額度內。超過 100%：正在借用 Node 的閒置 CPU，Node 吃緊時最容易和鄰居互相搶。"))
+     desc(V_SELF, "CPU 用量占 request（保證額度）的比例，只算有設 request 的容器。",
+          "超過 100% = 正在借用 Node 的閒置 CPU，Node 吃緊時會和鄰居互搶。沒設 request 則沒有資料。"))
 stat(L, "【他】記憶體 ÷ 自己的 Limit（最高的容器）",
-     f'max({MEM_WS} / on (namespace, pod, container) '
-     + one('kube_pod_container_resource_limits{resource="memory", @POD@}') + ')',
+     f'max({MEM_WS} / on (namespace, pod, container) {spec("limits", "memory")})',
      "percentunit", steps((Y, 0.8), (RD, 0.9)),
-     desc(V_SELF, "記憶體用量最接近上限的那個容器，用量占 limit 的比例。",
-          "超過 90% 要注意，到 100% 會被 OOMKilled。沒設 memory limit 則沒有資料。"))
+     desc(V_SELF, "最接近 limit 的那個容器，記憶體用量占 limit 的比例。",
+          "到 100% 會被 OOMKilled。沒設 memory limit（或設 0）則沒有資料。"))
 stat(L, "【他】CPU throttling（最高的 Pod）",
      f'max(sum by (pod) ({THROTTLED}) / sum by (pod) ({PERIODS}))',
      "percentunit", steps((Y, 0.25), (RD, 0.5)),
-     desc(V_SELF, "CPU 想用但被 limit 擋下的時間比例。",
-          "超過 25% 通常已讓他自己變慢。被節流**只影響他自己**，不會拖累鄰居。"))
+     desc(V_SELF, "CPU 想用但被 limit 擋下的時間比例。", "超過 25% 通常已讓他自己變慢；只影響他自己，不會拖累鄰居。"))
 stat(L, "【他】近 1 小時重啟次數",
      'sum(increase(kube_pod_container_status_restarts_total{@POD@}[1h]))',
      "none", steps((RD, 1)),
-     desc(V_SELF, "所有 Pod 近 1 小時重啟次數合計。", "大於 0 要看下方的 OOMKilled 面板，或檢查 probe 是否失敗。"),
+     desc(V_SELF, "所有 Pod 近 1 小時重啟次數合計。", "大於 0 → 看 2B 重啟紀錄的原因。"),
      decimals=0)
 stat(L, "【他】CPU ÷ 所選 Node 總核數",
      f'sum({CPU_USE}@ON_NODE@) / count(node_cpu_seconds_total{{mode="idle", @NODE@}})',
      "percentunit", steps((Y, 0.5), (RD, 0.8)),
      desc("他 ÷ 所選 Node 的 CPU 容量合計",
-          "他用掉所選 Node CPU 總核數的幾成。分母是容量，所以其他服務停掉時也不會被灌高。",
-          "每台 Node 分開看請到 3B；整台 Node 是否快滿請看 3D。"))
+          "他用掉所選 Node 總核數的幾成（分母是容量，其他服務停掉也不會被灌高）。",
+          "每台 Node 分開看 3B；整台 Node 快不快滿看 3D。"))
 L.newline()
 L = Line()
 ts(L, "【他】各 Node 上的 Pod 數（部署位置）",
@@ -319,8 +306,8 @@ row("2. 【他】自己的用量（只看他的 Pod）")
 L = Line()
 ts(L, "【他】CPU：用量 vs Request / Limit / 昨天同時段",
    [(f'sum({CPU_USE})', "用量"),
-    ('sum(kube_pod_container_resource_requests{resource="cpu", @POD@})', "request 合計"),
-    ('sum(kube_pod_container_resource_limits{resource="cpu", @POD@})', "limit 合計"),
+    (f'sum({spec("requests", "cpu")})', "request 合計"),
+    (f'sum({spec("limits", "cpu")})', "limit 合計"),
     ('sum(' + one('rate(container_cpu_usage_seconds_total{@CT@}[@R@] offset 1d)') + ')', "昨天同時段")],
    "none",
    desc(V_SELF, "他的 Pod 合計 CPU 核數，對照 request、limit 與昨天同一時間。",
@@ -328,8 +315,8 @@ ts(L, "【他】CPU：用量 vs Request / Limit / 昨天同時段",
    w=12)
 ts(L, "【他】記憶體：working set vs Request / Limit",
    [(f'sum({MEM_WS})', "working set"),
-    ('sum(kube_pod_container_resource_requests{resource="memory", @POD@})', "request 合計"),
-    ('sum(kube_pod_container_resource_limits{resource="memory", @POD@})', "limit 合計")],
+    (f'sum({spec("requests", "memory")})', "request 合計"),
+    (f'sum({spec("limits", "memory")})', "limit 合計")],
    "bytes",
    desc(V_SELF, "working set 是 OOM 判斷依據的記憶體用量。",
         "持續上升不回落可能是請求堆積或洩漏；碰到 limit 會被 OOMKilled。"),
@@ -361,19 +348,85 @@ ts(L, "【他】磁碟讀寫量",
    "Bps",
    desc(V_SELF, "他的容器每秒讀寫磁碟的量，包含寫 log、暫存檔、容器內寫檔。",
         "和第 4 區「整台 Node 磁碟」對照。他寫得多、Node 磁碟延遲同時上升，就是 IO 影響的證據。數字用來看趨勢，不一定精確。"),
-   no_value=NO_POD_IO)
+   w=12, no_value=NO_POD_IO)
 ts(L, "【他】容器可寫層 / 暫存空間用量",
    [(f'sum({FS_USE})', "已使用")],
    "bytes",
    desc(V_SELF, "他的容器在 Node 本機磁碟上佔用的空間（可寫層、emptyDir 等）。",
-        "持續成長代表一直在寫檔或 log，可能把 Node 磁碟寫滿，觸發 DiskPressure 並驅逐其他 Pod。"))
-ts(L, "【他】重啟與 OOMKilled",
-   [('sum by (pod) (increase(kube_pod_container_status_restarts_total{@POD@}[5m]))', "重啟 {{pod}}"),
-    ('sum(kube_pod_container_status_last_terminated_reason{@POD@, reason="OOMKilled"})', "上次因 OOMKilled 結束的容器數")],
+        "持續成長代表一直在寫檔或 log，可能把 Node 磁碟寫滿，觸發 DiskPressure 並驅逐其他 Pod。"),
+   w=12)
+L.newline()
+
+
+# ---------------------------------------------------------------- 2B restarts
+row("2B. 【他】重啟紀錄與原因")
+L = Line()
+RESTARTS = 'max by (namespace, pod, container) (kube_pod_container_status_restarts_total{@POD@})'
+LAST_REASON = ('max by (namespace, pod, container, reason) '
+               '(kube_pod_container_status_last_terminated_reason{@POD@} == 1)')
+ts(L, "【他】重啟次數（依上次結束原因，每 5 分鐘）",
+   [(f'sum by (reason) (max by (namespace, pod, container) (increase(kube_pod_container_status_restarts_total{{@POD@}}[5m]))'
+     f' * on (namespace, pod, container) group_left (reason) {LAST_REASON})', "重啟：{{reason}}"),
+    ('count by (reason) (kube_pod_container_status_waiting_reason{@POD@} == 1)', "等待中：{{reason}}"),
+    ('count(kube_pod_status_reason{@POD@, reason="Evicted"} == 1)', "被驅逐（Evicted）的 Pod")],
    "none",
-   desc(V_SELF, "每 5 分鐘內的重啟次數，以及上次是因為記憶體超過 limit 被殺的容器數。",
-        "有 OOMKilled 代表 memory limit 不夠或有記憶體堆積。"),
-   minv=0)
+   desc(V_SELF, "每 5 分鐘重啟幾次，依容器上次結束的原因分開；以及目前卡在等待狀態（CrashLoopBackOff 等）的容器數、被驅逐的 Pod 數。",
+        "OOMKilled → 記憶體超過 limit；Error → 程式異常結束（exit code 看右表）；"
+        "CrashLoopBackOff → 一直啟動失敗，Kubernetes 拉長重試間隔。Evicted → Node 資源不足被趕走，看第 4 區。"),
+   w=10, h=8, minv=0)
+EXIT_CODES = [{"type": "value", "options": {
+    "0": {"text": "0（正常結束）", "index": 0},
+    "1": {"text": "1（程式錯誤）", "color": "orange", "index": 1},
+    "126": {"text": "126（無法執行）", "color": "orange", "index": 2},
+    "127": {"text": "127（找不到指令）", "color": "orange", "index": 3},
+    "137": {"text": "137（被強制終止）", "color": "red", "index": 4},
+    "139": {"text": "139（Segfault）", "color": "red", "index": 5},
+    "143": {"text": "143（收到終止訊號）", "index": 6}}}]
+restart_cols = [
+    ("時間範圍內重啟", 'max by (pod, container) (increase(kube_pod_container_status_restarts_total{@POD@}[$__range]))',
+     [{"id": "decimals", "value": 0}, {"id": "noValue", "value": "0"},
+      {"id": "thresholds", "value": {"mode": "absolute", "steps": steps((RD, 1))}},
+      {"id": "custom.cellOptions", "value": {"type": "color-text"}}]),
+    ("累計重啟", f'max by (pod, container) ({RESTARTS})', [{"id": "decimals", "value": 0}]),
+    # 文字欄:原因放在 label,值欄隱藏
+    ("上次結束原因", 'max by (pod, container, last_reason) (label_replace('
+                   'kube_pod_container_status_last_terminated_reason{@POD@} == 1, "last_reason", "$1", "reason", "(.*)"))', None),
+    ("上次 exit code", 'max by (pod, container) (kube_pod_container_status_last_terminated_exitcode{@POD@})',
+     [{"id": "mappings", "value": EXIT_CODES}, {"id": "custom.cellOptions", "value": {"type": "color-text"}}]),
+    ("上次結束", 'max by (pod, container) (kube_pod_container_status_last_terminated_timestamp{@POD@}) * 1000',
+     [{"id": "unit", "value": "dateTimeFromNow"}]),
+    ("目前等待原因", 'max by (pod, container, waiting) (label_replace('
+                   'kube_pod_container_status_waiting_reason{@POD@} == 1, "waiting", "$1", "reason", "(.*)"))', None),
+]
+rt_targets, rt_rename, rt_hide, rt_over = [], {"pod": "Pod", "container": "容器", "last_reason": "上次結束原因",
+                                               "waiting": "目前等待原因"}, {"Time": True}, []
+for i, (name, expr, props) in enumerate(restart_cols):
+    ref = chr(65 + i)
+    rt_targets.append({"refId": ref, "datasource": DS, "expr": q(expr), "legendFormat": "",
+                       "range": False, "instant": True, "format": "table"})
+    if props is None:
+        rt_hide[f"Value #{ref}"] = True
+    else:
+        rt_rename[f"Value #{ref}"] = name
+        rt_over.append({"matcher": {"id": "byName", "options": name}, "properties": props})
+rt_order = ["pod", "container", "Value #A", "Value #B", "last_reason", "Value #D", "Value #E", "waiting"]
+L.add({
+    "id": nid(), "type": "table", "title": "【他】重啟紀錄（每個容器）",
+    "description": desc(V_SELF,
+                        "每個 Pod 的每個容器：時間範圍內重啟幾次、累計幾次、上次為什麼結束、exit code、多久前、目前是不是卡在等待。",
+                        "**上次結束原因**：OOMKilled = 記憶體超過 limit；Error = 程式異常結束；Completed = 程式自己結束（常駐服務不該這樣）。"
+                        "**exit code 137** 但不是 OOMKilled → 通常是 liveness probe 失敗被殺；143 → 收到終止訊號（重新部署、縮容）。"
+                        "probe 失敗的細節不在 Prometheus，要看 `oc describe pod` 的 Events。沒資料的欄位 = kube-state-metrics 版本太舊沒有這個指標。"),
+    "datasource": DS, "targets": rt_targets,
+    "transformations": [
+        {"id": "merge", "options": {}},
+        {"id": "organize", "options": {"excludeByName": rt_hide, "renameByName": rt_rename,
+                                       "indexByName": {k: i for i, k in enumerate(rt_order)}}},
+        {"id": "sortBy", "options": {"sort": [{"field": "時間範圍內重啟", "desc": True}]}},
+    ],
+    "fieldConfig": {"defaults": {"custom": {"align": "auto"}}, "overrides": rt_over},
+    "options": {"showHeader": True},
+}, 14, 8)
 L.newline()
 
 # ---------------------------------------------------------------- 3 shared expressions
@@ -425,9 +478,9 @@ def fixed(expr):
 # ---------------------------------------------------------------- 3A his share of current usage
 row("3A. 【他】÷ Node 目前用量：他是不是這台 Node 的大戶（⚠️ 不代表資源快滿）")
 L = Line()
-text(L, """**分母是 Node「目前實際的總用量」，不是容量。** 只回答「這台 Node 現在用掉的資源，有幾成是他用的」。
+text(L, """**分母是 Node 目前的總用量，不是容量**：只回答「這台 Node 現在用掉的資源有幾成是他的」。
 
-⚠️ 壓測時如果其他服務很閒或已停掉，只剩他在跑，這裡會接近 **100%**，但資源可能其實很空。**要判斷資源快不快滿，請看 3B（他 ÷ 容量）和 3D（整台 ÷ 容量）。**""", h=3)
+⚠️ 其他服務很閒或停掉時這裡一定接近 100%，**不代表資源快滿**；快不快滿看 3B、3D。""", h=2)
 L.newline()
 L = Line()
 SHARE_HOW = "接近 100% 只代表這台 Node 目前的用量幾乎都是他的；其他服務停掉時一定會這樣。資源快不快滿請看 3B、3D。"
@@ -455,9 +508,9 @@ L.newline()
 # ---------------------------------------------------------------- 3B his share of capacity
 row("3B. 【他】÷ Node 容量：他自己用掉 Node 容量的幾成（主要看這區）")
 L = Line()
-text(L, """**分母是他所在 Node 的「容量」**（CPU 總核數、總記憶體、網卡速度、磁碟忙碌時間、檔案系統容量，全部自動取得），每台 Node 一條線。
+text(L, """**分母是他所在 Node 的容量**（總核數、總記憶體、網卡速度、磁碟忙碌時間、檔案系統容量），每台 Node 一條線。
 
-其他服務停掉也不會被灌高，**這才是「他用掉多少資源」的真實比例**。整台 Node 快不快滿，請看 3D。""", h=3)
+其他服務停掉也不會被灌高，這才是他用掉多少資源的真實比例；整台 Node 快不快滿看 3D。""", h=2)
 L.newline()
 L = Line()
 HIS_CAP_HOW = "越高代表他一個人就吃掉這台 Node 越多容量；接近紅色虛線代表光是他就快把這項資源吃滿。"
@@ -499,9 +552,9 @@ L.newline()
 # ---------------------------------------------------------------- 3C his usage vs his own 7-day peak
 row("3C. 【他】目前 vs 他自己壓測前 7 天峰值：他比平常最忙時高多少")
 L = Line()
-text(L, """**實線 = 他現在的用量，虛線 = 時間範圍開始前 7 天內，他自己的最高值**（Pod 合計、每 5 分鐘平均）。實線遠高於虛線，代表這次壓測讓他用到平常沒到過的量。
+text(L, """**實線 = 他現在，虛線 = 時間範圍開始前 7 天他自己的最高值**（Pod 合計、每 5 分鐘平均）。實線遠高於虛線 = 壓測讓他用到平常沒到過的量。
 
-⚠️ 時間範圍的**起點要設在壓測開始前**，虛線才不會被壓測本身墊高。""", h=3)
+⚠️ 時間範圍的**起點要在壓測開始前**，虛線才不會被壓測本身墊高。""", h=2)
 L.newline()
 L = Line()
 HIS_PEAK_HOW = "實線高出虛線越多，代表這次壓測讓他用得比平常最忙時多越多；再到 3D、3E 看整台 Node 是否因此變吃緊。"
@@ -601,9 +654,9 @@ L.newline()
 # ---------------------------------------------------------------- 4 node
 row("4. 【整台 Node】共用資源壓力：所有 Pod 加總，不是他的用量，看壓測期間有沒有往上飆")
 L = Line()
-text(L, """**這一區看的是整台 Node 的狀態（所有 Pod 加總），不是他自己用了多少。** 用途是確認：他所在的 Node 在壓測期間有沒有變吃緊。
+text(L, """**整台 Node 的狀態（所有 Pod 加總），不是他的用量。** 比較壓測前與壓測中：
 
-看法：比較**壓測前**與**壓測中**的曲線。壓測一開始就往上飆，再對照第 2 區【他】的用量和第 5 區【鄰居】，判斷是不是他造成的。壓測前後都很平，就代表 Node 沒被拖慢。""", w=24, h=3)
+壓測一開始就往上飆 → 對照第 2 區【他】和第 5 區【鄰居】判斷是不是他造成的；前後都很平 → Node 沒被拖慢。""", w=24, h=2)
 L.newline()
 L = Line()
 ts(L, "【整台 Node】PSI：有多少時間有工作在等資源",
@@ -685,11 +738,11 @@ ts(L, "【整台 Node】CPU 使用率（÷ 總核數）",
    desc(V_NODE, "整台 Node 的 CPU 有多少時間在工作。",
         "長時間超過 80% 且 PSI CPU 也上升時，沒設 limit 或超用 request 的 Pod 會互相搶 CPU。"),
    w=6, minv=0)
-ts(L, "【整台 Node】剩餘可用記憶體（÷ 總記憶體）",
-   [('node_memory_MemAvailable_bytes{@NODE@} / node_memory_MemTotal_bytes{@NODE@}', "{{instance}}")],
+ts(L, "【整台 Node】記憶體使用率（÷ 總記憶體）",
+   [('1 - node_memory_MemAvailable_bytes{@NODE@} / node_memory_MemTotal_bytes{@NODE@}', "{{instance}}")],
    "percentunit",
-   desc(V_NODE, "整台 Node 還能給程式用的記憶體比例。",
-        "低於 10% 要注意，kubelet 可能開始驅逐 Pod（MemoryPressure）。"),
+   desc(V_NODE, "整台 Node 已用掉的記憶體比例（總記憶體 − 可用記憶體）。",
+        "超過 90% 要注意，kubelet 可能開始驅逐 Pod（MemoryPressure）。"),
    w=6, minv=0)
 ts(L, "【整台 Node】Node 壓力狀態（1 = 發生中）",
    [('max by (node, condition) (kube_node_status_condition{condition=~"DiskPressure|MemoryPressure|PIDPressure", status="true", node=~"$node"})', "{{node}} {{condition}}")],
@@ -740,9 +793,10 @@ ts(L, "【共用】CoreDNS 請求量與 P99 延遲",
    [('sum(rate(coredns_dns_requests_total[@R@]))', "每秒查詢數"),
     ('histogram_quantile(0.99, sum by (le) (rate(coredns_dns_request_duration_seconds_bucket[@R@])))', "P99 延遲（秒）")],
    "short",
-   desc(V_SHARED, "全叢集 DNS 服務的查詢量與最慢 1% 查詢的延遲。",
+   desc(V_SHARED, "全叢集 DNS 服務的查詢量（左軸）與最慢 1% 查詢的延遲（右軸）。",
         "壓測時若每次連線都重新查 DNS，查詢量會飆高；P99 延遲上升時，全叢集的服務解析名稱都會變慢。"),
-   minv=0)
+   minv=0, overrides=[{"matcher": {"id": "byName", "options": "P99 延遲（秒）"},
+                       "properties": [{"id": "unit", "value": "s"}, {"id": "custom.axisPlacement", "value": "right"}]}])
 L.newline()
 
 

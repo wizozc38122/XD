@@ -116,11 +116,28 @@ OCP 沒有特別設定時，不會限制 Pod 的網路頻寬與磁碟讀寫速�
 
 ### 1. 總覽：他自己有沒有被限制卡住、部署在哪
 
-快速看他的副本數、CPU 用量 ÷ 自己的 Request、記憶體 ÷ 自己的 Limit、CPU throttling、重啟次數，以及他的 CPU ÷ 所選 Node 總核數。下方有 Pod 分布在哪些 Node 的圖和對應表。
+快速看他的副本數、CPU 用量 ÷ 自己的 Request（只算有設 request 的容器）、記憶體 ÷ 自己的 Limit、CPU throttling、重啟次數（原因看 2B），以及他的 CPU ÷ 所選 Node 總核數。Request / Limit 設成 0 等於沒設，不會算出無限大。下方有 Pod 分布在哪些 Node 的圖和對應表。
 
 ### 2. 【他】自己的用量
 
-他的 CPU、記憶體、網路流量、網路丟包、磁碟讀寫、可寫層用量、重啟與 OOMKilled。CPU 面板會疊上「昨天同時段」，用來確認這次壓測多出多少負載。
+他的 CPU、記憶體、網路流量、網路丟包、磁碟讀寫、可寫層用量。CPU 面板會疊上「昨天同時段」，用來確認這次壓測多出多少負載。
+
+### 2B. 【他】重啟紀錄與原因
+
+- **重啟次數（依上次結束原因）**：每 5 分鐘重啟幾次，依 OOMKilled、Error、Completed 分開；另外畫出目前卡在等待狀態（CrashLoopBackOff 等）的容器數、被驅逐（Evicted）的 Pod 數。
+- **重啟紀錄（每個容器）**：時間範圍內重啟幾次、累計幾次、上次結束原因、exit code、多久前、目前等待原因。
+
+| 看到 | 代表 |
+|---|---|
+| OOMKilled（exit code 137） | 記憶體超過 limit |
+| Error + exit code 137 | 被強制終止，通常是 liveness probe 失敗 |
+| Error + exit code 1 等 | 程式自己異常結束，看應用程式 log |
+| exit code 143 | 收到終止訊號（重新部署、縮容），通常正常 |
+| Completed | 程式自己結束；常駐服務不該這樣 |
+| CrashLoopBackOff | 一直啟動失敗，Kubernetes 拉長重試間隔 |
+| Evicted | Node 資源不足被趕走，看第 4 區 |
+
+probe 失敗的細節不在 Prometheus，要看 `oc describe pod` 的 Events。exit code、結束時間需要 kube-state-metrics 2.x 較新的版本，沒有的話那兩欄會是空的。
 
 ### 3A. 【他】÷ Node 目前用量
 
