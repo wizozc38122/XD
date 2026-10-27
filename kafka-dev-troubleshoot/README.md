@@ -15,6 +15,8 @@
 python gen_dashboard.py kafka-dev-troubleshoot-dashboard.json "Prometheus-(SIT|UAT|PROD-NH|PROD-BQ|PROD-BQ1)"
 ```
 
+kafka-exporter 的 scrape 間隔不是 15 秒時，用 `--scrape` 指定（例如 `--scrape=30s`、`--scrape=1m`）。Lag 圖的取樣解析度、Consumer Group 現況頭尾平均的長度都依它決定（頭尾平均 = 4 次 scrape，最少 1 分鐘）。Grafana 資料來源設定裡的 **Scrape interval** 也要填一樣的值，`$__rate_interval` 才算得對。
+
 ## 匯入
 
 1. Grafana → Dashboards → New → Import → 上傳 `kafka-dev-troubleshoot-dashboard.json`。
@@ -22,7 +24,7 @@ python gen_dashboard.py kafka-dev-troubleshoot-dashboard.json "Prometheus-(SIT|U
    - **環境**：Prometheus 資料來源。
    - **Cluster**：Kafka 叢集（取自 kafka-exporter 的 `cluster` label）。
    - **Topic** / **Consumer Group**：預設全選。
-   - **比較區間**：② 的速度、寫入 / 消費筆數、Lag 變化、追上需要都用這一段算（5m / 15m / 1h，預設 5m）。
+   - **比較區間**：② 的速度、寫入 / 消費筆數、Lag 變化、追上需要都用這一段算（5m / 15m / 1h，預設 5m）。舊版叫「速度取樣」，舊連結帶的值會被忽略、改用預設。
 3. 時間範圍要**包含出問題前**的一段時間，才看得出變化。
 
 需求（括號內是實測版本）：
@@ -46,10 +48,13 @@ python gen_dashboard.py kafka-dev-troubleshoot-dashboard.json "Prometheus-(SIT|U
 
 ## 幾個容易誤會的數字
 
-- **Consumer Group 現況的寫入、消費、Lag 變化**：都是「比較區間」頭尾相減的筆數，所以一定對得上：**寫入 − 消費 = Lag 變化**。
-  - 資料每 15 秒一筆，consumer 又是每隔幾秒才 commit，lag 本來就是鋸齒狀。頭尾各取 1 分鐘平均再相減，鋸齒才不會被當成增減。
+- **Consumer Group 現況的寫入、消費、Lag 變化**：都是「比較區間」頭尾相減的筆數，所以一定對得上：**寫入 − 消費 = Lag 變化**（四捨五入可能差 1）。
+  - 資料每次 scrape 才一筆，consumer 又是每隔幾秒才 commit，lag 本來就是鋸齒狀。頭尾各取一小段平均（4 次 scrape，最少 1 分鐘）再相減，鋸齒才不會被當成增減。
+  - kafka-exporter 算 lag 時，log end 是另外跟 broker 要的，跟 topic 的 offset 指標不是同一個瞬間。所以寫入用「lag + commit 位置」還原 lag 用的那個 log end，三個數字才會剛好對上。
+  - 只算這個 group 頭尾都 commit 過的 partition，所以寫入可能比 Topic 總表少。
   - **Lag 變化**在 ±10 筆內視為持平。
   - **消費**是負數 = offset 被往回重設（重讀）。
+- **沒 commit 的 Partition**：group 在這個 topic 還沒 commit 過的 partition 數。kafka-exporter 對這些 partition 回報 lag = -1，所以 Lag 算 0、寫入 / 消費 / Lag 變化也不算它們；> 0 時這些 partition 的積壓看不到，確認是不是沒有 consumer 分到，或程式只在處理到資料時才 commit。整個 topic 都沒 commit 過時，exporter 不會列出這個 group × topic。
 - **追上需要**：Lag ÷ 比較區間內 lag 減少的速度。依序判斷：
   1. 沒有 lag → 已跟上
   2. 有 lag 但沒有 consumer → 沒人在讀
@@ -60,7 +65,7 @@ python gen_dashboard.py kafka-dev-troubleshoot-dashboard.json "Prometheus-(SIT|U
   7. 比較區間開頭還沒有這個 group 的資料 → 資料不足
 - **還落後多久的資料**（只在圖上）：Lag ÷ 平均寫入速度換算的估算值。Kafka 指標沒有訊息時間，寫入忽快忽慢時只是概略值；要精準請在應用程式記錄訊息時間。
 - **② 的速度圖**：每個點是那個時間點往前「比較區間」的平均，跟表格用同一段區間，但會比 Lag 圖慢半拍。
-- **Lag 圖**：每個點取前一小段（約 1 分鐘）的最高值，時間範圍拉長也不會漏掉高點。
+- **Lag 圖**：每個點取前一小段（至少 4 次 scrape）的最高值，時間範圍拉長也不會漏掉高點。
 - **Lag 佔保留量** = 還沒讀的筆數 ÷ Kafka 這個 partition 現在還留著的筆數（取最糟的 partition）。
   - 只用 offset 算（kafka-exporter），不是 segment，也跟 retention 是依時間還是大小無關，不需要 jmx。
   - 例：還留著 1,000 筆、其中 950 筆沒讀 = 95%，再刪一點就會刪到沒讀的。

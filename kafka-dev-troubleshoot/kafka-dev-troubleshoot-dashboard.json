@@ -126,7 +126,7 @@
         "allValue": ".*"
       },
       {
-        "name": "rate_window",
+        "name": "compare_window",
         "label": "比較區間",
         "type": "custom",
         "query": "5m : 300,15m : 900,1h : 3600",
@@ -697,7 +697,7 @@
             "uid": "${datasource}"
           },
           "editorMode": "code",
-          "expr": "count((sum by(consumergroup)(kafka_consumergroup_lag{cluster=\"$cluster\"}) > 0) and on(consumergroup) (max by(consumergroup)(kafka_consumergroup_members{cluster=\"$cluster\"}) == 0))",
+          "expr": "count((sum by(consumergroup)(clamp_min(kafka_consumergroup_lag{cluster=\"$cluster\"}, 0)) > 0) and on(consumergroup) (max by(consumergroup)(kafka_consumergroup_members{cluster=\"$cluster\"}) == 0))",
           "legendFormat": "__auto",
           "refId": "A",
           "range": false,
@@ -761,8 +761,8 @@
     {
       "id": 12,
       "type": "table",
-      "title": "Consumer Group 現況（現在；寫入 / 消費 / Lag 變化 = 近 ${rate_window:text}）",
-      "description": "**是什麼**：每個 group × topic 現在追得怎樣。寫入、消費、Lag 變化都是上方「比較區間」頭尾相減的筆數（頭尾各取 1 分鐘平均，抹掉 commit 造成的起伏），所以一定對得上：**寫入 − 消費 = Lag 變化**。\n\n**欄位**：\n- **Lag**：現在還沒讀的訊息數。已處理但還沒 commit 的也算，所以會隨 commit 小幅起伏\n- **成員**：連著的 consumer 數，0 = 沒人在讀\n- **寫入、消費**：比較區間內寫進 / 讀完（commit）幾筆。消費是負數 = offset 被往回重設（重讀）\n- **Lag 變化**：比較區間內 lag 增減幾筆（= 寫入 − 消費）。正數 = 越落越多；負數 = 正在追上；±10 筆內視為持平\n- **追上需要**：Lag ÷ 比較區間內 lag 減少的速度。已跟上 = 沒有 lag，或 lag 不到 30 秒的寫入量；沒人在讀 = 有 lag 但沒有 consumer；追不上（越落越多）= Lag 變化 > 10；沒在追上（持平）= Lag 變化在 ±10 內；> 1 天 = lag 減少得很慢；資料不足 = 比較區間開頭還沒有這個 group 的資料\n- **Lag 佔保留量**：還沒讀的筆數 ÷ Kafka 這個 partition 現在還留著的筆數（取最糟的 partition）。例：還留著 1,000 筆、其中 950 筆沒讀 = 95%。只用 offset 算，看不出 Kafka 什麼時候會刪（retention 設多少要用 `kafka-configs --describe --entity-type topics --entity-name <topic>` 查）。\n  - **0% ~ 70%**：離會被刪的資料還很遠\n  - **接近 100%**（有成員）：快讀不到就被刪了 → 加快消費\n  - **100% 不一定很急**：Kafka 是整個 segment 一起刪，還在寫的那個 segment 不會刪。partition 只留幾筆時（例：留 6 筆、6 筆都沒讀 = 100%）通常要等好幾天才會刪，搭配 Lag 筆數看\n  - **已掉資料**（有成員、超過 100%）：沒讀的已經被刪了，consumer 會收到 OFFSET_OUT_OF_RANGE，依 auto.offset.reset 跳到最舊或最新\n  - **沒人在讀**（成員 0、有 lag）：沒人讀的 group 遲早都會到 100%，% 沒意義，所以不顯示。確認程式該不該在跑；不用了就刪掉 group（`kafka-consumer-groups --delete --group <group>`）\n  - **已掉資料（沒人讀）**（成員 0、超過 100%）：沒人讀的期間資料已被刪；程式重開時會依 auto.offset.reset 跳過被刪的部分\n\n**正常**：成員 ≥ 1、追上需要顯示「已跟上」。\n\n**不正常時**：\n- 成員 0 → 程式沒在跑\n- 追不上（越落越多）→ 處理太慢：加 consumer（不能超過 partition 數）或加快處理\n- Lag 佔保留量接近 100%（有成員）→ 沒讀到的資料快被刪掉；「已掉資料」→ 已經刪了；「沒人在讀」→ 先處理成員 0（各情境見欄位說明）\n- 想看更長的走勢 → 把「比較區間」調長，或看下方 Lag 圖",
+      "title": "Consumer Group 現況（現在；寫入 / 消費 / Lag 變化 = 近 ${compare_window:text}）",
+      "description": "**是什麼**：每個 group × topic 現在追得怎樣。寫入、消費、Lag 變化都是上方「比較區間」頭尾相減的筆數（頭尾各取 60s 平均，抹掉 commit 造成的起伏），所以一定對得上：**寫入 − 消費 = Lag 變化**（四捨五入可能差 1）。\n\n**欄位**：\n- **Lag**：現在還沒讀的訊息數。已處理但還沒 commit 的也算，所以會隨 commit 小幅起伏\n- **成員**：連著的 consumer 數，0 = 沒人在讀\n- **寫入、消費**：比較區間內寫進 / 讀完（commit）幾筆，只算這個 group 有 commit 過的 partition，所以可能比 Topic 總表少（看「沒 commit 的 Partition」）。消費是負數 = offset 被往回重設（重讀）\n- **Lag 變化**：比較區間內 lag 增減幾筆（= 寫入 − 消費）。正數 = 越落越多；負數 = 正在追上；±10 筆內視為持平\n- **追上需要**：Lag ÷ 比較區間內 lag 減少的速度。已跟上 = 沒有 lag，或 lag 不到 30 秒的寫入量；沒人在讀 = 有 lag 但沒有 consumer；追不上（越落越多）= Lag 變化 > 10；沒在追上（持平）= Lag 變化在 ±10 內；> 1 天 = lag 減少得很慢；資料不足 = 比較區間開頭還沒有這個 group 的資料\n- **Lag 佔保留量**：還沒讀的筆數 ÷ Kafka 這個 partition 現在還留著的筆數（取最糟的 partition）。例：還留著 1,000 筆、其中 950 筆沒讀 = 95%。只用 offset 算，看不出 Kafka 什麼時候會刪（retention 設多少要用 `kafka-configs --describe --entity-type topics --entity-name <topic>` 查）。\n  - **0% ~ 70%**：離會被刪的資料還很遠\n  - **接近 100%**（有成員）：快讀不到就被刪了 → 加快消費\n  - **100% 不一定很急**：Kafka 是整個 segment 一起刪，還在寫的那個 segment 不會刪。partition 只留幾筆時（例：留 6 筆、6 筆都沒讀 = 100%）通常要等好幾天才會刪，搭配 Lag 筆數看\n  - **已掉資料**（有成員、超過 100%）：沒讀的已經被刪了，consumer 會收到 OFFSET_OUT_OF_RANGE，依 auto.offset.reset 跳到最舊或最新\n  - **沒人在讀**（成員 0、有 lag）：沒人讀的 group 遲早都會到 100%，% 沒意義，所以不顯示。確認程式該不該在跑；不用了就刪掉 group（`kafka-consumer-groups --delete --group <group>`）\n  - **已掉資料（沒人讀）**（成員 0、超過 100%）：沒人讀的期間資料已被刪；程式重開時會依 auto.offset.reset 跳過被刪的部分\n- **沒 commit 的 Partition**：這個 group 在這個 topic 還沒 commit 過的 partition 數。kafka-exporter 對這些 partition 回報 lag = -1，所以 Lag 算 0、寫入 / 消費 / Lag 變化也不算它們。整個 topic 都沒 commit 過時，exporter 不會列出這個 group × topic\n\n**正常**：成員 ≥ 1、追上需要顯示「已跟上」。\n\n**不正常時**：\n- 成員 0 → 程式沒在跑\n- 追不上（越落越多）→ 處理太慢：加 consumer（不能超過 partition 數）或加快處理\n- Lag 佔保留量接近 100%（有成員）→ 沒讀到的資料快被刪掉；「已掉資料」→ 已經刪了；「沒人在讀」→ 先處理成員 0（各情境見欄位說明）\n- 想看更長的走勢 → 把「比較區間」調長，或看下方 Lag 圖\n- 沒 commit 的 Partition > 0 → 這些 partition 的 lag 看不到；確認是不是沒有 consumer 分到，或程式只在處理到資料時才 commit",
       "datasource": {
         "type": "prometheus",
         "uid": "${datasource}"
@@ -806,7 +806,7 @@
             "uid": "${datasource}"
           },
           "editorMode": "code",
-          "expr": "sum by(consumergroup,topic)((avg_over_time(kafka_consumergroup_lag{cluster=\"$cluster\",topic=~\"$topic\",consumergroup=~\"$consumergroup\"}[1m]) - avg_over_time(kafka_consumergroup_lag{cluster=\"$cluster\",topic=~\"$topic\",consumergroup=~\"$consumergroup\"}[1m] offset ${rate_window}s)) * 0 + on(topic,partition) group_left() (avg_over_time(kafka_topic_partition_current_offset{cluster=\"$cluster\",topic=~\"$topic\"}[1m]) - avg_over_time(kafka_topic_partition_current_offset{cluster=\"$cluster\",topic=~\"$topic\"}[1m] offset ${rate_window}s)))",
+          "expr": "sum by(consumergroup,topic)((avg_over_time(kafka_consumergroup_lag{cluster=\"$cluster\",topic=~\"$topic\",consumergroup=~\"$consumergroup\"}[60s]) - avg_over_time(kafka_consumergroup_lag{cluster=\"$cluster\",topic=~\"$topic\",consumergroup=~\"$consumergroup\"}[60s] offset ${compare_window}s) and on(consumergroup,topic,partition) (min_over_time(kafka_consumergroup_current_offset{cluster=\"$cluster\",topic=~\"$topic\",consumergroup=~\"$consumergroup\"}[60s]) >= 0 and on(consumergroup,topic,partition) min_over_time(kafka_consumergroup_current_offset{cluster=\"$cluster\",topic=~\"$topic\",consumergroup=~\"$consumergroup\"}[60s] offset ${compare_window}s) >= 0)) + (avg_over_time(kafka_consumergroup_current_offset{cluster=\"$cluster\",topic=~\"$topic\",consumergroup=~\"$consumergroup\"}[60s]) - avg_over_time(kafka_consumergroup_current_offset{cluster=\"$cluster\",topic=~\"$topic\",consumergroup=~\"$consumergroup\"}[60s] offset ${compare_window}s) and on(consumergroup,topic,partition) (min_over_time(kafka_consumergroup_current_offset{cluster=\"$cluster\",topic=~\"$topic\",consumergroup=~\"$consumergroup\"}[60s]) >= 0 and on(consumergroup,topic,partition) min_over_time(kafka_consumergroup_current_offset{cluster=\"$cluster\",topic=~\"$topic\",consumergroup=~\"$consumergroup\"}[60s] offset ${compare_window}s) >= 0)))",
           "legendFormat": "__auto",
           "refId": "C",
           "range": false,
@@ -819,7 +819,7 @@
             "uid": "${datasource}"
           },
           "editorMode": "code",
-          "expr": "sum by(consumergroup,topic)((avg_over_time(kafka_consumergroup_current_offset{cluster=\"$cluster\",topic=~\"$topic\",consumergroup=~\"$consumergroup\"}[1m]) - avg_over_time(kafka_consumergroup_current_offset{cluster=\"$cluster\",topic=~\"$topic\",consumergroup=~\"$consumergroup\"}[1m] offset ${rate_window}s)) and on(consumergroup,topic,partition) (avg_over_time(kafka_consumergroup_lag{cluster=\"$cluster\",topic=~\"$topic\",consumergroup=~\"$consumergroup\"}[1m]) - avg_over_time(kafka_consumergroup_lag{cluster=\"$cluster\",topic=~\"$topic\",consumergroup=~\"$consumergroup\"}[1m] offset ${rate_window}s)))",
+          "expr": "sum by(consumergroup,topic)((avg_over_time(kafka_consumergroup_current_offset{cluster=\"$cluster\",topic=~\"$topic\",consumergroup=~\"$consumergroup\"}[60s]) - avg_over_time(kafka_consumergroup_current_offset{cluster=\"$cluster\",topic=~\"$topic\",consumergroup=~\"$consumergroup\"}[60s] offset ${compare_window}s) and on(consumergroup,topic,partition) (min_over_time(kafka_consumergroup_current_offset{cluster=\"$cluster\",topic=~\"$topic\",consumergroup=~\"$consumergroup\"}[60s]) >= 0 and on(consumergroup,topic,partition) min_over_time(kafka_consumergroup_current_offset{cluster=\"$cluster\",topic=~\"$topic\",consumergroup=~\"$consumergroup\"}[60s] offset ${compare_window}s) >= 0)))",
           "legendFormat": "__auto",
           "refId": "D",
           "range": false,
@@ -832,7 +832,7 @@
             "uid": "${datasource}"
           },
           "editorMode": "code",
-          "expr": "sum by(consumergroup,topic)((avg_over_time(kafka_consumergroup_lag{cluster=\"$cluster\",topic=~\"$topic\",consumergroup=~\"$consumergroup\"}[1m]) - avg_over_time(kafka_consumergroup_lag{cluster=\"$cluster\",topic=~\"$topic\",consumergroup=~\"$consumergroup\"}[1m] offset ${rate_window}s)))",
+          "expr": "sum by(consumergroup,topic)((avg_over_time(kafka_consumergroup_lag{cluster=\"$cluster\",topic=~\"$topic\",consumergroup=~\"$consumergroup\"}[60s]) - avg_over_time(kafka_consumergroup_lag{cluster=\"$cluster\",topic=~\"$topic\",consumergroup=~\"$consumergroup\"}[60s] offset ${compare_window}s) and on(consumergroup,topic,partition) (min_over_time(kafka_consumergroup_current_offset{cluster=\"$cluster\",topic=~\"$topic\",consumergroup=~\"$consumergroup\"}[60s]) >= 0 and on(consumergroup,topic,partition) min_over_time(kafka_consumergroup_current_offset{cluster=\"$cluster\",topic=~\"$topic\",consumergroup=~\"$consumergroup\"}[60s] offset ${compare_window}s) >= 0)))",
           "legendFormat": "__auto",
           "refId": "E",
           "range": false,
@@ -845,7 +845,7 @@
             "uid": "${datasource}"
           },
           "editorMode": "code",
-          "expr": "((sum by(consumergroup,topic)(clamp_min(kafka_consumergroup_lag{cluster=\"$cluster\",topic=~\"$topic\",consumergroup=~\"$consumergroup\"}, 0)) == 0) * 0 - 1) or (sum by(consumergroup,topic)(clamp_min(kafka_consumergroup_lag{cluster=\"$cluster\",topic=~\"$topic\",consumergroup=~\"$consumergroup\"}, 0)) * 0 - 2 and on(consumergroup) (max by(consumergroup)(kafka_consumergroup_members{cluster=\"$cluster\",consumergroup=~\"$consumergroup\"}) == 0)) or (sum by(consumergroup,topic)(clamp_min(kafka_consumergroup_lag{cluster=\"$cluster\",topic=~\"$topic\",consumergroup=~\"$consumergroup\"}, 0)) * 0 - 1 and on(consumergroup,topic) (sum by(consumergroup,topic)(clamp_min(kafka_consumergroup_lag{cluster=\"$cluster\",topic=~\"$topic\",consumergroup=~\"$consumergroup\"}, 0)) * ${rate_window} < sum by(consumergroup,topic)((avg_over_time(kafka_consumergroup_lag{cluster=\"$cluster\",topic=~\"$topic\",consumergroup=~\"$consumergroup\"}[1m]) - avg_over_time(kafka_consumergroup_lag{cluster=\"$cluster\",topic=~\"$topic\",consumergroup=~\"$consumergroup\"}[1m] offset ${rate_window}s)) * 0 + on(topic,partition) group_left() (avg_over_time(kafka_topic_partition_current_offset{cluster=\"$cluster\",topic=~\"$topic\"}[1m]) - avg_over_time(kafka_topic_partition_current_offset{cluster=\"$cluster\",topic=~\"$topic\"}[1m] offset ${rate_window}s))) * 30)) or (sum by(consumergroup,topic)(clamp_min(kafka_consumergroup_lag{cluster=\"$cluster\",topic=~\"$topic\",consumergroup=~\"$consumergroup\"}, 0)) / (0 - sum by(consumergroup,topic)((avg_over_time(kafka_consumergroup_lag{cluster=\"$cluster\",topic=~\"$topic\",consumergroup=~\"$consumergroup\"}[1m]) - avg_over_time(kafka_consumergroup_lag{cluster=\"$cluster\",topic=~\"$topic\",consumergroup=~\"$consumergroup\"}[1m] offset ${rate_window}s))) > 10) * ${rate_window}) or (sum by(consumergroup,topic)(clamp_min(kafka_consumergroup_lag{cluster=\"$cluster\",topic=~\"$topic\",consumergroup=~\"$consumergroup\"}, 0)) * 0 - 3 and on(consumergroup,topic) (sum by(consumergroup,topic)((avg_over_time(kafka_consumergroup_lag{cluster=\"$cluster\",topic=~\"$topic\",consumergroup=~\"$consumergroup\"}[1m]) - avg_over_time(kafka_consumergroup_lag{cluster=\"$cluster\",topic=~\"$topic\",consumergroup=~\"$consumergroup\"}[1m] offset ${rate_window}s))) > 10)) or (sum by(consumergroup,topic)(clamp_min(kafka_consumergroup_lag{cluster=\"$cluster\",topic=~\"$topic\",consumergroup=~\"$consumergroup\"}, 0)) * 0 - 4 and on(consumergroup,topic) sum by(consumergroup,topic)((avg_over_time(kafka_consumergroup_lag{cluster=\"$cluster\",topic=~\"$topic\",consumergroup=~\"$consumergroup\"}[1m]) - avg_over_time(kafka_consumergroup_lag{cluster=\"$cluster\",topic=~\"$topic\",consumergroup=~\"$consumergroup\"}[1m] offset ${rate_window}s))))",
+          "expr": "((sum by(consumergroup,topic)(clamp_min(kafka_consumergroup_lag{cluster=\"$cluster\",topic=~\"$topic\",consumergroup=~\"$consumergroup\"}, 0)) == 0) * 0 - 1) or (sum by(consumergroup,topic)(clamp_min(kafka_consumergroup_lag{cluster=\"$cluster\",topic=~\"$topic\",consumergroup=~\"$consumergroup\"}, 0)) * 0 - 2 and on(consumergroup) (max by(consumergroup)(kafka_consumergroup_members{cluster=\"$cluster\",consumergroup=~\"$consumergroup\"}) == 0)) or (sum by(consumergroup,topic)(clamp_min(kafka_consumergroup_lag{cluster=\"$cluster\",topic=~\"$topic\",consumergroup=~\"$consumergroup\"}, 0)) * 0 - 1 and on(consumergroup,topic) (sum by(consumergroup,topic)(clamp_min(kafka_consumergroup_lag{cluster=\"$cluster\",topic=~\"$topic\",consumergroup=~\"$consumergroup\"}, 0)) * ${compare_window} < sum by(consumergroup,topic)((avg_over_time(kafka_consumergroup_lag{cluster=\"$cluster\",topic=~\"$topic\",consumergroup=~\"$consumergroup\"}[60s]) - avg_over_time(kafka_consumergroup_lag{cluster=\"$cluster\",topic=~\"$topic\",consumergroup=~\"$consumergroup\"}[60s] offset ${compare_window}s) and on(consumergroup,topic,partition) (min_over_time(kafka_consumergroup_current_offset{cluster=\"$cluster\",topic=~\"$topic\",consumergroup=~\"$consumergroup\"}[60s]) >= 0 and on(consumergroup,topic,partition) min_over_time(kafka_consumergroup_current_offset{cluster=\"$cluster\",topic=~\"$topic\",consumergroup=~\"$consumergroup\"}[60s] offset ${compare_window}s) >= 0)) + (avg_over_time(kafka_consumergroup_current_offset{cluster=\"$cluster\",topic=~\"$topic\",consumergroup=~\"$consumergroup\"}[60s]) - avg_over_time(kafka_consumergroup_current_offset{cluster=\"$cluster\",topic=~\"$topic\",consumergroup=~\"$consumergroup\"}[60s] offset ${compare_window}s) and on(consumergroup,topic,partition) (min_over_time(kafka_consumergroup_current_offset{cluster=\"$cluster\",topic=~\"$topic\",consumergroup=~\"$consumergroup\"}[60s]) >= 0 and on(consumergroup,topic,partition) min_over_time(kafka_consumergroup_current_offset{cluster=\"$cluster\",topic=~\"$topic\",consumergroup=~\"$consumergroup\"}[60s] offset ${compare_window}s) >= 0))) * 30)) or (sum by(consumergroup,topic)(clamp_min(kafka_consumergroup_lag{cluster=\"$cluster\",topic=~\"$topic\",consumergroup=~\"$consumergroup\"}, 0)) / (0 - sum by(consumergroup,topic)((avg_over_time(kafka_consumergroup_lag{cluster=\"$cluster\",topic=~\"$topic\",consumergroup=~\"$consumergroup\"}[60s]) - avg_over_time(kafka_consumergroup_lag{cluster=\"$cluster\",topic=~\"$topic\",consumergroup=~\"$consumergroup\"}[60s] offset ${compare_window}s) and on(consumergroup,topic,partition) (min_over_time(kafka_consumergroup_current_offset{cluster=\"$cluster\",topic=~\"$topic\",consumergroup=~\"$consumergroup\"}[60s]) >= 0 and on(consumergroup,topic,partition) min_over_time(kafka_consumergroup_current_offset{cluster=\"$cluster\",topic=~\"$topic\",consumergroup=~\"$consumergroup\"}[60s] offset ${compare_window}s) >= 0))) > 10) * ${compare_window}) or (sum by(consumergroup,topic)(clamp_min(kafka_consumergroup_lag{cluster=\"$cluster\",topic=~\"$topic\",consumergroup=~\"$consumergroup\"}, 0)) * 0 - 3 and on(consumergroup,topic) (sum by(consumergroup,topic)((avg_over_time(kafka_consumergroup_lag{cluster=\"$cluster\",topic=~\"$topic\",consumergroup=~\"$consumergroup\"}[60s]) - avg_over_time(kafka_consumergroup_lag{cluster=\"$cluster\",topic=~\"$topic\",consumergroup=~\"$consumergroup\"}[60s] offset ${compare_window}s) and on(consumergroup,topic,partition) (min_over_time(kafka_consumergroup_current_offset{cluster=\"$cluster\",topic=~\"$topic\",consumergroup=~\"$consumergroup\"}[60s]) >= 0 and on(consumergroup,topic,partition) min_over_time(kafka_consumergroup_current_offset{cluster=\"$cluster\",topic=~\"$topic\",consumergroup=~\"$consumergroup\"}[60s] offset ${compare_window}s) >= 0))) > 10)) or (sum by(consumergroup,topic)(clamp_min(kafka_consumergroup_lag{cluster=\"$cluster\",topic=~\"$topic\",consumergroup=~\"$consumergroup\"}, 0)) * 0 - 4 and on(consumergroup,topic) sum by(consumergroup,topic)((avg_over_time(kafka_consumergroup_lag{cluster=\"$cluster\",topic=~\"$topic\",consumergroup=~\"$consumergroup\"}[60s]) - avg_over_time(kafka_consumergroup_lag{cluster=\"$cluster\",topic=~\"$topic\",consumergroup=~\"$consumergroup\"}[60s] offset ${compare_window}s) and on(consumergroup,topic,partition) (min_over_time(kafka_consumergroup_current_offset{cluster=\"$cluster\",topic=~\"$topic\",consumergroup=~\"$consumergroup\"}[60s]) >= 0 and on(consumergroup,topic,partition) min_over_time(kafka_consumergroup_current_offset{cluster=\"$cluster\",topic=~\"$topic\",consumergroup=~\"$consumergroup\"}[60s] offset ${compare_window}s) >= 0))))",
           "legendFormat": "__auto",
           "refId": "F",
           "range": false,
@@ -861,6 +861,19 @@
           "expr": "(max by(consumergroup,topic)(clamp_min(kafka_consumergroup_lag{cluster=\"$cluster\",topic=~\"$topic\",consumergroup=~\"$consumergroup\"}, 0) / on(topic,partition) group_left() clamp_min((kafka_topic_partition_current_offset{cluster=\"$cluster\",topic=~\"$topic\"} - kafka_topic_partition_oldest_offset{cluster=\"$cluster\",topic=~\"$topic\"}), 1)) and on(consumergroup) (max by(consumergroup)(kafka_consumergroup_members{cluster=\"$cluster\",consumergroup=~\"$consumergroup\"}) > 0)) or ((max by(consumergroup,topic)(clamp_min(kafka_consumergroup_lag{cluster=\"$cluster\",topic=~\"$topic\",consumergroup=~\"$consumergroup\"}, 0) / on(topic,partition) group_left() clamp_min((kafka_topic_partition_current_offset{cluster=\"$cluster\",topic=~\"$topic\"} - kafka_topic_partition_oldest_offset{cluster=\"$cluster\",topic=~\"$topic\"}), 1)) > 1) * 0 - 3 and on(consumergroup) (max by(consumergroup)(kafka_consumergroup_members{cluster=\"$cluster\",consumergroup=~\"$consumergroup\"}) == 0)) or ((max by(consumergroup,topic)(clamp_min(kafka_consumergroup_lag{cluster=\"$cluster\",topic=~\"$topic\",consumergroup=~\"$consumergroup\"}, 0) / on(topic,partition) group_left() clamp_min((kafka_topic_partition_current_offset{cluster=\"$cluster\",topic=~\"$topic\"} - kafka_topic_partition_oldest_offset{cluster=\"$cluster\",topic=~\"$topic\"}), 1)) > 0) * 0 - 2 and on(consumergroup) (max by(consumergroup)(kafka_consumergroup_members{cluster=\"$cluster\",consumergroup=~\"$consumergroup\"}) == 0)) or max by(consumergroup,topic)(clamp_min(kafka_consumergroup_lag{cluster=\"$cluster\",topic=~\"$topic\",consumergroup=~\"$consumergroup\"}, 0) / on(topic,partition) group_left() clamp_min((kafka_topic_partition_current_offset{cluster=\"$cluster\",topic=~\"$topic\"} - kafka_topic_partition_oldest_offset{cluster=\"$cluster\",topic=~\"$topic\"}), 1))",
           "legendFormat": "__auto",
           "refId": "G",
+          "range": false,
+          "instant": true,
+          "format": "table"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "editorMode": "code",
+          "expr": "count by(consumergroup,topic)(kafka_consumergroup_current_offset{cluster=\"$cluster\",topic=~\"$topic\",consumergroup=~\"$consumergroup\"} == -1) or sum by(consumergroup,topic)(clamp_min(kafka_consumergroup_lag{cluster=\"$cluster\",topic=~\"$topic\",consumergroup=~\"$consumergroup\"}, 0)) * 0",
+          "legendFormat": "__auto",
+          "refId": "H",
           "range": false,
           "instant": true,
           "format": "table"
@@ -886,7 +899,8 @@
               "Value #D": 5,
               "Value #E": 6,
               "Value #F": 7,
-              "Value #G": 8
+              "Value #G": 8,
+              "Value #H": 9
             },
             "renameByName": {
               "consumergroup": "Consumer Group",
@@ -897,7 +911,8 @@
               "Value #D": "消費",
               "Value #E": "Lag 變化",
               "Value #F": "追上需要",
-              "Value #G": "Lag 佔保留量"
+              "Value #G": "Lag 佔保留量",
+              "Value #H": "沒 commit 的 Partition"
             }
           }
         },
@@ -1195,6 +1210,44 @@
                 ]
               }
             ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "沒 commit 的 Partition"
+            },
+            "properties": [
+              {
+                "id": "decimals",
+                "value": 0
+              },
+              {
+                "id": "custom.width",
+                "value": 110
+              },
+              {
+                "id": "thresholds",
+                "value": {
+                  "mode": "absolute",
+                  "steps": [
+                    {
+                      "color": "text",
+                      "value": null
+                    },
+                    {
+                      "color": "orange",
+                      "value": 1
+                    }
+                  ]
+                }
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-text"
+                }
+              }
+            ]
           }
         ]
       },
@@ -1210,7 +1263,7 @@
       "id": 13,
       "type": "timeseries",
       "title": "Lag（依 Group × Topic，每點取該段最高）",
-      "description": "**是什麼**：每個 group 在每個 topic 還沒讀的訊息數。每個點是前一小段（約 1 分鐘，時間範圍拉長時跟著變長）裡的最高值。\n\n**正常**：小且穩定，或升高後會降回來；隨 consumer commit 小幅鋸齒是正常的。\n\n**不正常時**：\n- 一路往上 → 消費跟不上（看右邊速度）\n- 突然歸零又暴增 → offset 被重設或重新部署",
+      "description": "**是什麼**：每個 group 在每個 topic 還沒讀的訊息數。每個點是前一小段（至少 4 次 scrape，時間範圍拉長時跟著變長）裡的最高值。\n\n**正常**：小且穩定，或升高後會降回來；隨 consumer commit 小幅鋸齒是正常的。\n\n**不正常時**：\n- 一路往上 → 消費跟不上（看右邊速度）\n- 突然歸零又暴增 → offset 被重設或重新部署",
       "datasource": {
         "type": "prometheus",
         "uid": "${datasource}"
@@ -1291,7 +1344,7 @@
     {
       "id": 14,
       "type": "timeseries",
-      "title": "消費 vs 寫入速度（筆/秒，近 ${rate_window:text} 平均）",
+      "title": "消費 vs 寫入速度（筆/秒，近 ${compare_window:text} 平均）",
       "description": "**是什麼**：實線 = 每個 group 每秒讀完幾筆；虛線（寫入 →）= topic 每秒寫入幾筆。每個點都是那個時間點往前「比較區間」的平均，所以會比 Lag 圖慢半拍；跟上方表格用同一段區間。\n\n**正常**：實線貼著同 topic 的虛線。\n\n**不正常時**：\n- 實線長期低於虛線 → lag 會一直漲\n- 實線掉到 0 → 程式停了或卡住（看成員數、有 lag 的 Partition）\n- 實線斷掉 → 那段期間 offset 被往回重設，速度算不出來",
       "datasource": {
         "type": "prometheus",
@@ -1310,7 +1363,7 @@
             "uid": "${datasource}"
           },
           "editorMode": "code",
-          "expr": "sum by(consumergroup,topic)(rate(kafka_consumergroup_current_offset{cluster=\"$cluster\",topic=~\"$topic\",consumergroup=~\"$consumergroup\"}[${rate_window}s]) unless resets(kafka_consumergroup_current_offset{cluster=\"$cluster\",topic=~\"$topic\",consumergroup=~\"$consumergroup\"}[${rate_window}s]) > 0)",
+          "expr": "sum by(consumergroup,topic)(rate(kafka_consumergroup_current_offset{cluster=\"$cluster\",topic=~\"$topic\",consumergroup=~\"$consumergroup\"}[${compare_window}s]) unless resets(kafka_consumergroup_current_offset{cluster=\"$cluster\",topic=~\"$topic\",consumergroup=~\"$consumergroup\"}[${compare_window}s]) > 0 and min_over_time(kafka_consumergroup_current_offset{cluster=\"$cluster\",topic=~\"$topic\",consumergroup=~\"$consumergroup\"}[${compare_window}s]) >= 0)",
           "legendFormat": "{{consumergroup}} → {{topic}}",
           "refId": "A",
           "range": true,
@@ -1322,7 +1375,7 @@
             "uid": "${datasource}"
           },
           "editorMode": "code",
-          "expr": "sum by(topic)(rate(kafka_topic_partition_current_offset{cluster=\"$cluster\",topic=~\"$topic\",topic!~\"__.*\"}[${rate_window}s]))",
+          "expr": "sum by(topic)(rate(kafka_topic_partition_current_offset{cluster=\"$cluster\",topic=~\"$topic\",topic!~\"__.*\"}[${compare_window}s]))",
           "legendFormat": "寫入 → {{topic}}",
           "refId": "B",
           "range": true,
@@ -1408,7 +1461,7 @@
     {
       "id": 15,
       "type": "timeseries",
-      "title": "還落後多久的資料（估算：Lag ÷ 近 ${rate_window:text} 平均寫入速度）",
+      "title": "還落後多久的資料（估算：Lag ÷ 近 ${compare_window:text} 平均寫入速度）",
       "description": "**是什麼**：Lag ÷ 平均寫入速度 ≈ 正在處理多久以前寫進來的資料。Kafka 指標沒有訊息時間，只能用平均速度換算：寫入忽快忽慢時只是概略值，要精準請在應用程式記錄訊息時間。\n\n**正常**：幾秒內。\n\n**不正常時**：\n- 持續上升 → 越落越多，跟業務要求（例如 1 分鐘內處理完）比較\n- 寫入很少或忽快忽慢時數字會偏大 → 改看 Lag\n- 線斷掉 → 那段時間沒有新寫入，算不出來",
       "datasource": {
         "type": "prometheus",
@@ -1427,7 +1480,7 @@
             "uid": "${datasource}"
           },
           "editorMode": "code",
-          "expr": "(sum by(consumergroup,topic)(clamp_min(kafka_consumergroup_lag{cluster=\"$cluster\",topic=~\"$topic\",consumergroup=~\"$consumergroup\"}, 0)) / on(topic) group_left() (sum by(topic)(rate(kafka_topic_partition_current_offset{cluster=\"$cluster\",topic=~\"$topic\"}[${rate_window}s])) > 0))",
+          "expr": "(sum by(consumergroup,topic)(clamp_min(kafka_consumergroup_lag{cluster=\"$cluster\",topic=~\"$topic\",consumergroup=~\"$consumergroup\"}, 0)) / on(topic) group_left() (sum by(topic)(rate(kafka_topic_partition_current_offset{cluster=\"$cluster\",topic=~\"$topic\"}[${compare_window}s])) > 0))",
           "legendFormat": "{{consumergroup}} → {{topic}}",
           "refId": "A",
           "range": true,
@@ -1670,7 +1723,7 @@
       "id": 18,
       "type": "table",
       "title": "有 lag 的 Partition（10 分鐘內有沒有前進）",
-      "description": "**是什麼**：有 lag 的 partition，以及 10 分鐘內 consumer 在上面前進了幾筆（現在的 commit 位置 − 10 分鐘前）。\n\n**正常**：前進 > 0（綠色）。\n\n**不正常時**：\n- Lag > 0 但前進 0（紅色）→ 這個 partition 卡住：某筆訊息一直處理失敗，或沒有 consumer 分到\n- 前進是負數 → offset 被往回重設（重讀）\n- 只有一兩個 partition lag 特別大 → key 集中（熱點）",
+      "description": "**是什麼**：有 lag 的 partition，以及 10 分鐘內 consumer 在上面前進了幾筆（現在的 commit 位置 − 10 分鐘前）。\n\n**正常**：前進 > 0（綠色）。\n\n**不正常時**：\n- Lag > 0 但前進 0（紅色）→ 這個 partition 卡住：某筆訊息一直處理失敗，或沒有 consumer 分到\n- 前進是負數 → offset 被往回重設（重讀）\n- 前進沒有值 → 10 分鐘前這個 partition 還沒 commit 過\n- 只有一兩個 partition lag 特別大 → key 集中（熱點）",
       "datasource": {
         "type": "prometheus",
         "uid": "${datasource}"
@@ -1701,7 +1754,7 @@
             "uid": "${datasource}"
           },
           "editorMode": "code",
-          "expr": "max by(consumergroup,topic,partition)(kafka_consumergroup_current_offset{cluster=\"$cluster\",topic=~\"$topic\",consumergroup=~\"$consumergroup\"} - kafka_consumergroup_current_offset{cluster=\"$cluster\",topic=~\"$topic\",consumergroup=~\"$consumergroup\"} offset 10m)",
+          "expr": "max by(consumergroup,topic,partition)(kafka_consumergroup_current_offset{cluster=\"$cluster\",topic=~\"$topic\",consumergroup=~\"$consumergroup\"} - kafka_consumergroup_current_offset{cluster=\"$cluster\",topic=~\"$topic\",consumergroup=~\"$consumergroup\"} offset 10m and on(consumergroup,topic,partition) kafka_consumergroup_current_offset{cluster=\"$cluster\",topic=~\"$topic\",consumergroup=~\"$consumergroup\"} offset 10m >= 0)",
           "legendFormat": "__auto",
           "refId": "B",
           "range": false,
@@ -1834,7 +1887,7 @@
     {
       "id": 19,
       "type": "timeseries",
-      "title": "熱點 Partition：每個 partition 的寫入（筆/秒，近 ${rate_window:text} 平均，前 10）",
+      "title": "熱點 Partition：每個 partition 的寫入（筆/秒，近 ${compare_window:text} 平均，前 10）",
       "description": "**是什麼**：寫入最多的 10 個 partition。\n\n**正常**：同一 topic 的 partition 差不多。\n\n**不正常時**：\n- 某個遠高於同 topic 其他 → key 集中（固定 key、同一個 tenant），這個 partition 的 consumer 會特別慢；加 consumer 沒用，要換 key 或打散",
       "datasource": {
         "type": "prometheus",
@@ -1853,7 +1906,7 @@
             "uid": "${datasource}"
           },
           "editorMode": "code",
-          "expr": "topk(10, sum by(topic,partition)(rate(kafka_topic_partition_current_offset{cluster=\"$cluster\",topic=~\"$topic\",topic!~\"__.*\"}[${rate_window}s])))",
+          "expr": "topk(10, sum by(topic,partition)(rate(kafka_topic_partition_current_offset{cluster=\"$cluster\",topic=~\"$topic\",topic!~\"__.*\"}[${compare_window}s])))",
           "legendFormat": "{{topic}} [{{partition}}]",
           "refId": "A",
           "range": true,
@@ -1916,7 +1969,7 @@
     {
       "id": 20,
       "type": "table",
-      "title": "Topic 總表（現在；流量 = 近 ${rate_window:text} 平均）",
+      "title": "Topic 總表（現在；流量 = 近 ${compare_window:text} 平均）",
       "description": "**是什麼**：每個 topic 的規模與流量（比較區間平均）。\n\n**欄位**：\n- **不均度**：最忙的 partition ÷ 平均，1 = 平均分散\n- **磁碟（單份）**：不含副本，實際佔用 ≈ × 副本數；「未收集」= jmx exporter 沒收 kafka.log:type=Log,name=Size\n- **保留訊息**：Kafka 目前還留著的訊息數\n\n**正常**：不均度接近 1、副本不足 0。\n\n**不正常時**：\n- 不均度 > 2 → 熱點 partition（看上方熱點圖）\n- 每個 partition 寫入長期超過幾 MB/s → consumer 容易跟不上，考慮加 partition\n- 讀取遠大於寫入 → 很多 group 讀同一份，或有程式一直從頭重讀",
       "datasource": {
         "type": "prometheus",
@@ -1961,7 +2014,7 @@
             "uid": "${datasource}"
           },
           "editorMode": "code",
-          "expr": "sum by(topic)(rate(kafka_server_brokertopicmetrics_messagesin_total{cluster=\"$cluster\",topic=~\"$topic\",topic!=\"\",topic!~\"__.*\"}[${rate_window}s]))",
+          "expr": "sum by(topic)(rate(kafka_server_brokertopicmetrics_messagesin_total{cluster=\"$cluster\",topic=~\"$topic\",topic!=\"\",topic!~\"__.*\"}[${compare_window}s]))",
           "legendFormat": "__auto",
           "refId": "C",
           "range": false,
@@ -1974,7 +2027,7 @@
             "uid": "${datasource}"
           },
           "editorMode": "code",
-          "expr": "sum by(topic)(rate(kafka_server_brokertopicmetrics_bytesin_total{cluster=\"$cluster\",topic=~\"$topic\",topic!=\"\",topic!~\"__.*\"}[${rate_window}s]))",
+          "expr": "sum by(topic)(rate(kafka_server_brokertopicmetrics_bytesin_total{cluster=\"$cluster\",topic=~\"$topic\",topic!=\"\",topic!~\"__.*\"}[${compare_window}s]))",
           "legendFormat": "__auto",
           "refId": "D",
           "range": false,
@@ -1987,7 +2040,7 @@
             "uid": "${datasource}"
           },
           "editorMode": "code",
-          "expr": "sum by(topic)(rate(kafka_server_brokertopicmetrics_bytesout_total{cluster=\"$cluster\",topic=~\"$topic\",topic!=\"\",topic!~\"__.*\"}[${rate_window}s]))",
+          "expr": "sum by(topic)(rate(kafka_server_brokertopicmetrics_bytesout_total{cluster=\"$cluster\",topic=~\"$topic\",topic!=\"\",topic!~\"__.*\"}[${compare_window}s]))",
           "legendFormat": "__auto",
           "refId": "E",
           "range": false,
@@ -2000,7 +2053,7 @@
             "uid": "${datasource}"
           },
           "editorMode": "code",
-          "expr": "max by(topic)(rate(kafka_topic_partition_current_offset{cluster=\"$cluster\",topic=~\"$topic\",topic!~\"__.*\"}[${rate_window}s])) / (avg by(topic)(rate(kafka_topic_partition_current_offset{cluster=\"$cluster\",topic=~\"$topic\",topic!~\"__.*\"}[${rate_window}s])) > 0)",
+          "expr": "max by(topic)(rate(kafka_topic_partition_current_offset{cluster=\"$cluster\",topic=~\"$topic\",topic!~\"__.*\"}[${compare_window}s])) / (avg by(topic)(rate(kafka_topic_partition_current_offset{cluster=\"$cluster\",topic=~\"$topic\",topic!~\"__.*\"}[${compare_window}s])) > 0)",
           "legendFormat": "__auto",
           "refId": "F",
           "range": false,
@@ -2265,7 +2318,7 @@
     {
       "id": 21,
       "type": "timeseries",
-      "title": "Topic 寫入（筆/秒，近 ${rate_window:text} 平均）",
+      "title": "Topic 寫入（筆/秒，近 ${compare_window:text} 平均）",
       "description": "**是什麼**：每個 topic 每秒寫入幾筆。\n\n**正常**：跟業務量同步。\n\n**不正常時**：\n- 突然暴增 → producer 重送或迴圈\n- 掉到 0 → producer 停了或寫入失敗（看 ④）",
       "datasource": {
         "type": "prometheus",
@@ -2284,7 +2337,7 @@
             "uid": "${datasource}"
           },
           "editorMode": "code",
-          "expr": "sum by(topic)(rate(kafka_server_brokertopicmetrics_messagesin_total{cluster=\"$cluster\",topic=~\"$topic\",topic!=\"\",topic!~\"__.*\"}[${rate_window}s]))",
+          "expr": "sum by(topic)(rate(kafka_server_brokertopicmetrics_messagesin_total{cluster=\"$cluster\",topic=~\"$topic\",topic!=\"\",topic!~\"__.*\"}[${compare_window}s]))",
           "legendFormat": "{{topic}}",
           "refId": "A",
           "range": true,
@@ -2347,7 +2400,7 @@
     {
       "id": 22,
       "type": "timeseries",
-      "title": "Topic 寫入 / 讀取流量（bytes/s，近 ${rate_window:text} 平均）",
+      "title": "Topic 寫入 / 讀取流量（bytes/s，近 ${compare_window:text} 平均）",
       "description": "**是什麼**：每個 topic 每秒寫入 / 讀取多少 bytes（讀取不含副本同步）。\n\n**正常**：讀取 ≈ 寫入 × 讀它的 group 數。\n\n**不正常時**：\n- 筆數不多但 bytes 很高 → 單筆訊息很大，留意 max.request.size / fetch.max.bytes",
       "datasource": {
         "type": "prometheus",
@@ -2366,7 +2419,7 @@
             "uid": "${datasource}"
           },
           "editorMode": "code",
-          "expr": "sum by(topic)(rate(kafka_server_brokertopicmetrics_bytesin_total{cluster=\"$cluster\",topic=~\"$topic\",topic!=\"\",topic!~\"__.*\"}[${rate_window}s]))",
+          "expr": "sum by(topic)(rate(kafka_server_brokertopicmetrics_bytesin_total{cluster=\"$cluster\",topic=~\"$topic\",topic!=\"\",topic!~\"__.*\"}[${compare_window}s]))",
           "legendFormat": "寫入 {{topic}}",
           "refId": "A",
           "range": true,
@@ -2378,7 +2431,7 @@
             "uid": "${datasource}"
           },
           "editorMode": "code",
-          "expr": "sum by(topic)(rate(kafka_server_brokertopicmetrics_bytesout_total{cluster=\"$cluster\",topic=~\"$topic\",topic!=\"\",topic!~\"__.*\"}[${rate_window}s]))",
+          "expr": "sum by(topic)(rate(kafka_server_brokertopicmetrics_bytesout_total{cluster=\"$cluster\",topic=~\"$topic\",topic!=\"\",topic!~\"__.*\"}[${compare_window}s]))",
           "legendFormat": "讀取 {{topic}}",
           "refId": "B",
           "range": true,

@@ -1,20 +1,26 @@
 # 產生「Kafka 問題排查（開發人員）」Grafana dashboard JSON
-# 用法: python gen_dashboard.py 輸出.json [datasource 名稱 regex] [--expand]
+# 用法: python gen_dashboard.py 輸出.json [datasource 名稱 regex] [--expand] [--scrape=15s]
 # 資料來源:jmx_exporter (官方 examples/kafka-kraft-3_0_0.yml 或自訂規則都支援) + danielqsj/kafka-exporter + node_exporter
 import json, sys
 
 EXPAND = "--expand" in sys.argv  # lab 截圖用:⑥⑦ 不收合
-ARGS = [a for a in sys.argv if a != "--expand"]
+# kafka-exporter 的 scrape 間隔 (例如 15s、30s、1m),要跟 Prometheus 設定一致
+SCRAPE = next((a.split("=", 1)[1] for a in sys.argv if a.startswith("--scrape=")), "15s")
+SCRAPE_S = int(SCRAPE[:-1]) * {"s": 1, "m": 60}[SCRAPE[-1]]
+ARGS = [a for a in sys.argv if not a.startswith("--")]
 
 DS = {"type": "prometheus", "uid": "${datasource}"}
 C = 'cluster="$cluster"'
 CT = C + ',topic=~"$topic"'
 CG = CT + ',consumergroup=~"$consumergroup"'
 RI = "$__rate_interval"
-# ② 的比較區間 (上方變數,值是秒數,顯示文字是 5m / 15m / 1h):速度、Lag 變化、追上需要全部用同一段
-WS = "${rate_window}"
+# ② 的比較區間 (上方變數,值是秒數,顯示文字是 5m / 15m / 1h):速度、Lag 變化、追上需要全部用同一段。
+# 變數名稱不沿用舊的 rate_window:舊網址帶的 var-rate_window=15m 不是秒數,換名字讓它被忽略、用預設值
+WS = "${compare_window}"
 RW = WS + "s"
-WT = "${rate_window:text}"
+WT = "${compare_window:text}"
+# 頭尾平均用的長度:至少 4 次 scrape,才平均得掉 commit 造成的鋸齒
+SMOOTH = f"{max(60, 4 * SCRAPE_S)}s"
 # BrokerTopicMetrics 有一條不帶 topic 的總計,另外排除內部 topic
 BT = C + ',topic=~"$topic",topic!="",topic!~"__.*"'
 DISK = 'device!~"loop.*|ram.*|dm-.*"'
@@ -229,7 +235,7 @@ panels += [
     stat("沒人讀的 Group", desc("有 lag、但沒有任何 consumer 連著的 group 數。",
                                        "0（跑完就停的批次程式也會算進來）。",
                                        "> 0 → 程式掛了或停了，訊息一直堆；看 ② 成員數"),
-         f"count((sum by(consumergroup)(kafka_consumergroup_lag{{{C}}}) > 0) and on(consumergroup) "
+         f"count((sum by(consumergroup)(clamp_min(kafka_consumergroup_lag{{{C}}}, 0)) > 0) and on(consumergroup) "
          f"(max by(consumergroup)(kafka_consumergroup_members{{{C}}}) == 0))", gp(18, y, 6, H), th=WARN_COUNT,
          no_value="0"),
 ]
@@ -240,21 +246,29 @@ panels.append(row("② Consumer 有沒有追上、Topic 是否滿載", y)); y +=
 LAG = f'kafka_consumergroup_lag{{{CG}}}'
 COMMITTED = f'kafka_consumergroup_current_offset{{{CG}}}'
 END = f'kafka_topic_partition_current_offset{{{CT}}}'
-# offset 是 gauge:被往回重設時 rate() 會當成 counter reset 算出暴增,有往回的區間不算
-CONS_RATE = f'sum by(consumergroup,topic)(rate({COMMITTED}[{RW}]) unless resets({COMMITTED}[{RW}]) > 0)'
+# kafka-exporter:group 沒 commit 過的 partition,commit 位置和 lag 都回 -1;-1 → 真的位置會被當成一口氣讀了整段,要排除
+# offset 是 gauge:被往回重設時 rate() 會當成 counter reset 算出暴增,有往回的區間也不算
+CONS_RATE = (f'sum by(consumergroup,topic)(rate({COMMITTED}[{RW}]) unless resets({COMMITTED}[{RW}]) > 0 '
+             f'and min_over_time({COMMITTED}[{RW}]) >= 0)')
 PROD_RATE = f'sum by(topic)(rate({END}[{RW}]))'
-# 比較區間頭尾相減:頭尾各取 1 分鐘平均 (抹掉 commit 造成的鋸齒),中間剛好隔一個比較區間。
-# lag = log end − commit 位置 (同一次 scrape),三個量用同一種算法、同一批 partition → 寫入 − 消費 = Lag 變化
+# 比較區間頭尾相減:頭尾各取一小段平均 (抹掉 commit 造成的鋸齒),中間剛好隔一個比較區間。
+# 只算頭尾都 commit 過的 partition。exporter 算 lag 時的 log end 是另外跟 broker 要的,不是 topic 的 current_offset,
+# 所以寫入用 lag + commit 位置還原「算 lag 用的 log end」→ 寫入 − 消費 = Lag 變化 每個 partition 都成立
+VALID = (f'(min_over_time({COMMITTED}[{SMOOTH}]) >= 0 and on(consumergroup,topic,partition) '
+         f'min_over_time({COMMITTED}[{SMOOTH}] offset {RW}) >= 0)')
 def change(m):
-    return f'(avg_over_time({m}[1m]) - avg_over_time({m}[1m] offset {RW}))'
+    return (f'(avg_over_time({m}[{SMOOTH}]) - avg_over_time({m}[{SMOOTH}] offset {RW}) '
+            f'and on(consumergroup,topic,partition) {VALID})')
 D_LAG = f'sum by(consumergroup,topic)({change(LAG)})'
-D_CONS = f'sum by(consumergroup,topic)({change(COMMITTED)} and on(consumergroup,topic,partition) {change(LAG)})'
-D_PROD = f'sum by(consumergroup,topic)({change(LAG)} * 0 + on(topic,partition) group_left() {change(END)})'
+D_CONS = f'sum by(consumergroup,topic)({change(COMMITTED)})'
+D_PROD = f'sum by(consumergroup,topic)({change(LAG)} + {change(COMMITTED)})'
 FLAT = 10  # Lag 變化在 ±10 筆內視為持平
 def retained(sel):
     return f'(kafka_topic_partition_current_offset{{{sel}}} - kafka_topic_partition_oldest_offset{{{sel}}})'
 RETAINED = retained(CT)
 LAGS = f'sum by(consumergroup,topic)(clamp_min({LAG}, 0))'
+# 還沒 commit 過的 partition 數:lag 看不到 (算 0),寫入 / 消費 / Lag 變化 也不算它們
+NO_COMMIT = f'count by(consumergroup,topic)({COMMITTED} == -1) or {LAGS} * 0'
 MEMBERS = f'max by(consumergroup)(kafka_consumergroup_members{{{C},consumergroup=~"$consumergroup"}})'
 # 還落後 = lag / 寫入速度 (只用在圖上,是估算);比較區間內沒有寫入就沒有值 (不能拿 0 除)
 BEHIND = f'({LAGS} / on(topic) group_left() ({PROD_RATE} > 0))'
@@ -284,19 +298,22 @@ cg_targets = [
         f'or (({RATIO} > 0) * 0 - 2 and on(consumergroup) ({MEMBERS} == 0)) '
         f'or {RATIO}',
         ref="G", instant=True, fmt="table"),
+    tgt(NO_COMMIT, ref="H", instant=True, fmt="table"),
 ]
 panels.append(table(
     f"Consumer Group 現況（現在；寫入 / 消費 / Lag 變化 = 近 {WT}）",
     desc("每個 group × topic 現在追得怎樣。寫入、消費、Lag 變化都是上方「比較區間」頭尾相減的筆數"
-         "（頭尾各取 1 分鐘平均，抹掉 commit 造成的起伏），所以一定對得上：**寫入 − 消費 = Lag 變化**。",
+         f"（頭尾各取 {SMOOTH} 平均，抹掉 commit 造成的起伏），所以一定對得上：**寫入 − 消費 = Lag 變化**（四捨五入可能差 1）。",
          "成員 ≥ 1、追上需要顯示「已跟上」。",
          "成員 0 → 程式沒在跑",
          "追不上（越落越多）→ 處理太慢：加 consumer（不能超過 partition 數）或加快處理",
          "Lag 佔保留量接近 100%（有成員）→ 沒讀到的資料快被刪掉；「已掉資料」→ 已經刪了；「沒人在讀」→ 先處理成員 0（各情境見欄位說明）",
          "想看更長的走勢 → 把「比較區間」調長，或看下方 Lag 圖",
+         "沒 commit 的 Partition > 0 → 這些 partition 的 lag 看不到；確認是不是沒有 consumer 分到，或程式只在處理到資料時才 commit",
          cols=[("Lag", "現在還沒讀的訊息數。已處理但還沒 commit 的也算，所以會隨 commit 小幅起伏"),
                ("成員", "連著的 consumer 數，0 = 沒人在讀"),
-               ("寫入、消費", "比較區間內寫進 / 讀完（commit）幾筆。消費是負數 = offset 被往回重設（重讀）"),
+               ("寫入、消費", "比較區間內寫進 / 讀完（commit）幾筆，只算這個 group 有 commit 過的 partition，"
+                           "所以可能比 Topic 總表少（看「沒 commit 的 Partition」）。消費是負數 = offset 被往回重設（重讀）"),
                ("Lag 變化", f"比較區間內 lag 增減幾筆（= 寫入 − 消費）。正數 = 越落越多；負數 = 正在追上；±{FLAT} 筆內視為持平"),
                ("追上需要", "Lag ÷ 比較區間內 lag 減少的速度。"
                           "已跟上 = 沒有 lag，或 lag 不到 30 秒的寫入量；沒人在讀 = 有 lag 但沒有 consumer；"
@@ -313,13 +330,16 @@ panels.append(table(
                             "依 auto.offset.reset 跳到最舊或最新\n"
                             "  - **沒人在讀**（成員 0、有 lag）：沒人讀的 group 遲早都會到 100%，% 沒意義，所以不顯示。"
                             "確認程式該不該在跑；不用了就刪掉 group（`kafka-consumer-groups --delete --group <group>`）\n"
-                            "  - **已掉資料（沒人讀）**（成員 0、超過 100%）：沒人讀的期間資料已被刪；程式重開時會依 auto.offset.reset 跳過被刪的部分")]),
+                            "  - **已掉資料（沒人讀）**（成員 0、超過 100%）：沒人讀的期間資料已被刪；程式重開時會依 auto.offset.reset 跳過被刪的部分"),
+               ("沒 commit 的 Partition", "這個 group 在這個 topic 還沒 commit 過的 partition 數。"
+                                        "kafka-exporter 對這些 partition 回報 lag = -1，所以 Lag 算 0、寫入 / 消費 / Lag 變化也不算它們。"
+                                        "整個 topic 都沒 commit 過時，exporter 不會列出這個 group × topic")]),
     cg_targets, gp(0, y, 24, 9),
     rename={"consumergroup": "Consumer Group", "topic": "Topic", "Value #A": "Lag", "Value #B": "成員",
             "Value #C": "寫入", "Value #D": "消費", "Value #E": "Lag 變化", "Value #F": "追上需要",
-            "Value #G": "Lag 佔保留量"},
+            "Value #G": "Lag 佔保留量", "Value #H": "沒 commit 的 Partition"},
     order=["consumergroup", "topic", "Value #A", "Value #B", "Value #C", "Value #D", "Value #E", "Value #F",
-           "Value #G"],
+           "Value #G", "Value #H"],
     sort=("Lag", True), filterable=False, min_width=60,
     overrides=[
         col("Consumer Group", [{"id": "custom.width", "value": 150}]),
@@ -345,6 +365,8 @@ panels.append(table(
                                                               "-3": ("已掉資料（沒人讀）", "orange")}) + [
                                 {"type": "range", "options": {
                                     "from": 1.000001, "to": None, "result": {"text": "已掉資料", "color": "red", "index": 2}}}]}]),
+        col("沒 commit 的 Partition", [{"id": "decimals", "value": 0}, {"id": "custom.width", "value": 110},
+                                      {"id": "thresholds", "value": steps(("text", None), ("orange", 1))}, cell("color-text")]),
     ]))
 y += 9
 
@@ -354,10 +376,10 @@ SIZE1 = f'sum by(topic)(max by(topic,partition)(kafka_log_log_size{{{CT},topic!~
 panels += [
     # 每個點取前一小段的最高值:時間範圍拉長、點變稀時,才不會剛好取到 commit 後的低點而漏掉高點
     ts("Lag（依 Group × Topic，每點取該段最高）",
-       desc("每個 group 在每個 topic 還沒讀的訊息數。每個點是前一小段（約 1 分鐘，時間範圍拉長時跟著變長）裡的最高值。",
+       desc("每個 group 在每個 topic 還沒讀的訊息數。每個點是前一小段（至少 4 次 scrape，時間範圍拉長時跟著變長）裡的最高值。",
             "小且穩定，或升高後會降回來；隨 consumer commit 小幅鋸齒是正常的。",
             "一路往上 → 消費跟不上（看右邊速度）", "突然歸零又暴增 → offset 被重設或重新部署"),
-       [tgt(f'max_over_time((sum by(consumergroup,topic)(clamp_min({LAG}, 0)))[{RI}:15s])', "{{consumergroup}} → {{topic}}")],
+       [tgt(f'max_over_time((sum by(consumergroup,topic)(clamp_min({LAG}, 0)))[{RI}:{SCRAPE}])', "{{consumergroup}} → {{topic}}")],
        gp(0, y, 12, 8)),
     ts(f"消費 vs 寫入速度（筆/秒，近 {WT} 平均）",
        desc("實線 = 每個 group 每秒讀完幾筆；虛線（寫入 →）= topic 每秒寫入幾筆。每個點都是那個時間點往前「比較區間」的平均，"
@@ -404,14 +426,15 @@ y += 8
 stuck_t = [
     tgt(f'max by(consumergroup,topic,partition)({LAG}) > 0', ref="A", instant=True, fmt="table"),
     # 直接相減:offset 是 gauge,increase() 遇到往回重設會當成 counter reset 算錯
-    tgt(f'max by(consumergroup,topic,partition)({COMMITTED} - {COMMITTED} offset 10m)',
+    tgt(f'max by(consumergroup,topic,partition)({COMMITTED} - {COMMITTED} offset 10m '
+        f'and on(consumergroup,topic,partition) {COMMITTED} offset 10m >= 0)',
         ref="B", instant=True, fmt="table"),
 ]
 panels.append(table(
     "有 lag 的 Partition（10 分鐘內有沒有前進）",
     desc("有 lag 的 partition，以及 10 分鐘內 consumer 在上面前進了幾筆（現在的 commit 位置 − 10 分鐘前）。", "前進 > 0（綠色）。",
          "Lag > 0 但前進 0（紅色）→ 這個 partition 卡住：某筆訊息一直處理失敗，或沒有 consumer 分到",
-         "前進是負數 → offset 被往回重設（重讀）",
+         "前進是負數 → offset 被往回重設（重讀）", "前進沒有值 → 10 分鐘前這個 partition 還沒 commit 過",
          "只有一兩個 partition lag 特別大 → key 集中（熱點）"),
     stuck_t, gp(0, y, 12, 8),
     rename={"consumergroup": "Consumer Group", "topic": "Topic", "partition": "Partition",
@@ -762,7 +785,7 @@ dash = {
                   'label_values(kafka_consumergroup_members{cluster="$cluster"}, consumergroup)',
                   multi=True, include_all=True, refresh=2, all_value=".*"),
         # 值用秒數:查詢裡要拿來除 (追上需要),顯示文字才是 5m / 15m / 1h
-        {"name": "rate_window", "label": "比較區間", "type": "custom", "query": "5m : 300,15m : 900,1h : 3600",
+        {"name": "compare_window", "label": "比較區間", "type": "custom", "query": "5m : 300,15m : 900,1h : 3600",
          "description": "② 的速度、寫入 / 消費筆數、Lag 變化、追上需要都用這一段算：短 = 反應快，長 = 看得到較長的走勢、但慢半拍",
          "current": {"text": "5m", "value": "300"}, "hide": 0, "multi": False, "includeAll": False,
          "options": [{"text": t, "value": v, "selected": v == "300"}
