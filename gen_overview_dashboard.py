@@ -67,8 +67,9 @@ def mem_ct():
 
 
 def spec(kind, resource):
-    """Request or limit per container. Containers without one have no series at all."""
-    return one(f'kube_pod_container_resource_{kind}{{resource="{resource}", {NSF}}}')
+    """Request or limit per container. Containers without one have no series at all; a value of 0 also
+    means "not set" to Kubernetes, and would divide by zero, so it is dropped too."""
+    return one(f'kube_pod_container_resource_{kind}{{resource="{resource}", {NSF}}} > 0')
 
 
 def cpu(w):
@@ -92,6 +93,45 @@ def used_over_limit(used_ct, resource):
 def no_limit(used_ct, resource):
     """Running containers per pod that have no limit for this resource."""
     return f'count by (namespace, pod) ({used_ct} unless on (namespace, pod, container) {spec("limits", resource)})'
+
+
+def unlimited(used_ct, resource):
+    """Usage of the containers that have no limit for this resource (per container)."""
+    return f'({used_ct} unless on (namespace, pod, container) {spec("limits", resource)})'
+
+
+def over_request(used_ct, resource):
+    """Usage ÷ request for the whole workload, counting only containers that set a request, so a
+    container without one does not inflate the ratio."""
+    used = f'({used_ct} and on (namespace, pod, container) {spec("requests", resource)})'
+    return (f'{by_wl(f"sum by (namespace, pod) ({used})")}'
+            f' / {by_wl(total("requests", resource))}')
+
+
+K_CT = "namespace, workload, workload_type, container"
+
+
+def by_wl_ct(per_ct, agg="sum"):
+    """Rolls a per-container vector up to (workload, container): the same container across all pods."""
+    return f'{agg} by ({K_CT}) ({per_ct} * on (namespace, pod) group_left (workload, workload_type) {WL})'
+
+
+def limit_state(used_ct, resource):
+    """Per workload: 0 = every container sets a limit, 1 = some containers do not, 2 = none do.
+    Pods of a workload share one template, so containers are counted per pod (max over pods)."""
+    miss = by_wl(no_limit(used_ct, resource), "max")
+    tot = by_wl(f'count by (namespace, pod) ({used_ct})', "max")
+    return f'((({miss}) > bool 0) + (({miss}) == bool ({tot}))) or ({tot} * 0)'
+
+
+def skew(per_pod_expr, min_total):
+    """How unevenly a workload's pods share the load: (busiest pod ÷ all pods, busiest pod ÷ average pod).
+    Only for workloads whose total is at least min_total, so near-idle workloads do not look skewed."""
+    p = f'({per_pod_expr} * on (namespace, pod) group_left (workload, workload_type) {WL})'
+    keys = "namespace, workload, workload_type"
+    top, total, n = f'max by ({keys}) ({p})', f'sum by ({keys}) ({p})', f'count by ({keys}) ({p})'
+    busy = f'and on ({keys}) ({total} >= {min_total})'
+    return f'({top} / {total} {busy})', f'({top} / ({total} / {n}) {busy})'
 
 
 def throttle(w):
@@ -254,7 +294,7 @@ def ts(line, title, expr, legend, unit, description, w=12, h=8):
     }, w, h)
 
 
-KEY_WIDTH = {"namespace": 120, "workload": 150, "workload_type": 100, "instance": 140}
+KEY_WIDTH = {"namespace": 120, "workload": 150, "workload_type": 100, "instance": 140, "container": 130}
 
 
 def table(line, title, key_cols, columns, description, sort_by, w=24, h=12, key_rename=None, key_links=None, base=None,
@@ -323,8 +363,12 @@ V_CLUSTER_WL = "叢集內每一個 Workload（該 Workload 所有 Pod 合計）"
 # ---------------------------------------------------------------- guide
 L = Line()
 text(L, """**叢集風險總覽**：先找出嫌疑的 Node 與 Workload，再點 workload 名稱進細節 Dashboard 查證。上方切換資料來源 = 切換叢集。
-① 哪台 Node 吃緊 → ② 哪個 Workload 是大戶（表頭可排序、名稱欄的漏斗可篩選，紅 / 黃格要注意）→ ③④ Top 10 趨勢看是什麼時候飆起來。
-表格是時間範圍**結束前 5 分鐘**的快照；百分比都是 **用量 ÷ 欄名寫的分母**。預設排除 `openshift*`、`kube-*` namespace。""", h=3)
+
+1. **哪台 Node 吃緊** → 第 1 區
+2. **哪個 Workload 用量大、快碰到 Limit、Pod 之間不平均** → 第 2 區（點表頭排序、名稱欄的漏斗篩選，紅 / 黃格要注意）
+3. **是什麼時候飆起來的** → 第 3、4 區 Top 10 趨勢
+
+表格是時間範圍**結束前 5 分鐘**的值；百分比都是 **用量 ÷ 欄名寫的分母**；預設排除 `openshift*`、`kube-*` namespace。""", h=6)
 L.newline()
 
 # ---------------------------------------------------------------- 1 nodes
@@ -376,61 +420,117 @@ DETAIL_LINK = [{"title": "開啟此 Workload 的細節 Dashboard",
 WL_KEYS = ["namespace", "workload", "workload_type"]
 WL_RENAME = {"workload_type": "類型"}
 WL_ROWS = f'count by (namespace, workload, workload_type) ({WL}) * 0'
-NO_LIMIT = "沒設 Limit"
+NOT_SET = "沒設"
+POD_COUNT = ("Pod 數", f'count by (namespace, workload, workload_type) ({WL})', "none", None, 0, None)
+OVER_REQ = steps((Y, 1.0), (RD, 2.0))
+LIMIT_STATE = [{"type": "value", "options": {
+    "0": {"text": "都有設", "color": "green", "index": 0},
+    "1": {"text": "部分容器沒設", "color": "orange", "index": 1},
+    "2": {"text": "全部沒設", "color": "orange", "index": 2}}}]
+REQ_LIMIT_HOW = ("用量 ÷ Request 超過 100% → 正在用 Node 上別人沒用到的資源，Node 忙起來會互搶；"
+                 "用量 ÷ Limit 接近 100% → {limit_hit}。「沒設」= 沒有容器設（設 0 也算沒設）。")
 L = Line()
-table(L, "【Workload】CPU / 記憶體：用量與 Limit（時間範圍結束前 5 分鐘）", WL_KEYS, [
-    ("Pod 數", f'count by (namespace, workload, workload_type) ({WL})', "none", None, 0, None),
-    ("CPU（核）", by_wl(cpu(W5)), "none", None, 2, None),
-    ("CPU Limit", by_wl(total("limits", "cpu")), "none", None, 2, None, NO_LIMIT),
-    ("CPU ÷ Limit", by_wl(cpu_limit(W5), "max"), "percentunit", steps((Y, 0.8), (RD, 0.95)), 0, None, NO_LIMIT),
+table(L, "【Workload】CPU：用量 → Request → Limit（時間範圍結束前 5 分鐘）", WL_KEYS, [
+    POD_COUNT,
+    ("用量（核）", by_wl(cpu(W5)), "none", None, 2, None),
+    ("Request（核）", by_wl(total("requests", "cpu")), "none", None, 2, None, NOT_SET),
+    ("用量 ÷ Request", over_request(cpu_ct(W5), "cpu"), "percentunit", OVER_REQ, 0, None, NOT_SET),
+    ("Limit（核）", by_wl(total("limits", "cpu")), "none", None, 2, None, NOT_SET),
+    ("Limit 設定", limit_state(cpu_ct(W5), "cpu"), "none", None, 0, LIMIT_STATE),
+    ("用量 ÷ Limit", by_wl(cpu_limit(W5), "max"), "percentunit", steps((Y, 0.8), (RD, 0.95)), 0, None, NOT_SET),
     ("throttling", by_wl(throttle(W5), "max"), "percentunit", steps((Y, 0.25), (RD, 0.5)), 0, None),
-    ("記憶體", by_wl(mem()), "bytes", None, 1, None),
-    ("記憶體 Limit", by_wl(total("limits", "memory")), "bytes", None, 1, None, NO_LIMIT),
-    ("記憶體 ÷ Limit", by_wl(mem_limit(), "max"), "percentunit", steps((Y, 0.8), (RD, 0.9)), 0, None, NO_LIMIT),
 ], desc(V_CLUSTER_WL,
-        "每個 Deployment / StatefulSet / DaemonSet 的 CPU、記憶體用量，以及離自己的 Limit 還有多遠。"
-        "CPU（核）、記憶體、Limit 是所有 Pod 加總；**CPU ÷ Limit、記憶體 ÷ Limit = 最接近 Limit 的那個容器的用量 ÷ 它的 Limit**；"
-        "throttling 是被 CPU Limit 擋最多的 Pod 的節流比例。",
-        "CPU 用量 ÷ Limit 接近 100% → 會被 throttling 變慢（看 throttling 欄）；"
-        "記憶體用量 ÷ Limit 接近 100% → 會被 OOMKilled。"
-        "「沒設 Limit」= 沒有容器設 Limit，用量沒有上限，看下方「沒設 Limit 的 Workload」。"),
-    sort_by="CPU（核）", h=12, key_links={"workload": DETAIL_LINK}, key_rename=WL_RENAME, base=WL_ROWS)
+        "每個 Deployment / StatefulSet / DaemonSet 的 CPU。用量、Request、Limit 是所有 Pod 加總；"
+        "**用量 ÷ Request** = 有設 Request 的容器的用量 ÷ 它們的 Request（全部 Pod 加總）；"
+        "**用量 ÷ Limit** = 最接近 Limit 的那個容器（Limit 是每個容器各自的上限，加總會把快爆的平均掉）；"
+        "**Limit 設定**：都有設 / 部分容器沒設（Limit 欄只加總有設的容器）/ 全部沒設，沒設的是哪個容器看下方「沒設 Limit 的容器」；"
+        "**throttling** = 被節流最嚴重的 Pod。",
+        REQ_LIMIT_HOW.format(limit_hit="會被 throttling 變慢")),
+    sort_by="用量（核）", h=10, key_links={"workload": DETAIL_LINK}, key_rename=WL_RENAME, base=WL_ROWS)
+L.newline()
+L = Line()
+table(L, "【Workload】記憶體：用量 → Request → Limit（時間範圍結束前 5 分鐘）", WL_KEYS, [
+    POD_COUNT,
+    ("用量", by_wl(mem()), "bytes", None, 1, None),
+    ("Request", by_wl(total("requests", "memory")), "bytes", None, 1, None, NOT_SET),
+    ("用量 ÷ Request", over_request(mem_ct(), "memory"), "percentunit", OVER_REQ, 0, None, NOT_SET),
+    ("Limit", by_wl(total("limits", "memory")), "bytes", None, 1, None, NOT_SET),
+    ("Limit 設定", limit_state(mem_ct(), "memory"), "none", None, 0, LIMIT_STATE),
+    ("用量 ÷ Limit", by_wl(mem_limit(), "max"), "percentunit", steps((Y, 0.8), (RD, 0.9)), 0, None, NOT_SET),
+], desc(V_CLUSTER_WL,
+        "每個 Workload 的記憶體（working set）。欄位算法同上方 CPU 表：用量、Request、Limit 是所有 Pod 加總；"
+        "**用量 ÷ Limit** = 最接近 Limit 的那個容器。",
+        REQ_LIMIT_HOW.format(limit_hit="會被 OOMKilled")),
+    sort_by="用量", h=10, key_links={"workload": DETAIL_LINK}, key_rename=WL_RENAME, base=WL_ROWS)
 L.newline()
 
 L = Line()
-NOLIM_ROWS = (f'max by (namespace, workload, workload_type) (({no_limit(cpu_ct(W5), "cpu")} or {no_limit(mem_ct(), "memory")})'
-              f' * on (namespace, pod) group_left (workload, workload_type) {WL}) * 0')
-table(L, "【Workload】沒設 Limit 的 Workload：用量沒有上限，會吃掉 Node 的資源（時間範圍結束前 5 分鐘）", WL_KEYS, [
-    ("沒設 CPU Limit", by_wl(no_limit(cpu_ct(W5), "cpu")), "none", steps((Y, 1)), 0, None, "0"),
-    ("沒設記憶體 Limit", by_wl(no_limit(mem_ct(), "memory")), "none", steps((Y, 1)), 0, None, "0"),
-    ("CPU（核）", by_wl(cpu(W5)), "none", None, 2, None),
-    ("CPU Request", by_wl(total("requests", "cpu")), "none", None, 2, None, "沒設 Request"),
-    ("CPU ÷ Request", f'{by_wl(cpu(W5))} / {by_wl(total("requests", "cpu"))}', "percentunit",
-     steps((Y, 1.0), (RD, 2.0)), 0, None, "沒設 Request"),
-    ("記憶體", by_wl(mem()), "bytes", None, 1, None),
-    ("記憶體 Request", by_wl(total("requests", "memory")), "bytes", None, 1, None, "沒設 Request"),
-    ("記憶體 ÷ Request", f'{by_wl(mem())} / {by_wl(total("requests", "memory"))}', "percentunit",
-     steps((Y, 1.0), (RD, 2.0)), 0, None, "沒設 Request"),
+# 每列一個容器 (同一個 Workload 的 Pod 共用一份設定,所以容器只列一次,用量是所有 Pod 加總)
+CT_ALL = f'max by ({K_CT}) ({cpu_ct(W5)} * on (namespace, pod) group_left (workload, workload_type) {WL}) * 0'
+UNL_CPU, UNL_MEM = unlimited(cpu_ct(W5), "cpu"), unlimited(mem_ct(), "memory")
+MISS = (f'(({by_wl_ct(f"({UNL_CPU}) * 0 + 1", "max")}) or {CT_ALL})'
+        f' + 2 * (({by_wl_ct(f"({UNL_MEM}) * 0 + 1", "max")}) or {CT_ALL})')
+def ct_over_request(used_ct, resource):
+    used = f'({used_ct} and on (namespace, pod, container) {spec("requests", resource)})'
+    return f'{by_wl_ct(used)} / {by_wl_ct(spec("requests", resource))}'
+table(L, "【Workload】沒設 Limit 的容器：用量沒有上限，會吃掉 Node 的資源（時間範圍結束前 5 分鐘）",
+      ["namespace", "workload", "workload_type", "container"], [
+    ("沒設哪個 Limit", MISS, "none", None, 0, [{"type": "value", "options": {
+        "1": {"text": "CPU", "color": "orange", "index": 0},
+        "2": {"text": "記憶體", "color": "orange", "index": 1},
+        "3": {"text": "CPU、記憶體", "color": "red", "index": 2}}}]),
+    ("Pod 數", f'count by ({K_CT}) ({cpu_ct(W5)} * on (namespace, pod) group_left (workload, workload_type) {WL})',
+     "none", None, 0, None),
+    ("CPU 用量（核）", by_wl_ct(cpu_ct(W5)), "none", None, 2, None),
+    ("CPU Request（核）", by_wl_ct(spec("requests", "cpu")), "none", None, 2, None, NOT_SET),
+    ("CPU ÷ Request", ct_over_request(cpu_ct(W5), "cpu"), "percentunit", OVER_REQ, 0, None, NOT_SET),
+    ("記憶體用量", by_wl_ct(mem_ct()), "bytes", None, 1, None),
+    ("記憶體 Request", by_wl_ct(spec("requests", "memory")), "bytes", None, 1, None, NOT_SET),
+    ("記憶體 ÷ Request", ct_over_request(mem_ct(), "memory"), "percentunit", OVER_REQ, 0, None, NOT_SET),
 ], desc(V_CLUSTER_WL,
-        "有容器沒設 CPU 或記憶體 Limit 的 Workload。沒設 Limit 的容器可以一直用到 Node 沒有資源為止，"
-        "所以只能跟 Request（排程時保證的量）比。**沒設 CPU Limit / 沒設記憶體 Limit = 沒設的容器數**（所有 Pod 加總）；"
-        "**CPU ÷ Request、記憶體 ÷ Request = 用量 ÷ Request**（所有 Pod 加總）。",
-        "用量 ÷ Request 超過 100% → 正在用 Node 上別人沒用到的資源，Node 一忙起來就會互搶；"
-        "遠超過 → 建議補上 Limit，或把 Request 調到接近實際用量。"),
-    sort_by="CPU（核）", h=9, key_links={"workload": DETAIL_LINK}, key_rename=WL_RENAME, base=NOLIM_ROWS,
+        "沒設 Limit（或設 0）的容器，每列一個容器。同一個 Workload 的 Pod 共用一份設定，所以容器只列一次；"
+        "用量、Request 是這個容器在所有 Pod 加總，Pod 數是有幾個 Pod 跑這個容器。"
+        "沒設 Limit 的資源可以一直用到 Node 沒有為止，所以只能跟 Request（排程時保證的量）比。",
+        "**沒設哪個 Limit** 寫的那一項沒有上限。÷ Request 遠超過 100% → 建議補上 Limit，或把 Request 調到接近實際用量；"
+        "「沒設」= 連 Request 也沒設，排程時完全沒有幫它保留資源。"),
+    sort_by="CPU 用量（核）", h=8, key_links={"workload": DETAIL_LINK},
+    key_rename={**WL_RENAME, "container": "容器"}, base=f'(({MISS}) > 0) * 0', hide=("workload_type",))
+L.newline()
+
+L = Line()
+SKEW_ROWS = f'(count by (namespace, workload, workload_type) ({WL}) >= 2) * 0'
+SKEW_TIMES = steps((Y, 1.5), (RD, 2.5))
+CPU_SHARE, CPU_TIMES = skew(cpu(W5), 0.05)
+MEM_SHARE, MEM_TIMES = skew(mem(), 0)
+NET_SHARE, NET_TIMES = skew(net(W5), 10240)
+table(L, "【Workload】Pod 之間分配不均：可能是 LB、key 分配或架構問題（時間範圍結束前 5 分鐘）", WL_KEYS, [
+    POD_COUNT,
+    ("CPU：最忙 Pod 佔全部", CPU_SHARE, "percentunit", None, 0, None, "用量太少"),
+    ("CPU：最忙 Pod ÷ 平均", CPU_TIMES, "none", SKEW_TIMES, 1, None, "用量太少"),
+    ("網路：最忙 Pod 佔全部", NET_SHARE, "percentunit", None, 0, None, "流量太少"),
+    ("網路：最忙 Pod ÷ 平均", NET_TIMES, "none", SKEW_TIMES, 1, None, "流量太少"),
+    ("記憶體：最多 Pod ÷ 平均", MEM_TIMES, "none", SKEW_TIMES, 1, None),
+], desc(V_CLUSTER_WL,
+        "同一個 Workload 的 Pod 理論上應該分到差不多的量（N 個 Pod 各約 1/N）。只列 2 個 Pod 以上的 Workload。"
+        "**最忙 Pod ÷ 平均** = 最忙的 Pod 是平均的幾倍，1 = 很平均。"
+        "例：3 個 Pod，一個佔 90% → 佔全部 90%、是平均的 2.7 倍。用量太少（CPU < 0.05 核、網路 < 10 KB/s）不算。",
+        "CPU、網路 ÷ 平均 > 2.5（紅）→ 流量集中在少數 Pod：檢查 Service / LB 設定、長連線（gRPC、HTTP keep-alive）"
+        "是否都黏在同一個 Pod、message key 或分片是否集中；記憶體只有一個 Pod 特別高 → 那個 Pod 可能有快取或記憶體洩漏。"
+        "點 workload 名稱進細節 Dashboard 看是哪個 Pod。"),
+    sort_by="CPU：最忙 Pod ÷ 平均", h=8, key_links={"workload": DETAIL_LINK}, key_rename=WL_RENAME, base=SKEW_ROWS,
     hide=("workload_type",))
 L.newline()
 
 L = Line()
 table(L, "【Workload】共用資源與重啟：limit 管不到，會影響同 Node 鄰居（時間範圍結束前 5 分鐘）", WL_KEYS, [
-    ("Pod 數", f'count by (namespace, workload, workload_type) ({WL})', "none", None, 0, None),
+    POD_COUNT,
     ("重啟（1 小時）", by_wl(restarts()), "none", steps((Y, 1), (RD, 5)), 0, None, "0"),
     ("網路流量", by_wl(net(W5)), "Bps", None, 1, None),
     ("網路丟包", by_wl(drops(W5)), "pps", steps((Y, 1), (RD, 50)), 1, None),
     ("磁碟寫入", by_wl(disk_write(W5)), "Bps", None, 1, None, "沒收集"),
     ("可寫層用量", by_wl(fs_usage()), "bytes", None, 1, None, "沒收集"),
 ], desc(V_CLUSTER_WL,
-        "網路、本機磁碟這些整台 Node 共用、limit 管不到的資源，以及重啟次數。",
+        "網路、本機磁碟這些整台 Node 共用、limit 管不到的資源，以及重啟次數。都是所有 Pod 加總。",
         "點表頭排序找大戶；網路丟包、重啟是紅 / 黃格要注意。磁碟寫入、可寫層「沒收集」= 叢集沒有收集 Pod 層級的磁碟指標。"),
     sort_by="網路流量", h=10, key_links={"workload": DETAIL_LINK}, key_rename=WL_RENAME, base=WL_ROWS,
     hide=("workload_type",))
