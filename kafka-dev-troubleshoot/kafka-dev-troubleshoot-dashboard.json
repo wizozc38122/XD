@@ -806,7 +806,7 @@
       "id": 37,
       "type": "table",
       "title": "期間落後多少",
-      "description": "所選時間範圍內最糟的時候。\n\n- **最高還落後**：Lag ÷ 近期平均寫入速度，≈ 正在處理多久以前的資料（估算；寫入忽快忽慢時只是概略值）\n- **最長追上需要**：期間每個時間點推估「還要多久追上」的最大值；— = 期間 lag 沒在減少\n\n**正常**：最高 Lag 不大、有降回來。\n\n- 最高還落後超過業務要求 → 消費跟不上\n- 最長追上需要很久 → 壓測後要很久才恢復",
+      "description": "所選時間範圍內落後最多的時候，以及落後了多久。\n\n- **最高還落後**：Lag ÷ 近期平均寫入速度，≈ 正在處理多久以前的資料（估算；寫入忽快忽慢時只是概略值）\n- **落後的時間**：期間 lag 超過 30 秒寫入量的總時間（每 60s 看一次），實際量到的。壓測時 ≈ 從開始落後到追上花了多久；0 = 一直跟得上\n\n**正常**：最高 Lag 不大、落後的時間短。\n\n- 最高還落後超過業務要求 → 消費跟不上\n- 落後的時間很長 → 壓測後要很久才恢復",
       "datasource": {
         "type": "prometheus",
         "uid": "${datasource}"
@@ -844,7 +844,7 @@
             "uid": "${datasource}"
           },
           "editorMode": "code",
-          "expr": "(max_over_time(((sum by(consumergroup,topic)(clamp_min(kafka_consumergroup_lag{cluster=\"$cluster\",topic=~\"$topic\",consumergroup=~\"$consumergroup\"}, 0)) / (0 - sum by(consumergroup,topic)((avg_over_time(kafka_consumergroup_lag{cluster=\"$cluster\",topic=~\"$topic\",consumergroup=~\"$consumergroup\"}[60s]) - avg_over_time(kafka_consumergroup_lag{cluster=\"$cluster\",topic=~\"$topic\",consumergroup=~\"$consumergroup\"}[60s] offset ${compare_window}s) and on(consumergroup,topic,partition) (min_over_time(kafka_consumergroup_current_offset{cluster=\"$cluster\",topic=~\"$topic\",consumergroup=~\"$consumergroup\"}[60s]) >= 0 and on(consumergroup,topic,partition) min_over_time(kafka_consumergroup_current_offset{cluster=\"$cluster\",topic=~\"$topic\",consumergroup=~\"$consumergroup\"}[60s] offset ${compare_window}s) >= 0))) > 10) * ${compare_window}))[$__range:60s])) or (max by(consumergroup,topic)(max_over_time(kafka_consumergroup_lag{cluster=\"$cluster\",topic=~\"$topic\",consumergroup=~\"$consumergroup\"}[$__range])) * 0 + NaN)",
+          "expr": "(sum_over_time(((sum by(consumergroup,topic)(clamp_min(kafka_consumergroup_lag{cluster=\"$cluster\",topic=~\"$topic\",consumergroup=~\"$consumergroup\"}, 0)) / on(topic) group_left() (sum by(topic)(rate(kafka_topic_partition_current_offset{cluster=\"$cluster\",topic=~\"$topic\"}[${compare_window}s])) > 0)) > bool 30)[$__range:60s]) * 60) or (max by(consumergroup,topic)(max_over_time(kafka_consumergroup_lag{cluster=\"$cluster\",topic=~\"$topic\",consumergroup=~\"$consumergroup\"}[$__range])) * 0 + NaN)",
           "legendFormat": "__auto",
           "refId": "C",
           "range": false,
@@ -875,7 +875,7 @@
               "topic": "Topic",
               "Value #A": "最高 Lag",
               "Value #B": "最高還落後",
-              "Value #C": "最長追上需要"
+              "Value #C": "落後的時間"
             }
           }
         },
@@ -987,7 +987,7 @@
           {
             "matcher": {
               "id": "byName",
-              "options": "最長追上需要"
+              "options": "落後的時間"
             },
             "properties": [
               {
@@ -999,20 +999,30 @@
                 "value": "—"
               },
               {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-text"
+                }
+              },
+              {
+                "id": "thresholds",
+                "value": {
+                  "mode": "absolute",
+                  "steps": [
+                    {
+                      "color": "green",
+                      "value": null
+                    },
+                    {
+                      "color": "orange",
+                      "value": 1
+                    }
+                  ]
+                }
+              },
+              {
                 "id": "mappings",
                 "value": [
-                  {
-                    "type": "range",
-                    "options": {
-                      "from": 86400,
-                      "to": null,
-                      "result": {
-                        "text": "> 1 天",
-                        "color": "orange",
-                        "index": 8
-                      }
-                    }
-                  },
                   {
                     "type": "special",
                     "options": {
@@ -1998,7 +2008,7 @@
       "id": 43,
       "type": "timeseries",
       "title": "預估追上需要（照近 ${compare_window:text} lag 減少的速度）",
-      "description": "每個時間點推估「照當時的速度，還要多久追上」。只畫 lag 正在減少的時候。\n\n**正常**：lag 下降時數字越來越小、最後消失（追上了）。\n\n- 數字一直很大 → 恢復很慢\n- 完全沒有線、但 Lag 很大 → lag 沒在減少，追不上",
+      "description": "每個時間點推估「照當時的速度，還要多久追上」。只畫 lag 正在減少、還沒跟上的時候；Y 軸是對數刻度。lag 剛開始下降時，比較區間裡還混著上升的那段，數字會偏大；實際花多久看上方「落後的時間」。\n\n**正常**：lag 下降時數字越來越小、最後消失（追上了）。\n\n- 數字一直很大 → 恢復很慢\n- 完全沒有線、但 Lag 很大 → lag 沒在減少，追不上\n- 沒讀就被刪（已掉資料）時 lag 也會下降，這時的數字沒有意義",
       "datasource": {
         "type": "prometheus",
         "uid": "${datasource}"
@@ -2010,7 +2020,7 @@
             "uid": "${datasource}"
           },
           "editorMode": "code",
-          "expr": "(sum by(consumergroup,topic)(clamp_min(kafka_consumergroup_lag{cluster=\"$cluster\",topic=~\"$topic\",consumergroup=~\"$consumergroup\"}, 0)) / (0 - sum by(consumergroup,topic)((avg_over_time(kafka_consumergroup_lag{cluster=\"$cluster\",topic=~\"$topic\",consumergroup=~\"$consumergroup\"}[60s]) - avg_over_time(kafka_consumergroup_lag{cluster=\"$cluster\",topic=~\"$topic\",consumergroup=~\"$consumergroup\"}[60s] offset ${compare_window}s) and on(consumergroup,topic,partition) (min_over_time(kafka_consumergroup_current_offset{cluster=\"$cluster\",topic=~\"$topic\",consumergroup=~\"$consumergroup\"}[60s]) >= 0 and on(consumergroup,topic,partition) min_over_time(kafka_consumergroup_current_offset{cluster=\"$cluster\",topic=~\"$topic\",consumergroup=~\"$consumergroup\"}[60s] offset ${compare_window}s) >= 0))) > 10) * ${compare_window})",
+          "expr": "(sum by(consumergroup,topic)(clamp_min(kafka_consumergroup_lag{cluster=\"$cluster\",topic=~\"$topic\",consumergroup=~\"$consumergroup\"}, 0)) / (0 - sum by(consumergroup,topic)((avg_over_time(kafka_consumergroup_lag{cluster=\"$cluster\",topic=~\"$topic\",consumergroup=~\"$consumergroup\"}[60s]) - avg_over_time(kafka_consumergroup_lag{cluster=\"$cluster\",topic=~\"$topic\",consumergroup=~\"$consumergroup\"}[60s] offset ${compare_window}s) and on(consumergroup,topic,partition) (min_over_time(kafka_consumergroup_current_offset{cluster=\"$cluster\",topic=~\"$topic\",consumergroup=~\"$consumergroup\"}[60s]) >= 0 and on(consumergroup,topic,partition) min_over_time(kafka_consumergroup_current_offset{cluster=\"$cluster\",topic=~\"$topic\",consumergroup=~\"$consumergroup\"}[60s] offset ${compare_window}s) >= 0))) > 10) * ${compare_window} unless on(consumergroup,topic) (sum by(consumergroup,topic)(clamp_min(kafka_consumergroup_lag{cluster=\"$cluster\",topic=~\"$topic\",consumergroup=~\"$consumergroup\"}, 0)) * ${compare_window} < sum by(consumergroup,topic)((avg_over_time(kafka_consumergroup_lag{cluster=\"$cluster\",topic=~\"$topic\",consumergroup=~\"$consumergroup\"}[60s]) - avg_over_time(kafka_consumergroup_lag{cluster=\"$cluster\",topic=~\"$topic\",consumergroup=~\"$consumergroup\"}[60s] offset ${compare_window}s) and on(consumergroup,topic,partition) (min_over_time(kafka_consumergroup_current_offset{cluster=\"$cluster\",topic=~\"$topic\",consumergroup=~\"$consumergroup\"}[60s]) >= 0 and on(consumergroup,topic,partition) min_over_time(kafka_consumergroup_current_offset{cluster=\"$cluster\",topic=~\"$topic\",consumergroup=~\"$consumergroup\"}[60s] offset ${compare_window}s) >= 0)) + (avg_over_time(kafka_consumergroup_current_offset{cluster=\"$cluster\",topic=~\"$topic\",consumergroup=~\"$consumergroup\"}[60s]) - avg_over_time(kafka_consumergroup_current_offset{cluster=\"$cluster\",topic=~\"$topic\",consumergroup=~\"$consumergroup\"}[60s] offset ${compare_window}s) and on(consumergroup,topic,partition) (min_over_time(kafka_consumergroup_current_offset{cluster=\"$cluster\",topic=~\"$topic\",consumergroup=~\"$consumergroup\"}[60s]) >= 0 and on(consumergroup,topic,partition) min_over_time(kafka_consumergroup_current_offset{cluster=\"$cluster\",topic=~\"$topic\",consumergroup=~\"$consumergroup\"}[60s] offset ${compare_window}s) >= 0))) * 30))",
           "legendFormat": "{{consumergroup}} → {{topic}}",
           "refId": "A",
           "range": true,
@@ -2027,13 +2037,16 @@
             "showPoints": "never",
             "pointSize": 6,
             "spanNulls": false,
-            "axisSoftMin": 0,
             "thresholdsStyle": {
               "mode": "off"
             },
             "stacking": {
               "mode": "none",
               "group": "A"
+            },
+            "scaleDistribution": {
+              "type": "log",
+              "log": 10
             }
           },
           "color": {

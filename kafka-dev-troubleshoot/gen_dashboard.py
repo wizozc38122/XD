@@ -25,7 +25,8 @@ WS = "${compare_window}"
 RW = WS + "s"
 WT = "${compare_window:text}"
 # 頭尾平均用的長度:至少 4 次 scrape,才平均得掉 commit 造成的鋸齒
-SMOOTH = f"{max(60, 4 * SCRAPE_S)}s"
+SMOOTH_S = max(60, 4 * SCRAPE_S)
+SMOOTH = f"{SMOOTH_S}s"
 # BrokerTopicMetrics 有一條不帶 topic 的總計,另外排除內部 topic
 BT = C + ',topic=~"$topic",topic!="",topic!~"__.*"'
 DISK = 'device!~"loop.*|ram.*|dm-.*"'
@@ -58,10 +59,14 @@ def steps(*pairs):
 # gridPos 由 Board.line() 決定,這裡先不給
 def ts(title, d, targets, unit="short", th=None, th_style="off", min_=None, max_=None,
        overrides=None, stack=False, fill=10, legend_calcs=("mean", "max", "lastNotNull"), no_value=None,
-       draw="line", decimals=None):
+       draw="line", decimals=None, log=False):
     custom = {"drawStyle": draw, "lineWidth": 1, "fillOpacity": fill, "showPoints": "never" if draw == "line" else "always",
               "pointSize": 6, "spanNulls": False, "axisSoftMin": 0, "thresholdsStyle": {"mode": th_style},
               "stacking": {"mode": "normal" if stack else "none", "group": "A"}}
+    if log:
+        # 數值差很多 (幾秒到幾小時) 時用對數刻度,線才不會被壓扁
+        custom["scaleDistribution"] = {"type": "log", "log": 10}
+        del custom["axisSoftMin"]
     defaults = {"unit": unit, "custom": custom, "color": {"mode": "palette-classic"},
                 "thresholds": th or steps(("green", None))}
     if min_ is not None: defaults["min"] = min_
@@ -297,8 +302,11 @@ LAGS = f'sum by(consumergroup,topic)(clamp_min({LAG}, 0))'
 NO_COMMIT = f'count by(consumergroup,topic)({COMMITTED} == -1) or {LAGS} * 0'
 # 還落後 = lag ÷ 寫入速度 (估算);比較區間內沒有寫入就沒有值 (不能拿 0 除)
 BEHIND = f'({LAGS} / on(topic) group_left() ({PROD_RATE} > 0))'
-# 預估追上需要 = lag ÷ 每秒減少量;lag 沒在減少就沒有值
-CATCHUP = f'({LAGS} / (0 - {D_LAG} > {FLAT}) * {WS})'
+# 預估追上需要 = lag ÷ 每秒減少量;lag 沒在減少、或 lag 不到 30 秒的寫入量 (已跟上,只是 commit 起伏) 就沒有值
+CAUGHT_UP = f'({LAGS} * {WS} < {d_prod()} * 30)'
+CATCHUP = f'({LAGS} / (0 - {D_LAG} > {FLAT}) * {WS} unless on(consumergroup,topic) {CAUGHT_UP})'
+# 落後的時間 = 期間 lag 超過 30 秒寫入量的總時間 (每 SMOOTH 看一次);實際量到的,不是預估
+BEHIND_TIME = f'sum_over_time(({BEHIND} > bool 30)[{PR}:{SMOOTH}]) * {SMOOTH_S}'
 RATIO = (f'max by(consumergroup,topic)(clamp_min({LAG}, 0) / on(topic,partition) group_left() '
          f'clamp_min({retained(CT)}, 1))')
 # 只看有成員的時候:沒人讀的 group 遲早都是 100%,% 沒意義
@@ -308,7 +316,7 @@ RATIO_ACTIVE = f'({RATIO} and on(consumergroup) {MEMBERS} > 0)'
 # 比較區間前還沒有資料 → 沒有值
 CATCHUP_STATE = (f'(({LAGS} == 0) * 0 - 1) '
                  f'or ({LAGS} * 0 - 2 and on(consumergroup) ({MEMBERS} == 0)) '
-                 f'or ({LAGS} * 0 - 1 and on(consumergroup,topic) ({LAGS} * {WS} < {d_prod()} * 30)) '
+                 f'or ({LAGS} * 0 - 1 and on(consumergroup,topic) {CAUGHT_UP}) '
                  f'or {CATCHUP} '
                  f'or ({LAGS} * 0 - 3 and on(consumergroup,topic) ({D_LAG} > {FLAT})) '
                  f'or ({LAGS} * 0 - 4 and on(consumergroup,topic) {D_LAG})')
@@ -494,15 +502,17 @@ main.line(*hp[4:], h=4)
 main.row("② Consumer 有沒有追上、Topic 是否滿載")
 main.line(
     mtable("期間落後多少",
-           desc("所選時間範圍內最糟的時候。", "最高 Lag 不大、有降回來。",
-                "最高還落後超過業務要求 → 消費跟不上", "最長追上需要很久 → 壓測後要很久才恢復",
+           desc("所選時間範圍內落後最多的時候，以及落後了多久。", "最高 Lag 不大、落後的時間短。",
+                "最高還落後超過業務要求 → 消費跟不上", "落後的時間很長 → 壓測後要很久才恢復",
                 cols=[("最高還落後", BEHIND_HELP),
-                      ("最長追上需要", "期間每個時間點推估「還要多久追上」的最大值；— = 期間 lag 沒在減少")]),
+                      ("落後的時間", f"期間 lag 超過 30 秒寫入量的總時間（每 {SMOOTH} 看一次），實際量到的。"
+                                   "壓測時 ≈ 從開始落後到追上花了多久；0 = 一直跟得上")]),
            ("consumergroup", "topic"),
            [("最高 Lag", f'max_over_time(({LAGS})[{PR}:{SCRAPE}])', [D0]),
             ("最高還落後", f'max_over_time(({BEHIND})[{PR}:{SMOOTH}])', SECONDS + [{"id": "noValue", "value": "—"}]),
-            ("最長追上需要", f'max_over_time(({CATCHUP})[{PR}:{SMOOTH}])',
-             SECONDS + [{"id": "noValue", "value": "—"}, {"id": "mappings", "value": [ONE_DAY]}])],
+            ("落後的時間", BEHIND_TIME,
+             SECONDS + [{"id": "noValue", "value": "—"}, cell("color-text"),
+                        {"id": "thresholds", "value": steps(("green", None), ("orange", 1))}])],
            base=P_BASE),
     mtable("期間寫入 / 消費（筆）",
            desc(f"範圍頭尾相減（頭尾各取 {SMOOTH} 平均），**寫入 − 消費 = Lag 變化**。", "Lag 變化 ≤ 0。",
@@ -550,10 +560,12 @@ main.line(
                                   {"id": "custom.lineWidth", "value": 2}]}]))
 main.line(
     ts(f"預估追上需要（照近 {WT} lag 減少的速度）",
-       desc("每個時間點推估「照當時的速度，還要多久追上」。只畫 lag 正在減少的時候。",
+       desc("每個時間點推估「照當時的速度，還要多久追上」。只畫 lag 正在減少、還沒跟上的時候；Y 軸是對數刻度。"
+            "lag 剛開始下降時，比較區間裡還混著上升的那段，數字會偏大；實際花多久看上方「落後的時間」。",
             "lag 下降時數字越來越小、最後消失（追上了）。",
-            "數字一直很大 → 恢復很慢", "完全沒有線、但 Lag 很大 → lag 沒在減少，追不上"),
-       [tgt(CATCHUP, "{{consumergroup}} → {{topic}}")], unit="s", fill=0),
+            "數字一直很大 → 恢復很慢", "完全沒有線、但 Lag 很大 → lag 沒在減少，追不上",
+            "沒讀就被刪（已掉資料）時 lag 也會下降，這時的數字沒有意義"),
+       [tgt(CATCHUP, "{{consumergroup}} → {{topic}}")], unit="s", fill=0, log=True),
     ts(f"還落後多久的資料（估算：Lag ÷ 近 {WT} 平均寫入速度）",
        desc(BEHIND_HELP + "。要精準請在應用程式記錄訊息時間。", "幾秒內。",
             "持續上升 → 越落越多，跟業務要求比較", "線斷掉 → 那段時間沒有新寫入"),
