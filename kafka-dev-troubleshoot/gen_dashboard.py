@@ -68,16 +68,17 @@ def ts(title, d, targets, gp, unit="short", th=None, th_style="off", min_=None, 
                                    "calcs": list(legend_calcs), "sortBy": "Max", "sortDesc": True},
                         "tooltip": {"mode": "multi", "sort": "desc"}}}
 
-def stat(title, d, expr, gp, unit="none", th=None, mappings=None, no_value=None, decimals=None):
+def stat(title, d, expr, gp, unit="none", th=None, mappings=None, no_value=None, decimals=None, calc=None):
+    # calc 有給 = 看整個所選時間範圍 (range 查詢,依 calc 取 max / min,畫小走勢圖);沒給 = 只看最後一刻
     defaults = {"unit": unit, "color": {"mode": "thresholds"}, "thresholds": th or steps(("blue", None)),
                 "mappings": mappings or []}
     if no_value: defaults["noValue"] = no_value
     if decimals is not None: defaults["decimals"] = decimals
     return {"id": nid(), "type": "stat", "title": title, "description": d, "datasource": DS, "gridPos": gp,
-            "targets": [tgt(expr, instant=True)],
+            "targets": [tgt(expr, instant=not calc)],
             "fieldConfig": {"defaults": defaults, "overrides": []},
-            "options": {"reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": False},
-                        "colorMode": "background", "graphMode": "none", "textMode": "value",
+            "options": {"reduceOptions": {"calcs": [calc or "lastNotNull"], "fields": "", "values": False},
+                        "colorMode": "background", "graphMode": "area" if calc else "none", "textMode": "value",
                         "justifyMode": "center", "orientation": "auto", "wideLayout": True,
                         "showPercentChange": False}}
 
@@ -112,6 +113,17 @@ def table(title, d, targets, gp, rename, order, overrides=(), sort=None, exclude
             "targets": targets, "transformations": tr,
             "fieldConfig": {"defaults": defaults, "overrides": list(overrides)},
             "options": {"showHeader": True, "cellHeight": "sm", "footer": {"show": False}}}
+
+# 即時面板:固定看最新狀態,不管上方選的時間範圍 (Grafana 面板的 Relative time 覆寫)。
+# 表格 / 單一數字是 instant 查詢,只看時間範圍結束那一刻;沒有覆寫的話,選過去的時間就是看那時候
+def live(p):
+    p["timeFrom"] = "5m"
+    p["hideTimeOverride"] = True
+    return p
+
+PR = "$__range"
+LIVE_ROW = "（即時：最新狀態，不受上方時間範圍影響）"
+RANGE_ROW = "（所選時間範圍：回看過去、評估壓測）"
 
 def text(content, gp):
     return {"id": nid(), "type": "text", "title": "", "gridPos": gp,
@@ -174,6 +186,8 @@ def nojmx(mbean):
 GUIDE = """### 這個 Dashboard 怎麼用
 上方先選 **環境 (Prometheus)** → **Cluster**，再視需要選 **Topic** / **Consumer Group**（預設全部）。每張圖標題旁的 **ⓘ** 都有「是什麼／正常／不正常時」說明；② 的速度、Lag 變化都用 **比較區間** 這一段算，標題會寫是哪一段。
 
+**兩種區塊**：① ② 的 **即時** 那一排、以及標題有「（即時）」的面板，永遠是最新狀態，不管上方選什麼時間；其他都跟著上方時間範圍走。**回看 / 壓測**：時間範圍選壓測開始前到結束後（或在任一張圖上拖曳選取），看 ① **所選時間範圍內最糟**、② **期間總結** 和下面的走勢圖。
+
 | 症狀 | 先看哪裡 |
 |---|---|
 | 消費很慢、資料處理延遲、lag 一直漲 | ② **Consumer Group 現況**（Lag 變化、追上需要）→ **消費 vs 寫入速度** → ④ 讀取延遲 |
@@ -185,6 +199,7 @@ GUIDE = """### 這個 Dashboard 怎麼用
 | 想知道哪個帳號（專案）流量最大、有沒有被限速 | ⑤ **各帳號** 開頭的圖表、**連線的 client 程式** |
 | Topic 是否滿載、partition 不均、磁碟夠不夠 | ② **Topic 總表** → **熱點 partition** → **磁碟幾小時後滿** |
 | 資料會不會還沒讀就被刪掉 | ② Consumer Group 現況 **Lag 佔保留量**（有人在讀、接近 100% 就快掉資料；超過 = 已掉資料） |
+| 壓測後回顧：期間有沒有跟不上、掉資料、rebalance | ② **期間總結**（最高 Lag、最高消費/秒、最少成員、最高 Lag 佔保留量）→ 下面的 Lag / 速度圖看是什麼時候 |
 
 - **這裡看不到的**：哪個帳號被拒（看 broker 的 authorizer log）、每則訊息的端到端延遲（要應用程式埋點）、Topic 設定（`kafka-configs --describe`）
 - **面板顯示「jmx exporter 設定沒收 X」**：請維運在 jmx exporter 設定的 `includeObjectNames` 加上 X
@@ -197,52 +212,59 @@ kafka-configs --alter --entity-type users --entity-default \\
 
 panels = []
 y = 0
-panels.append(text(GUIDE, gp(0, y, 24, 18)))
-y += 18
+panels.append(text(GUIDE, gp(0, y, 24, 21)))
+y += 21
 
 # ① 健康總覽
-panels.append(row("① 健康總覽：Kafka 本身有沒有壞", y)); y += 1
+AUTHZ_ERR = f'sum(rate(kafka_network_requestmetrics_errors_total{{{C},error=~".*AUTHORIZATION_FAILED"}}[2m])) * 60'
+LOGIN_FAIL = f'sum({by_listener("failed_authentication_rate")}) * 60'
+IDLE_GROUPS = (f"count((sum by(consumergroup)(clamp_min(kafka_consumergroup_lag{{{C}}}, 0)) > 0) and on(consumergroup) "
+               f"(max by(consumergroup)(kafka_consumergroup_members{{{C}}}) == 0))")
+# (標題, 是什麼, 正常, 不正常時, 查詢, 即時另外用的查詢, 期間最糟取 max 或 min, 其他參數)
+HEALTH = [
+    ("Broker 數", "在叢集裡的 broker 台數。", "等於部署台數。", ["變少 → 有 broker 掛了，看旁邊幾格是否也變紅"],
+     f"max(kafka_brokers{{{C}}})", None, "min", dict(no_value="exporter 沒資料")),
+    ("離線 Partition", "沒有 leader、完全不能讀寫的 partition 數。", "0。",
+     ["> 0 → 這些 partition 讀寫都會失敗或 timeout，立刻找維運"],
+     f"max(kafka_controller_kafkacontroller_offlinepartitionscount{{{C}}})", None, "max", dict(th=ALERT_COUNT)),
+    ("ISR 不足（寫入會失敗）", "同步副本數少於 min.insync.replicas 的 partition 數。", "0。",
+     ["> 0 → 用 acks=all 寫入會收到 NOT_ENOUGH_REPLICAS"],
+     f"sum(kafka_server_replicamanager_underminisrpartitioncount{{{C}}})", None, "max", dict(th=ALERT_COUNT)),
+    ("副本不足", "有副本沒跟上 leader 的 partition 數。", "0（broker 重啟時短暫 > 0 正常）。",
+     ["長時間 > 0 → 某台 broker 掛了或太慢，資料少一份備份；讀寫通常還正常"],
+     f"sum(kafka_server_replicamanager_underreplicatedpartitions{{{C}}})", None, "max", dict(th=WARN_COUNT)),
+    ("Active Controller", "負責管理叢集的 controller 數（期間那格取最低）。", "剛好 1。",
+     ["0 → 建 topic、換 leader 都會失敗", "> 1 → 不該發生，找維運"],
+     f"sum(kafka_controller_kafkacontroller_activecontrollercount{{{C}}})", None, "min",
+     dict(th=steps(("red", None), ("green", 1), ("red", 2)))),
+    ("權限錯誤（次/分）", "client 收到 *_AUTHORIZATION_FAILED 的次數（每分鐘，全部 broker）。", "0。",
+     ["> 0 → 有程式用了沒權限的帳號 / topic / group，看 ④ 權限被拒"],
+     AUTHZ_ERR, None, "max", dict(th=WARN_COUNT, decimals=0, no_value="0")),
+    ("登入失敗（次/分）", "SASL 登入失敗次數（每分鐘；即時那格取近 5 分鐘最高）。", "0。",
+     ["> 0 → 有程式密碼錯、帳號被刪或 mechanism 設錯，看 ④ 登入失敗",
+      "「未收集」→ jmx exporter 沒收 kafka.server:type=socket-server-metrics"],
+     LOGIN_FAIL, f'max_over_time(({LOGIN_FAIL})[5m:30s])', "max", dict(th=WARN_COUNT, decimals=0, no_value="未收集")),
+    ("沒人讀的 Group", "有 lag、但沒有任何 consumer 連著的 group 數。", "0（跑完就停的批次程式也會算進來）。",
+     ["> 0 → 程式掛了或停了，訊息一直堆；看 ② 成員數"],
+     IDLE_GROUPS, None, "max", dict(th=WARN_COUNT, no_value="0")),
+]
 H = 3
-panels += [
-    stat("Broker 數", desc("目前在叢集裡的 broker 台數。", "等於部署台數。",
-                          "變少 → 有 broker 掛了，看旁邊幾格是否也變紅"),
-         f"max(kafka_brokers{{{C}}})", gp(0, y, 6, H), no_value="exporter 沒資料"),
-    stat("離線 Partition", desc("沒有 leader、完全不能讀寫的 partition 數。", "0。",
-                               "> 0 → 這些 partition 讀寫都會失敗或 timeout，立刻找維運"),
-         f"max(kafka_controller_kafkacontroller_offlinepartitionscount{{{C}}})", gp(6, y, 6, H), th=ALERT_COUNT),
-    stat("ISR 不足（寫入會失敗）", desc("同步副本數少於 min.insync.replicas 的 partition 數。", "0。",
-                                     "> 0 → 用 acks=all 寫入會收到 NOT_ENOUGH_REPLICAS"),
-         f"sum(kafka_server_replicamanager_underminisrpartitioncount{{{C}}})", gp(12, y, 6, H), th=ALERT_COUNT),
-    stat("副本不足", desc("有副本沒跟上 leader 的 partition 數。", "0（broker 重啟時短暫 > 0 正常）。",
-                         "長時間 > 0 → 某台 broker 掛了或太慢，資料少一份備份；讀寫通常還正常"),
-         f"sum(kafka_server_replicamanager_underreplicatedpartitions{{{C}}})", gp(18, y, 6, H), th=WARN_COUNT),
-]
-y += H
-panels += [
-    stat("Active Controller", desc("負責管理叢集的 controller 數。", "剛好 1。",
-                                  "0 → 建 topic、換 leader 都會失敗", "> 1 → 不該發生，找維運"),
-         f"sum(kafka_controller_kafkacontroller_activecontrollercount{{{C}}})", gp(0, y, 6, H),
-         th=steps(("red", None), ("green", 1), ("red", 2))),
-    stat("權限錯誤（次/分）", desc("client 收到 *_AUTHORIZATION_FAILED 的次數（每分鐘，全部 broker）。", "0。",
-                               "> 0 → 有程式用了沒權限的帳號 / topic / group，看 ④ 權限被拒"),
-         f'sum(rate(kafka_network_requestmetrics_errors_total{{{C},error=~".*AUTHORIZATION_FAILED"}}[2m])) * 60',
-         gp(6, y, 6, H), th=WARN_COUNT, decimals=0, no_value="0"),
-    stat("登入失敗（次/分）", desc("SASL 登入失敗次數（每分鐘，取近 5 分鐘最高）。", "0。",
-                               "> 0 → 有程式密碼錯、帳號被刪或 mechanism 設錯，看 ④ 登入失敗",
-                               "「未收集」→ jmx exporter 沒收 kafka.server:type=socket-server-metrics"),
-         f'max_over_time((sum({by_listener("failed_authentication_rate")}) * 60)[5m:30s])', gp(12, y, 6, H), th=WARN_COUNT,
-         decimals=0, no_value="未收集"),
-    stat("沒人讀的 Group", desc("有 lag、但沒有任何 consumer 連著的 group 數。",
-                                       "0（跑完就停的批次程式也會算進來）。",
-                                       "> 0 → 程式掛了或停了，訊息一直堆；看 ② 成員數"),
-         f"count((sum by(consumergroup)(clamp_min(kafka_consumergroup_lag{{{C}}}, 0)) > 0) and on(consumergroup) "
-         f"(max by(consumergroup)(kafka_consumergroup_members{{{C}}}) == 0))", gp(18, y, 6, H), th=WARN_COUNT,
-         no_value="0"),
-]
-y += H
+panels.append(row("① 健康總覽：Kafka 本身有沒有壞" + LIVE_ROW, y)); y += 1
+for i, (title, what, normal, bad, expr, live_expr, fn, kw) in enumerate(HEALTH):
+    panels.append(live(stat(title, desc(what, normal, *bad), live_expr or expr,
+                            gp(i % 4 * 6, y + i // 4 * H, 6, H), **kw)))
+y += 2 * H
+panels.append(row("① 健康總覽：期間最糟" + RANGE_ROW, y)); y += 1
+for i, (title, what, normal, bad, expr, live_expr, fn, kw) in enumerate(HEALTH):
+    word = "最高" if fn == "max" else "最低"
+    # 每個點取前一小段最糟 (subquery 解析度 = scrape),整段再取最糟:短暫的尖峰也抓得到,小走勢圖看得出是什麼時候
+    panels.append(stat(title, desc(f"**所選時間範圍內{word}**（每次 scrape 都看，短暫尖峰也抓得到；小圖是期間走勢）。{what}",
+                                   normal, *bad),
+                       f'{fn}_over_time(({expr})[{RI}:{SCRAPE}])', gp(i % 4 * 6, y + i // 4 * H, 6, H), calc=fn, **kw))
+y += 2 * H
 
 # ② Consumer 與 Topic
-panels.append(row("② Consumer 有沒有追上、Topic 是否滿載", y)); y += 1
+panels.append(row("② Consumer 有沒有追上、Topic 是否滿載" + LIVE_ROW, y)); y += 1
 LAG = f'kafka_consumergroup_lag{{{CG}}}'
 COMMITTED = f'kafka_consumergroup_current_offset{{{CG}}}'
 END = f'kafka_topic_partition_current_offset{{{CT}}}'
@@ -254,14 +276,18 @@ PROD_RATE = f'sum by(topic)(rate({END}[{RW}]))'
 # 比較區間頭尾相減:頭尾各取一小段平均 (抹掉 commit 造成的鋸齒),中間剛好隔一個比較區間。
 # 只算頭尾都 commit 過的 partition。exporter 算 lag 時的 log end 是另外跟 broker 要的,不是 topic 的 current_offset,
 # 所以寫入用 lag + commit 位置還原「算 lag 用的 log end」→ 寫入 − 消費 = Lag 變化 每個 partition 都成立
-VALID = (f'(min_over_time({COMMITTED}[{SMOOTH}]) >= 0 and on(consumergroup,topic,partition) '
-         f'min_over_time({COMMITTED}[{SMOOTH}] offset {RW}) >= 0)')
-def change(m):
-    return (f'(avg_over_time({m}[{SMOOTH}]) - avg_over_time({m}[{SMOOTH}] offset {RW}) '
-            f'and on(consumergroup,topic,partition) {VALID})')
-D_LAG = f'sum by(consumergroup,topic)({change(LAG)})'
-D_CONS = f'sum by(consumergroup,topic)({change(COMMITTED)})'
-D_PROD = f'sum by(consumergroup,topic)({change(LAG)} + {change(COMMITTED)})'
+def change(m, span=RW):
+    valid = (f'(min_over_time({COMMITTED}[{SMOOTH}]) >= 0 and on(consumergroup,topic,partition) '
+             f'min_over_time({COMMITTED}[{SMOOTH}] offset {span}) >= 0)')
+    return (f'(avg_over_time({m}[{SMOOTH}]) - avg_over_time({m}[{SMOOTH}] offset {span}) '
+            f'and on(consumergroup,topic,partition) {valid})')
+def d_lag(span=RW):
+    return f'sum by(consumergroup,topic)({change(LAG, span)})'
+def d_cons(span=RW):
+    return f'sum by(consumergroup,topic)({change(COMMITTED, span)})'
+def d_prod(span=RW):
+    return f'sum by(consumergroup,topic)({change(LAG, span)} + {change(COMMITTED, span)})'
+D_LAG, D_CONS, D_PROD = d_lag(), d_cons(), d_prod()
 FLAT = 10  # Lag 變化在 ±10 筆內視為持平
 def retained(sel):
     return f'(kafka_topic_partition_current_offset{{{sel}}} - kafka_topic_partition_oldest_offset{{{sel}}})'
@@ -273,6 +299,10 @@ MEMBERS = f'max by(consumergroup)(kafka_consumergroup_members{{{C},consumergroup
 # 還落後 = lag / 寫入速度 (只用在圖上,是估算);比較區間內沒有寫入就沒有值 (不能拿 0 除)
 BEHIND = f'({LAGS} / on(topic) group_left() ({PROD_RATE} > 0))'
 RATIO = f'max by(consumergroup,topic)(clamp_min({LAG}, 0) / on(topic,partition) group_left() clamp_min({RETAINED}, 1))'
+# 只看有成員的時候:沒人讀的 group 遲早都是 100%,% 沒意義
+RATIO_ACTIVE = f'({RATIO} and on(consumergroup) {MEMBERS} > 0)'
+# 單份大小 (不含副本):每個 partition 取最大的那份副本 (jmx exporter 要收 kafka.log:type=Log,name=Size)
+SIZE1 = f'sum by(topic)(max by(topic,partition)(kafka_log_log_size{{{CT},topic!~"__.*"}}))'
 cg_targets = [
     tgt(f'sum by(consumergroup,topic)(clamp_min({LAG}, 0))', ref="A", instant=True, fmt="table"),
     tgt(f'max by(consumergroup,topic)({LAG}) * 0 + on(consumergroup) group_left() '
@@ -300,15 +330,15 @@ cg_targets = [
         ref="G", instant=True, fmt="table"),
     tgt(NO_COMMIT, ref="H", instant=True, fmt="table"),
 ]
-panels.append(table(
-    f"Consumer Group 現況（現在；寫入 / 消費 / Lag 變化 = 近 {WT}）",
+panels.append(live(table(
+    f"Consumer Group 現況（寫入 / 消費 / Lag 變化 = 近 {WT}）",
     desc("每個 group × topic 現在追得怎樣。寫入、消費、Lag 變化都是上方「比較區間」頭尾相減的筆數"
          f"（頭尾各取 {SMOOTH} 平均，抹掉 commit 造成的起伏），所以一定對得上：**寫入 − 消費 = Lag 變化**（四捨五入可能差 1）。",
          "成員 ≥ 1、追上需要顯示「已跟上」。",
          "成員 0 → 程式沒在跑",
          "追不上（越落越多）→ 處理太慢：加 consumer（不能超過 partition 數）或加快處理",
          "Lag 佔保留量接近 100%（有成員）→ 沒讀到的資料快被刪掉；「已掉資料」→ 已經刪了；「沒人在讀」→ 先處理成員 0（各情境見欄位說明）",
-         "想看更長的走勢 → 把「比較區間」調長，或看下方 Lag 圖",
+         "想看更長的走勢、或過去某段時間 → 看下方「所選時間範圍」的期間總結與 Lag 圖",
          "沒 commit 的 Partition > 0 → 這些 partition 的 lag 看不到；確認是不是沒有 consumer 分到，或程式只在處理到資料時才 commit",
          cols=[("Lag", "現在還沒讀的訊息數。已處理但還沒 commit 的也算，所以會隨 commit 小幅起伏"),
                ("成員", "連著的 consumer 數，0 = 沒人在讀"),
@@ -367,11 +397,131 @@ panels.append(table(
                                     "from": 1.000001, "to": None, "result": {"text": "已掉資料", "color": "red", "index": 2}}}]}]),
         col("沒 commit 的 Partition", [{"id": "decimals", "value": 0}, {"id": "custom.width", "value": 110},
                                       {"id": "thresholds", "value": steps(("text", None), ("orange", 1))}, cell("color-text")]),
+    ])))
+y += 9
+stuck_t = [
+    tgt(f'max by(consumergroup,topic,partition)({LAG}) > 0', ref="A", instant=True, fmt="table"),
+    # 直接相減:offset 是 gauge,increase() 遇到往回重設會當成 counter reset 算錯
+    tgt(f'max by(consumergroup,topic,partition)({COMMITTED} - {COMMITTED} offset 10m '
+        f'and on(consumergroup,topic,partition) {COMMITTED} offset 10m >= 0)',
+        ref="B", instant=True, fmt="table"),
+]
+panels.append(live(table(
+    "有 lag 的 Partition（10 分鐘內有沒有前進）",
+    desc("有 lag 的 partition，以及 10 分鐘內 consumer 在上面前進了幾筆（現在的 commit 位置 − 10 分鐘前）。", "前進 > 0（綠色）。",
+         "Lag > 0 但前進 0（紅色）→ 這個 partition 卡住：某筆訊息一直處理失敗，或沒有 consumer 分到",
+         "前進是負數 → offset 被往回重設（重讀）", "前進沒有值 → 10 分鐘前這個 partition 還沒 commit 過",
+         "只有一兩個 partition lag 特別大 → key 集中（熱點）"),
+    stuck_t, gp(0, y, 9, 9),
+    rename={"consumergroup": "Consumer Group", "topic": "Topic", "partition": "Partition",
+            "Value #A": "Lag（筆）", "Value #B": "10 分鐘前進（筆）"},
+    order=["consumergroup", "topic", "partition", "Value #A", "Value #B"], sort=("Lag（筆）", True),
+    overrides=[col("10 分鐘前進（筆）", [{"id": "thresholds", "value": steps(("red", None), ("green", 1))},
+                                       cell("color-background"), {"id": "decimals", "value": 0}])],
+    no_value="沒有 lag")))
+# 只留 Lag > 0 的列 (B 會列出所有 partition)
+panels[-1]["transformations"].insert(1, {"id": "filterByValue", "options": {
+    "filters": [{"fieldName": "Value #A", "config": {"id": "greater", "options": {"value": 0}}}],
+    "type": "include", "match": "all"}})
+topic_t = [
+    tgt(f'max by(topic)(kafka_topic_partitions{{{CT},topic!~"__.*"}})', ref="A", instant=True, fmt="table"),
+    tgt(f'max by(topic)(kafka_topic_partition_replicas{{{CT},topic!~"__.*"}})', ref="B", instant=True, fmt="table"),
+    tgt(f'sum by(topic)(rate(kafka_server_brokertopicmetrics_messagesin_total{{{BT}}}[{RW}]))', ref="C", instant=True, fmt="table"),
+    tgt(f'sum by(topic)(rate(kafka_server_brokertopicmetrics_bytesin_total{{{BT}}}[{RW}]))', ref="D", instant=True, fmt="table"),
+    tgt(f'sum by(topic)(rate(kafka_server_brokertopicmetrics_bytesout_total{{{BT}}}[{RW}]))', ref="E", instant=True, fmt="table"),
+    # 不均度 = 最忙 partition ÷ 平均
+    tgt(f'max by(topic)(rate(kafka_topic_partition_current_offset{{{CT},topic!~"__.*"}}[{RW}])) / '
+        f'(avg by(topic)(rate(kafka_topic_partition_current_offset{{{CT},topic!~"__.*"}}[{RW}])) > 0)', ref="F", instant=True, fmt="table"),
+    # 單份大小 (每個 partition 取最大的那份副本)
+    tgt(SIZE1, ref="G", instant=True, fmt="table"),
+    tgt(f'sum by(topic)({retained(CT + ',topic!~"__.*"')})', ref="H", instant=True, fmt="table"),
+    tgt(f'sum by(topic)(kafka_topic_partition_under_replicated_partition{{{CT},topic!~"__.*"}})', ref="I", instant=True, fmt="table"),
+]
+panels.append(live(table(
+    f"Topic 總表（流量 = 近 {WT} 平均）",
+    desc("每個 topic 的規模與流量（比較區間平均）。", "不均度接近 1、副本不足 0。",
+         "不均度 > 2 → 熱點 partition（看下方熱點圖）",
+         "每個 partition 寫入長期超過幾 MB/s → consumer 容易跟不上，考慮加 partition",
+         "讀取遠大於寫入 → 很多 group 讀同一份，或有程式一直從頭重讀",
+         cols=[("不均度", "最忙的 partition ÷ 平均，1 = 平均分散"),
+               ("磁碟（單份）", "不含副本，實際佔用 ≈ × 副本數；「未收集」= jmx exporter 沒收 kafka.log:type=Log,name=Size"),
+               ("保留訊息", "Kafka 目前還留著的訊息數")]),
+    topic_t, gp(9, y, 15, 9),
+    rename={"topic": "Topic", "Value #A": "Partition", "Value #B": "副本數", "Value #C": "寫入（筆/秒）",
+            "Value #D": "寫入", "Value #E": "讀取", "Value #F": "不均度", "Value #G": "磁碟（單份）",
+            "Value #H": "保留訊息", "Value #I": "副本不足"},
+    order=["topic", "Value #A", "Value #B", "Value #C", "Value #D", "Value #E", "Value #F", "Value #G", "Value #H", "Value #I"],
+    sort=("寫入", True),
+    overrides=[
+        col("寫入（筆/秒）", [{"id": "decimals", "value": 1}]),
+        col("寫入", [{"id": "unit", "value": "Bps"}]), col("讀取", [{"id": "unit", "value": "Bps"}]),
+        col("不均度", [{"id": "decimals", "value": 1}, {"id": "noValue", "value": "—"},
+                       {"id": "thresholds", "value": steps(("green", None), ("yellow", 1.5), ("red", 2))}, cell("color-text")]),
+        col("磁碟（單份）", [{"id": "unit", "value": "bytes"}, {"id": "noValue", "value": "未收集"}]),
+        col("保留訊息", [{"id": "unit", "value": "short"}]),
+        col("副本不足", [{"id": "thresholds", "value": ALERT_COUNT}, cell("color-text")]),
+    ])))
+y += 9
+
+panels.append(row("② Consumer 有沒有追上、Topic 是否滿載" + RANGE_ROW, y)); y += 1
+# 期間總結:整個所選時間範圍 ($__range) 裡發生了什麼
+P_BASE = f'max by(consumergroup,topic)(max_over_time({LAG}[{PR}])) * 0'
+P_MEM = f'kafka_consumergroup_members{{{C},consumergroup=~"$consumergroup"}}'
+period_t = [
+    tgt(f'max_over_time(({LAGS})[{PR}:{SCRAPE}])', ref="A", instant=True, fmt="table"),
+    tgt(d_prod(PR), ref="B", instant=True, fmt="table"),
+    tgt(d_cons(PR), ref="C", instant=True, fmt="table"),
+    tgt(d_lag(PR), ref="D", instant=True, fmt="table"),
+    tgt(f'{P_BASE} + on(topic) group_left() max_over_time(({PROD_RATE})[{PR}:{SMOOTH}])', ref="E", instant=True, fmt="table"),
+    tgt(f'max_over_time(({CONS_RATE})[{PR}:{SMOOTH}])', ref="F", instant=True, fmt="table"),
+    tgt(f'{P_BASE} + on(consumergroup) group_left() min by(consumergroup)(min_over_time({P_MEM}[{PR}]))',
+        ref="G", instant=True, fmt="table"),
+    tgt(f'{P_BASE} + on(consumergroup) group_left() max by(consumergroup)(changes({P_MEM}[{PR}]))',
+        ref="H", instant=True, fmt="table"),
+    tgt(f'max_over_time({RATIO_ACTIVE}[{PR}:{SMOOTH}])', ref="I", instant=True, fmt="table"),
+]
+panels.append(table(
+    f"期間總結（整個所選時間範圍；速度 = 近 {WT} 平均的最高）",
+    desc("整個所選時間範圍裡，每個 group × topic 發生了什麼。壓測回顧：時間範圍選壓測開始前到結束後，或在下方任一張圖上拖曳選取。"
+         f"期間寫入 / 消費 / Lag 變化 = 範圍頭尾相減（頭尾各取 {SMOOTH} 平均），**期間寫入 − 期間消費 = Lag 變化**。"
+         "時間範圍很長（例如 7 天）時會算比較久。",
+         "最高 Lag 不大或有降回來、Lag 變化 ≤ 0、最少成員 ≥ 1、成員變動 0（或只有部署那幾次）、最高 Lag 佔保留量遠低於 100%。",
+         "最高 Lag 很大、Lag 變化 > 0 → 期間消費跟不上，結束時還有積壓；看下方 Lag 圖是什麼時候開始累積",
+         "最高消費/秒 明顯低於 最高寫入/秒 → consumer 的處理能力就是瓶頸（最高消費/秒 ≈ 目前配置能處理的上限）",
+         "最少成員 0 → 期間有一段沒人讀；成員變動次數多 → 期間一直 rebalance（看下方成員數圖）",
+         "最高 Lag 佔保留量接近 / 超過 100% → 期間差點 / 已經掉資料",
+         cols=[("最高 Lag", "期間 lag 的最高值（每次 scrape 都看）"),
+               ("期間寫入、期間消費", "範圍內寫進 / 讀完（commit）幾筆，只算頭尾都 commit 過的 partition"),
+               ("Lag 變化", f"範圍結束時比開始時多幾筆 lag（= 期間寫入 − 期間消費）；±{FLAT} 筆內視為持平"),
+               ("最高寫入/秒、最高消費/秒", "「比較區間」平均速度在期間內的最高值"),
+               ("最少成員、成員變動", "期間最少有幾個 consumer、成員數變了幾次"),
+               ("最高 Lag 佔保留量", "期間最糟的時候，只看有成員的時候；— = 期間一直沒有成員")]),
+    period_t, gp(0, y, 24, 9),
+    rename={"consumergroup": "Consumer Group", "topic": "Topic", "Value #A": "最高 Lag", "Value #B": "期間寫入",
+            "Value #C": "期間消費", "Value #D": "Lag 變化", "Value #E": "最高寫入/秒", "Value #F": "最高消費/秒",
+            "Value #G": "最少成員", "Value #H": "成員變動", "Value #I": "最高 Lag 佔保留量"},
+    order=["consumergroup", "topic"] + [f"Value #{c}" for c in "ABCDEFGHI"],
+    sort=("最高 Lag", True), filterable=False, min_width=60,
+    overrides=[
+        col("Consumer Group", [{"id": "custom.width", "value": 150}]),
+        col("期間寫入", [{"id": "decimals", "value": 0}]),
+        col("期間消費", [{"id": "decimals", "value": 0}]),
+        col("Lag 變化", [{"id": "decimals", "value": 0},
+                         {"id": "thresholds", "value": steps(("green", None), ("orange", FLAT))}, cell("color-text")]),
+        col("最高寫入/秒", [{"id": "decimals", "value": 1}]),
+        col("最高消費/秒", [{"id": "decimals", "value": 1}]),
+        col("最少成員", [{"id": "decimals", "value": 0}, {"id": "custom.width", "value": 80},
+                         {"id": "thresholds", "value": steps(("red", None), ("green", 1))}, cell("color-text")]),
+        col("成員變動", [{"id": "decimals", "value": 0}, {"id": "custom.width", "value": 80},
+                         {"id": "thresholds", "value": steps(("green", None), ("orange", 1))}, cell("color-text")]),
+        col("最高 Lag 佔保留量", [{"id": "unit", "value": "percentunit"}, {"id": "min", "value": 0}, {"id": "max", "value": 1},
+                                 {"id": "thresholds", "value": PCT}, cell("gauge"), {"id": "custom.width", "value": 160},
+                                 {"id": "noValue", "value": "—"},
+                                 {"id": "mappings", "value": [{"type": "range", "options": {
+                                     "from": 1.000001, "to": None, "result": {"text": "已掉資料", "color": "red", "index": 0}}}]}]),
     ]))
 y += 9
 
-# 單份大小 (不含副本):每個 partition 取最大的那份副本 (jmx exporter 要收 kafka.log:type=Log,name=Size)
-SIZE1 = f'sum by(topic)(max by(topic,partition)(kafka_log_log_size{{{CT},topic!~"__.*"}}))'
 
 panels += [
     # 每個點取前一小段的最高值:時間範圍拉長、點變稀時,才不會剛好取到 commit 後的低點而漏掉高點
@@ -404,14 +554,21 @@ panels += [
             "線斷掉 → 那段時間沒有新寫入，算不出來"),
        [tgt(BEHIND,
             "{{consumergroup}} → {{topic}}")],
-       gp(0, y, 8, 8), unit="s"),
+       gp(0, y, 6, 8), unit="s"),
+    ts("Lag 佔保留量（最糟的 partition，有成員時）",
+       desc("還沒讀的筆數 ÷ Kafka 這個 partition 還留著的筆數，取最糟的 partition。只畫有 consumer 的時候（沒人讀的 group 遲早都會到 100%）。",
+            "遠低於 70%。",
+            "往 100% 靠近 → 快讀不到就被刪了，加快消費", "超過 100% → 沒讀的已經被刪了（已掉資料）",
+            "100% 不一定很急：Kafka 是整個 segment 一起刪，partition 只留幾筆時常常是 100%，搭配 Lag 看"),
+       [tgt(RATIO_ACTIVE, "{{consumergroup}} → {{topic}}")],
+       gp(6, y, 6, 8), unit="percentunit", th=PCT, th_style="line", fill=0),
     ts("Consumer 成員數",
        desc("每個 group 連著幾個 consumer。", "等於部署數 × 每個程式的 consumer 數。",
             "掉到 0 → 沒人在讀",
             "一直跳動 → 一直 rebalance（處理太久超過 max.poll.interval.ms，或 pod 一直重啟）",
             "比 partition 數多 → 多出來的會閒置"),
        [tgt(f'max by(consumergroup)(kafka_consumergroup_members{{{C},consumergroup=~"$consumergroup"}})', "{{consumergroup}}")],
-       gp(8, y, 8, 8), decimals=0),
+       gp(12, y, 6, 8), decimals=0),
     ts("Rebalance 次數",
        desc("每分鐘完成幾次 rebalance，以及正在 rebalance 的 group 數（整個叢集）。", "接近 0，部署、擴縮時短暫增加。",
             "持續發生 → 有 consumer 一直加入 / 離開，期間整個 group 停止消費；看成員數找是哪個 group"),
@@ -420,33 +577,9 @@ panels += [
         tgt(f'sum(kafka_coordinator_group_groupmetadatamanager_numgroupspreparingrebalance{{{C}}}) + '
             f'sum(kafka_coordinator_group_groupmetadatamanager_numgroupscompletingrebalance{{{C}}})',
             "正在 rebalance 的 group", ref="B")],
-       gp(16, y, 8, 8), decimals=1, no_value=nojmx("kafka.server:type=group-coordinator-metrics")),
+       gp(18, y, 6, 8), decimals=1, no_value=nojmx("kafka.server:type=group-coordinator-metrics")),
 ]
 y += 8
-stuck_t = [
-    tgt(f'max by(consumergroup,topic,partition)({LAG}) > 0', ref="A", instant=True, fmt="table"),
-    # 直接相減:offset 是 gauge,increase() 遇到往回重設會當成 counter reset 算錯
-    tgt(f'max by(consumergroup,topic,partition)({COMMITTED} - {COMMITTED} offset 10m '
-        f'and on(consumergroup,topic,partition) {COMMITTED} offset 10m >= 0)',
-        ref="B", instant=True, fmt="table"),
-]
-panels.append(table(
-    "有 lag 的 Partition（10 分鐘內有沒有前進）",
-    desc("有 lag 的 partition，以及 10 分鐘內 consumer 在上面前進了幾筆（現在的 commit 位置 − 10 分鐘前）。", "前進 > 0（綠色）。",
-         "Lag > 0 但前進 0（紅色）→ 這個 partition 卡住：某筆訊息一直處理失敗，或沒有 consumer 分到",
-         "前進是負數 → offset 被往回重設（重讀）", "前進沒有值 → 10 分鐘前這個 partition 還沒 commit 過",
-         "只有一兩個 partition lag 特別大 → key 集中（熱點）"),
-    stuck_t, gp(0, y, 12, 8),
-    rename={"consumergroup": "Consumer Group", "topic": "Topic", "partition": "Partition",
-            "Value #A": "Lag（筆）", "Value #B": "10 分鐘前進（筆）"},
-    order=["consumergroup", "topic", "partition", "Value #A", "Value #B"], sort=("Lag（筆）", True),
-    overrides=[col("10 分鐘前進（筆）", [{"id": "thresholds", "value": steps(("red", None), ("green", 1))},
-                                       cell("color-background"), {"id": "decimals", "value": 0}])],
-    no_value="沒有 lag"))
-# 只留 Lag > 0 的列 (B 會列出所有 partition)
-panels[-1]["transformations"].insert(1, {"id": "filterByValue", "options": {
-    "filters": [{"fieldName": "Value #A", "config": {"id": "greater", "options": {"value": 0}}}],
-    "type": "include", "match": "all"}})
 panels.append(ts(
     f"熱點 Partition：每個 partition 的寫入（筆/秒，近 {WT} 平均，前 10）",
     desc("寫入最多的 10 個 partition。", "同一 topic 的 partition 差不多。",
@@ -454,66 +587,24 @@ panels.append(ts(
          "加 consumer 沒用，要換 key 或打散"),
     [tgt(f'topk(10, sum by(topic,partition)(rate(kafka_topic_partition_current_offset{{{CT},topic!~"__.*"}}[{RW}])))',
          "{{topic}} [{{partition}}]")],
-    gp(12, y, 12, 8)))
-y += 8
-
-topic_t = [
-    tgt(f'max by(topic)(kafka_topic_partitions{{{CT},topic!~"__.*"}})', ref="A", instant=True, fmt="table"),
-    tgt(f'max by(topic)(kafka_topic_partition_replicas{{{CT},topic!~"__.*"}})', ref="B", instant=True, fmt="table"),
-    tgt(f'sum by(topic)(rate(kafka_server_brokertopicmetrics_messagesin_total{{{BT}}}[{RW}]))', ref="C", instant=True, fmt="table"),
-    tgt(f'sum by(topic)(rate(kafka_server_brokertopicmetrics_bytesin_total{{{BT}}}[{RW}]))', ref="D", instant=True, fmt="table"),
-    tgt(f'sum by(topic)(rate(kafka_server_brokertopicmetrics_bytesout_total{{{BT}}}[{RW}]))', ref="E", instant=True, fmt="table"),
-    # 不均度 = 最忙 partition ÷ 平均
-    tgt(f'max by(topic)(rate(kafka_topic_partition_current_offset{{{CT},topic!~"__.*"}}[{RW}])) / '
-        f'(avg by(topic)(rate(kafka_topic_partition_current_offset{{{CT},topic!~"__.*"}}[{RW}])) > 0)', ref="F", instant=True, fmt="table"),
-    # 單份大小 (每個 partition 取最大的那份副本)
-    tgt(SIZE1, ref="G", instant=True, fmt="table"),
-    tgt(f'sum by(topic)({retained(CT + ',topic!~"__.*"')})', ref="H", instant=True, fmt="table"),
-    tgt(f'sum by(topic)(kafka_topic_partition_under_replicated_partition{{{CT},topic!~"__.*"}})', ref="I", instant=True, fmt="table"),
-]
-panels.append(table(
-    f"Topic 總表（現在；流量 = 近 {WT} 平均）",
-    desc("每個 topic 的規模與流量（比較區間平均）。", "不均度接近 1、副本不足 0。",
-         "不均度 > 2 → 熱點 partition（看上方熱點圖）",
-         "每個 partition 寫入長期超過幾 MB/s → consumer 容易跟不上，考慮加 partition",
-         "讀取遠大於寫入 → 很多 group 讀同一份，或有程式一直從頭重讀",
-         cols=[("不均度", "最忙的 partition ÷ 平均，1 = 平均分散"),
-               ("磁碟（單份）", "不含副本，實際佔用 ≈ × 副本數；「未收集」= jmx exporter 沒收 kafka.log:type=Log,name=Size"),
-               ("保留訊息", "Kafka 目前還留著的訊息數")]),
-    topic_t, gp(0, y, 24, 9),
-    rename={"topic": "Topic", "Value #A": "Partition", "Value #B": "副本數", "Value #C": "寫入（筆/秒）",
-            "Value #D": "寫入", "Value #E": "讀取", "Value #F": "不均度", "Value #G": "磁碟（單份）",
-            "Value #H": "保留訊息", "Value #I": "副本不足"},
-    order=["topic", "Value #A", "Value #B", "Value #C", "Value #D", "Value #E", "Value #F", "Value #G", "Value #H", "Value #I"],
-    sort=("寫入", True),
-    overrides=[
-        col("寫入（筆/秒）", [{"id": "decimals", "value": 1}]),
-        col("寫入", [{"id": "unit", "value": "Bps"}]), col("讀取", [{"id": "unit", "value": "Bps"}]),
-        col("不均度", [{"id": "decimals", "value": 1}, {"id": "noValue", "value": "—"},
-                       {"id": "thresholds", "value": steps(("green", None), ("yellow", 1.5), ("red", 2))}, cell("color-text")]),
-        col("磁碟（單份）", [{"id": "unit", "value": "bytes"}, {"id": "noValue", "value": "未收集"}]),
-        col("保留訊息", [{"id": "unit", "value": "short"}]),
-        col("副本不足", [{"id": "thresholds", "value": ALERT_COUNT}, cell("color-text")]),
-    ]))
-y += 9
-
+    gp(0, y, 6, 8)))
 panels += [
     ts(f"Topic 寫入（筆/秒，近 {WT} 平均）",
        desc("每個 topic 每秒寫入幾筆。", "跟業務量同步。",
             "突然暴增 → producer 重送或迴圈", "掉到 0 → producer 停了或寫入失敗（看 ④）"),
        [tgt(f'sum by(topic)(rate(kafka_server_brokertopicmetrics_messagesin_total{{{BT}}}[{RW}]))', "{{topic}}")],
-       gp(0, y, 8, 8)),
+       gp(6, y, 6, 8)),
     ts(f"Topic 寫入 / 讀取流量（bytes/s，近 {WT} 平均）",
        desc("每個 topic 每秒寫入 / 讀取多少 bytes（讀取不含副本同步）。", "讀取 ≈ 寫入 × 讀它的 group 數。",
             "筆數不多但 bytes 很高 → 單筆訊息很大，留意 max.request.size / fetch.max.bytes"),
        [tgt(f'sum by(topic)(rate(kafka_server_brokertopicmetrics_bytesin_total{{{BT}}}[{RW}]))', "寫入 {{topic}}"),
         tgt(f'sum by(topic)(rate(kafka_server_brokertopicmetrics_bytesout_total{{{BT}}}[{RW}]))', "讀取 {{topic}}", ref="B")],
-       gp(8, y, 8, 8), unit="Bps"),
+       gp(12, y, 6, 8), unit="Bps"),
     ts("Topic 磁碟大小（單份）",
        desc("每個 topic 在磁碟上的大小（不含副本）。", "到達 retention 後持平。",
             "一直長 → retention 太長或沒設 retention.bytes，會吃滿磁碟（看 ⑥ 磁碟幾小時後滿）"),
        [tgt(SIZE1, "{{topic}}")],
-       gp(16, y, 8, 8), unit="bytes", no_value=nojmx("kafka.log:type=Log,name=Size（每個 partition 一條）")),
+       gp(18, y, 6, 8), unit="bytes", no_value=nojmx("kafka.log:type=Log,name=Size（每個 partition 一條）")),
 ]
 y += 8
 
@@ -651,14 +742,14 @@ panels += [
             "一直上升 → 程式沒關 producer / consumer（每次都 new 一個）", "鋸齒狀 → 一直斷線重連"),
        [tgt(f'sum by(listener)({by_listener("connection_count")})', "{{listener}}")],
        gp(8, y, 8, 8), decimals=0, no_value=nojmx("kafka.server:type=socket-server-metrics")),
-    table("連線的 client 程式（現在）",
+    live(table("連線的 client 程式（即時）",
           desc("目前連線的 client 函式庫與版本（client 自己回報），依 listener。", "版本一致，都是允許的版本。",
                "很舊的版本 → 可能不支援新功能或有已知 bug", "unknown → 太舊的 client，或連線還沒完成"),
           cs_t, gp(16, y, 8, 8), no_value=nojmx("kafka.server:type=socket-server-metrics"),
           rename={"client": "Client 程式 / 版本", "listener": "Listener", "Value": "連線數"},
           order=["client", "listener", "Value"], sort=("連線數", True),
           overrides=[col("Listener", [{"id": "custom.width", "value": 100}]),
-                     col("連線數", [{"id": "custom.width", "value": 80}])]),
+                     col("連線數", [{"id": "custom.width", "value": 80}])])),
 ]
 # 連線數 0 的 (舊連線) 不顯示
 panels[-1]["transformations"].insert(1, {"id": "filterByValue", "options": {
@@ -695,11 +786,11 @@ p6 += [
                      "> 85% → 快滿，滿了 broker 會停止服務（看右邊幾小時後滿）"),
        [tgt(f'1 - node_filesystem_avail_bytes{{{C},{FS}}} / node_filesystem_size_bytes{{{C},{FS}}}', "{{instance}} {{mountpoint}}")],
        gp(0, yy, 6, 8), unit="percentunit", min_=0, max_=1, th=PCT, th_style="line", fill=0),
-    bar("磁碟幾小時後滿", desc("照最近 6 小時剩餘空間減少的速度，推估幾小時後滿；空間沒在減少的不列。",
+    live(bar("磁碟幾小時後滿（即時）", desc("照最近 6 小時剩餘空間減少的速度，推估幾小時後滿；空間沒在減少的不列。",
                             "> 72 小時，或不列出。", "< 24 小時 → 請維運處理（擴容、調 retention、找 ② 長最快的 topic）"),
         f'bottomk(10, (node_filesystem_avail_bytes{{{C},{FS}}} / -deriv(node_filesystem_avail_bytes{{{C},{FS}}}[6h])) / 3600 > 0)',
         "{{instance}} {{mountpoint}}", gp(6, yy, 6, 8), "h", decimals=0,
-        th=steps(("red", None), ("yellow", 24), ("green", 72))),
+        th=steps(("red", None), ("yellow", 24), ("green", 72)))),
     ts("磁碟忙碌率", desc("磁碟有多少時間在處理 I/O。", "< 60%。",
                      "接近 100% → 磁碟是瓶頸（③ 本地處理升高）"),
        [tgt(f'rate(node_disk_io_time_seconds_total{{{C},{DISK}}}[{RI}])', "{{instance}} {{device}}")],
@@ -718,13 +809,13 @@ yy = y + 1
 urp_t = [tgt(f'max by(topic,partition)(kafka_topic_partition_replicas{{{CT}}}) - '
              f'max by(topic,partition)(kafka_topic_partition_in_sync_replica{{{CT}}}) > 0', ref="A", instant=True, fmt="table")]
 p7 += [
-    table("副本沒跟上的 Partition（現在）",
+    live(table("副本沒跟上的 Partition（即時）",
           desc("同步副本（ISR）比副本數少的 partition。", "沒有資料（全部正常）。",
                "同一台 broker 的 partition 都在這 → 那台掛了或太慢",
                "同步副本數 < min.insync.replicas → acks=all 寫入失敗（看 ①）"),
           urp_t, gp(0, yy, 8, 8),
           rename={"topic": "Topic", "partition": "Partition", "Value": "少幾個副本"},
-          order=["topic", "partition", "Value"], sort=("少幾個副本", True), no_value="全部正常"),
+          order=["topic", "partition", "Value"], sort=("少幾個副本", True), no_value="全部正常")),
     ts("ISR 縮減 / 擴增（每分鐘）", desc("副本被踢出 / 加回同步清單的次數。", "0。",
                                   "一直縮了又加 → 某台 broker 時快時慢（GC、磁碟、網路，看 ⑥）"),
        [tgt(f'sum(rate(kafka_server_replicamanager_isrshrinks_total{{{C}}}[{RI}])) * 60', "縮減"),
@@ -737,11 +828,11 @@ p7 += [
 ]
 yy += 8
 p7 += [
-    bar("Leader 不在首選 broker",
+    live(bar("Leader 不在首選 broker（即時）",
         desc("leader 不在首選副本上的 partition 數。", "0。",
              "> 0 → broker 重啟後 leader 沒搬回，負載集中在部分 broker；通常會自動平衡，長時間不回來請維運處理"),
         f'topk(15, sum by(topic)(1 - kafka_topic_partition_leader_is_preferred{{{CT}}}) > 0)', "{{topic}}",
-        gp(0, yy, 8, 8), "short", decimals=0),
+        gp(0, yy, 8, 8), "short", decimals=0)),
     ts("KRaft 狀態", desc("每台 controller 的 KRaft 角色（1 = 目前是這個角色）。", "一台 leader，其他 follower。",
                         "一直換 leader → controller 不穩，建 topic、換 leader 變慢"),
        [tgt(f'max by(instance,state)(kafka_server_raft_metrics_current_state{{{C}}})', "{{instance}} {{state}}")],
