@@ -373,7 +373,9 @@ ts(L, "【他】重啟次數（依上次結束原因，每 5 分鐘）",
    desc(V_SELF, "每 5 分鐘重啟幾次，依容器上次結束的原因分開；以及目前卡在等待狀態（CrashLoopBackOff 等）的容器數、被驅逐的 Pod 數。",
         "OOMKilled → 記憶體超過 limit；Error → 程式異常結束（exit code 看右表）；"
         "CrashLoopBackOff → 一直啟動失敗，Kubernetes 拉長重試間隔。Evicted → Node 資源不足被趕走，看第 4 區。"),
-   w=10, h=8, minv=0)
+   w=24, h=7, minv=0)
+L.newline()
+L = Line()
 EXIT_CODES = [{"type": "value", "options": {
     "0": {"text": "0（正常結束）", "index": 0},
     "1": {"text": "1（程式錯誤）", "color": "orange", "index": 1},
@@ -424,9 +426,9 @@ L.add({
                                        "indexByName": {k: i for i, k in enumerate(rt_order)}}},
         {"id": "sortBy", "options": {"sort": [{"field": "時間範圍內重啟", "desc": True}]}},
     ],
-    "fieldConfig": {"defaults": {"custom": {"align": "auto"}}, "overrides": rt_over},
+    "fieldConfig": {"defaults": {"custom": {"align": "auto", "minWidth": 90}}, "overrides": rt_over},
     "options": {"showHeader": True},
-}, 14, 8)
+}, 24, 7)
 L.newline()
 
 # ---------------------------------------------------------------- 3 shared expressions
@@ -456,7 +458,8 @@ NODE_DISK_IOPS = ('sum by (instance) (rate(node_disk_reads_completed_total{@NODE
 NODE_MEM_RATIO = 'max by (instance) (1 - node_memory_MemAvailable_bytes{@NODE@} / node_memory_MemTotal_bytes{@NODE@})'
 NODE_FS_RATIO = (f'max by (instance) (1 - node_filesystem_avail_bytes{{@NODE@, {FS}}}'
                  f' / node_filesystem_size_bytes{{@NODE@, {FS}}})')
-HIS_DISK_BYTES = pod_io("write", POD) + ' + ' + pod_io("read", POD)
+HIS_DISK_BYTES = (f'(({pod_io("write", POD)} + {pod_io("read", POD)})'
+                  f' or {pod_io("write", POD)} or {pod_io("read", POD)})')
 HIS_FS = f'sum by (namespace, pod) ({FS_USE})'
 NO_NIC_SPEED = "無資料：Node 沒有回報網卡速度，請改看第 4 區網路吞吐與丟包"
 VM_NIC = "容量是 Node 回報的網卡速度；虛擬機常固定回報 10 Gbps，實際可用頻寬可能更低，請搭配第 4 區「網路丟包」一起看。"
