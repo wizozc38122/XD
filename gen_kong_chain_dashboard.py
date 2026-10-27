@@ -124,6 +124,8 @@ def ts(title, d, targets, unit="ms", overrides=(), stack=False, fill=10, thresho
     if log:
         custom["scaleDistribution"] = {"type": "log", "log": 10}
         del custom["axisSoftMin"]
+    if unit == "percentunit":
+        custom["axisSoftMax"] = 1
     defaults = {"unit": unit, "custom": custom, "color": {"mode": "palette-classic"}}
     if thresholds:
         defaults["thresholds"] = {"mode": "absolute", "steps": thresholds}
@@ -188,7 +190,7 @@ B.line(text(
     "再選對應的 OCP Namespace / Route / Deployment（兩邊要選同一條路徑，數字才對得起來）。\n\n"
     "`Client →（A10/F5?）→ Kong →（A10/F5? 網路）→ OCP Router → AP Pod`　"
     "Kong ↔ Router 之間沒有指標，用「Kong 等上游 − Router 量到的時間」推算。時間都是**平均**（Router 只有平均），"
-    "長尾看 ② Kong 的 p99。判讀表在下面「看到什麼 → 哪段有問題」。"), h=3)
+    "長尾看 ② Kong 的 p99。判讀表在下面「看到什麼 → 哪段有問題」。"), h=4)
 
 GUIDE = """| 看到 | 可能是哪段 / 原因 |
 |---|---|
