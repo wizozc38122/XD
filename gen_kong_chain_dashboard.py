@@ -240,7 +240,7 @@ GUIDE = """| 看到 | 可能是哪段 / 原因 |
 | **Router 等 Pod 回應** 高、App 自己處理也高 | App 慢：看 ④ CPU throttling、GC、DB、下游服務 |
 | **Router 等 Pod 回應** 高、App 自己處理不高 | 請求在 Pod 裡排隊（thread pool 滿）或 Pod 網路慢 |
 | 只有某台 Kong / Router Pod / AP Pod 慢 | 那台機器的 Node、LB 分配不均、那個 Pod 的資料或 GC |
-| Kong 等後端回應 p99 卡在 30s / 60s | 碰到逾時：Router 預設 `timeout server` 30s（route annotation 可改），Kong `read_timeout` 預設 60s |
+| Kong 等後端回應 p99 卡在 30 秒 / 60 秒 | 碰到逾時：Router 預設 30 秒、Kong 預設 60 秒；誰卡住看 ①c |
 
 **注意**：Router 的平均是每個 Router Pod 最近 1024 筆請求的平均，流量很小時會反應比較慢。要追單筆請求，用 X-Request-ID 串 Kong、Router、App 的 log。"""
 B.row("看到什麼 → 哪段有問題（判讀表，點開）", collapsed=True)
@@ -357,6 +357,72 @@ B.line(
        [O(app_pct(0.99, RI, ", pod"), "{{pod}}", "A")], no_value=NO_APP_HIST))
 
 # ---- ② Kong
+# ---- ①c 很慢 / 逾時:卡在誰
+B.row("①c 很慢 / 逾時（p99 卡在 30 秒、60 秒）：卡在 F5、Router 還是 AP Pod？")
+APP_MAX = f"1000 * max(http_server_requests_seconds_max{{{APP}}})"
+ROUTER_MAX_POD = f"max(haproxy_backend_http_average_response_latency_milliseconds{{{RS}}})"
+TIMEOUT_LINES = [{"color": "green", "value": None}, {"color": "orange", "value": 30000}, {"color": "red", "value": 60000}]
+TIMEOUT_GUIDE = """Kong 預設等後端 **60 秒**（connect / read timeout），OCP Router 預設等 Pod **30 秒**（`timeout server`）。
+所以請求如果有到 Router、是 Pod 太慢，Router 會在 30 秒先回 504；**Kong 一路等到 60 秒自己回 504，通常代表請求沒到 Router**，或 route 的 timeout 被調長了。
+
+| 看到 | 卡在 |
+|---|---|
+| **後端回的 504** 上升、Kong p99 ≈ 30 秒 | Router 等 Pod 等到逾時 → AP Pod 慢，看下面 App |
+| **Kong 自己回的 504** 上升、**App 最慢的一筆**也 ≥ 60 秒 | AP Pod 慢（或它呼叫的 DB / 外部服務），而且 route 的 timeout 被調長過 |
+| **Kong 自己回的 504** 上升、App 最慢的一筆很短、**執行緒忙碌 ≈ 100%** | AP Pod 執行緒用完，請求在 Pod 裡排隊（App 從開始處理才計時，看不到排隊） |
+| **Kong 自己回的 504** 上升、App 和 Router 都正常 | 請求沒到 Router：**A10 / F5、網路、連線建不起來**；對照 ⑤「Kong 送了、Router 沒收到」 |
+| 只有一台 Kong 節點的 p99 高（看 ②） | 那台 Kong 到後端的路徑（所在網段、LB） |
+
+Router 只有平均，一筆 60 秒會被其他請求稀釋。要百分之百確認，暫時開 Router access log 查那段時間：有那筆請求、結束狀態 `sH` = Router 等 Pod 逾時；`CH` = Kong 先斷線（Router 還在等 Pod）；**完全沒有那筆** = 沒到 Router。"""
+B.line(
+    bar("時間範圍內最慢：每一段的最高值",
+        desc("整個時間範圍內，每一段最慢的時候（每分鐘看一次）。Kong 是 p99；Router 只有平均，取最慢那台 Router Pod；"
+             "App 是 Micrometer 記的最慢一筆（不用開 histogram）。",
+             "Kong 等後端回應很大、App 最慢的一筆也一樣大 → AP Pod；App 很小 → 慢在 App 以外（F5、網路、Router、Pod 裡排隊）。"),
+        [K(f"max_over_time(({k_pct(0.99, K_SELF, '1m')})[$__range:1m])", "Kong 自己處理 p99", "A", instant=True),
+         K(f"max_over_time(({k_pct(0.99, K_UP, '1m')})[$__range:1m])", "Kong 等後端回應 p99", "B", instant=True),
+         O(f"max_over_time(({ROUTER_MAX_POD})[$__range:1m])", "Router 等 Pod 回應（最慢 Router Pod 的平均）", "C",
+           instant=True),
+         O(f"max_over_time(({APP_MAX})[$__range:1m])", "App 最慢的一筆", "D", instant=True)]),
+    text(TIMEOUT_GUIDE),
+    h=10, widths=[9, 15])
+B.line(
+    ts("最慢的請求走勢：Kong 等後端回應 p99 vs Router vs App 最慢的一筆",
+       desc("三段同一張圖（對數刻度），虛線是 30 秒（Router 預設逾時）和 60 秒（Kong 預設逾時）。",
+            "Kong 的線碰到虛線、App 的線沒跟著上去 → 卡在 App 以外；兩條一起上去 → AP Pod 慢。"),
+       [K(k_pct(0.99, K_UP, RI), "Kong 等後端回應 p99", "A"),
+        O(ROUTER_MAX_POD, "Router 等 Pod 回應（最慢 Router Pod 的平均）", "B"),
+        O(APP_MAX, "App 最慢的一筆", "C")],
+       log=True, thresholds=TIMEOUT_LINES),
+    ts("504 是誰回的（req/s）",
+       desc("**Kong 自己回的 504** = Kong 等到自己的逾時（預設 60 秒）都沒收到回應；**後端回的 504** = 後面（Router 或 F5）先逾時、回了 504 給 Kong；"
+            "Router 回的 5xx 包含 Router 自己回的 504 和 App 回的 5xx。",
+            "只有 Kong 自己回的 → 後面完全沒回應，看左邊 App 和 ⑤；後端回的 504 和 Router 5xx 一起上升 → Router 等 Pod 逾時。"),
+       [K(f'sum(rate(kong_http_requests_total{{{KS}, source="kong", code="504"}}[{RI}]))', "Kong 自己回的 504（Kong 等到逾時）", "A"),
+        K(f'sum(rate(kong_http_requests_total{{{KS}, source="service", code="504"}}[{RI}]))', "後端回的 504（Router 或 F5 先逾時）", "B"),
+        O(f'sum(rate(haproxy_backend_http_responses_total{{{RS}, code=~"5.*"}}[{RI}]))', "Router 回的 5xx", "C")],
+       unit="reqps"))
+B.line(
+    ts("App 最慢的一筆（依 Pod）",
+       desc("Micrometer 記錄的每個 Pod 最近最慢的一筆請求（http_server_requests_seconds_max，約 2 分鐘的視窗）。"
+            "請求結束才記錄，Kong 逾時放棄後 App 還在跑的那筆，跑完一樣會記到。",
+            "只有一個 Pod 很高 → 那個 Pod；全部都高 → App 共用的 DB / 下游服務。"),
+       [O(f"1000 * max by (pod) (http_server_requests_seconds_max{{{APP}}})", "{{pod}}", "A")],
+       thresholds=TIMEOUT_LINES, no_value="沒資料：App 沒有 Micrometer（http_server_requests_seconds）指標"),
+    ts("App 執行緒忙碌 ÷ 上限（Tomcat，依 Pod）",
+       desc("每個 Pod 的 Tomcat 處理執行緒用了幾成。用完時新請求在 Pod 裡排隊，App 的計時看不到這段等待。",
+            "接近 100% → Pod 處理不過來，請求在 Pod 裡排隊；加 Pod 或找出卡住執行緒的原因（DB、下游服務）。"),
+       [O(f"max by (pod) (tomcat_threads_busy_threads{{{POD}}}) / max by (pod) (tomcat_threads_config_max_threads{{{POD}}})",
+          "{{pod}}", "A")],
+       unit="percentunit",
+       thresholds=[{"color": "green", "value": None}, {"color": "red", "value": 0.9}],
+       no_value="沒資料：Spring Boot 要開 server.tomcat.mbeanregistry.enabled=true；Undertow / WebFlux 沒有這個指標"),
+    ts("GC 最長停頓（依 Pod）",
+       desc("每個 Pod 最近最長的一次 GC 停頓（jvm_gc_pause_seconds_max）。停頓期間這個 Pod 所有請求都卡住。",
+            "停頓到秒級 → 記憶體不夠或 heap 設定問題，對照 OCP 壓測影響儀表板的記憶體。"),
+       [O(f"1000 * max by (pod) (jvm_gc_pause_seconds_max{{{POD}}})", "{{pod}}", "A")],
+       no_value="沒資料：App 沒有 Micrometer JVM 指標"))
+
 B.row("② Kong：Kong 自己處理、各節點、慢請求")
 B.line(
     ts("Kong 延遲 p95 / p99（總耗時 / 等後端回應 / Kong 自己處理）",

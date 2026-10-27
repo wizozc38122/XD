@@ -89,6 +89,7 @@ Client →（A10/F5?）→ Kong →（A10/F5? 網路）→ OCP Router → AP Pod
 |---|---|
 | ① 鏈路總覽 | 每段平均花多久（長條 + 疊起來的走勢）、每段收到的請求數、5xx 是誰產生的 |
 | ①b 偶發的慢請求（p95 = 最慢的 5%、p99 = 最慢的 1%） | 各段 p95 / p99、App 以外造成的慢（Kong 等後端回應 p99 − App p99）、慢請求有多慢（p99 是平均的幾倍）、時間範圍內最差的 p99（依 Kong API）、App p99 依 URI / Pod |
+| ①c 很慢 / 逾時：卡在誰 | 每一段的最高值（Kong p99、Router 最慢 Pod 平均、App 最慢的一筆）、504 是誰回的、App 最慢的一筆 / Tomcat 執行緒忙碌 / GC 停頓（依 Pod）、判讀表 |
 | ② Kong | p95 / p99（總耗時、等後端回應、Kong 自己處理）、狀態碼與誰回的（Kong 自己回的 / 後端回的 / plugin 直接擋下）、各 Kong 節點、nginx 連線 |
 | ③ OCP Router | 排隊 / 連線 / 等 Pod 回應、各 Router Pod 的回應時間與流量、錯誤與重試、新連線比例、Router Pod CPU |
 | ④ AP Pod | Router 看到每個 Pod 的回應時間與 5xx、App 自己量的處理時間、CPU throttling、可用 / Ready / 重啟 |
@@ -109,7 +110,10 @@ Client →（A10/F5?）→ Kong →（A10/F5? 網路）→ OCP Router → AP Pod
 - **④ Router 看到的每個 Pod 沒資料**：Router 後面的 Pod 總數超過 `ROUTER_METRICS_HAPROXY_SERVER_THRESHOLD`（預設 500）時，Router 只輸出 route 層級的指標；passthrough 也沒有。改看 App 自己量的每個 Pod 時間。
 - **Kong 和 OCP 可以是兩個不同的 Prometheus**：跨資料來源的相減用 Grafana 的運算式（Expression），面板的資料來源會顯示為 Mixed。
 - **需要的指標**：Kong 3.x prometheus plugin（`kong_http_requests_total` 有 `source` label、`kong_*_latency_ms` 直方圖）、OCP Router 的 `haproxy_*` 指標、kube-state-metrics、cAdvisor；App 自己處理時間需要 Micrometer（`http_server_requests_seconds`），沒有的話那幾條線沒資料，其他照常。
-- **逾時**：Kong 等後端回應 p99 卡在 30s 附近通常是 Router 的 `timeout server`（預設 30s，route annotation `haproxy.router.openshift.io/timeout` 可改），卡在 60s 是 Kong 的 `read_timeout`（預設 60s）。
+- **逾時**：Kong 等後端回應 p99 卡在 30s 附近通常是 Router 的 `timeout server`（預設 30s，route annotation `haproxy.router.openshift.io/timeout` 可改），卡在 60s 是 Kong 的 connect / read timeout（預設 60s）。
+  Router 會比 Kong 早 30 秒放棄，所以 **Kong 一路等到 60 秒、自己回 504**，通常代表請求沒到 Router（A10 / F5、網路），或 route 的 timeout 被調長。
+  ①c 把 App 最慢的一筆（Micrometer `http_server_requests_seconds_max`，不用開 histogram）、Tomcat 執行緒、GC 停頓放在一起比：App 也慢 → AP Pod；執行緒滿 → Pod 裡排隊；都正常 → 慢在 App 以外。
+  Tomcat 執行緒指標要開 `server.tomcat.mbeanregistry.enabled=true`。要百分之百確認，暫時開 Router access log 看那筆請求的結束狀態（`sH` = Router 等 Pod 逾時、`CH` = Kong 先斷線（Router 還在等 Pod）、沒有那筆 = 沒到 Router）。
 
 ## 匯入
 

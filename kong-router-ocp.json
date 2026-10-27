@@ -217,7 +217,7 @@
           "title": "",
           "options": {
             "mode": "markdown",
-            "content": "| 看到 | 可能是哪段 / 原因 |\n|---|---|\n| **Kong 自己處理** 變厚 | Kong plugin（認證、rate limit、log）或 Kong 節點資源；看 ② 各 Kong 節點 |\n| **Kong ↔ Router 之間** 變厚，Router 各段正常 | A10 / F5、網路、TLS 握手、DNS：查 LB 的連線數、SNAT port、health check、TLS 設定 |\n| **Kong 送出 > Router 收到** | 請求在中間被擋或逾時，沒進到 Router；Kong 會出現自己回的 502 / 504 |\n| **Router 收到 > Kong 送出** | 有其他來源直接打 Router（內部服務、繞過 Kong、LB health check） |\n| **Router 排隊等 Pod** 高 | Pod 數不夠或 Pod 的 maxconn 太小，請求在 Router 等 |\n| **Router 連線** 高 | Router 連不太上 Pod：Pod 網路、SDN、Pod 忙到 accept 不了 |\n| **Router 等 Pod 回應** 高、App 自己處理也高 | App 慢：看 ④ CPU throttling、GC、DB、下游服務 |\n| **Router 等 Pod 回應** 高、App 自己處理不高 | 請求在 Pod 裡排隊（thread pool 滿）或 Pod 網路慢 |\n| 只有某台 Kong / Router Pod / AP Pod 慢 | 那台機器的 Node、LB 分配不均、那個 Pod 的資料或 GC |\n| Kong 等後端回應 p99 卡在 30s / 60s | 碰到逾時：Router 預設 `timeout server` 30s（route annotation 可改），Kong `read_timeout` 預設 60s |\n\n**注意**：Router 的平均是每個 Router Pod 最近 1024 筆請求的平均，流量很小時會反應比較慢。要追單筆請求，用 X-Request-ID 串 Kong、Router、App 的 log。"
+            "content": "| 看到 | 可能是哪段 / 原因 |\n|---|---|\n| **Kong 自己處理** 變厚 | Kong plugin（認證、rate limit、log）或 Kong 節點資源；看 ② 各 Kong 節點 |\n| **Kong ↔ Router 之間** 變厚，Router 各段正常 | A10 / F5、網路、TLS 握手、DNS：查 LB 的連線數、SNAT port、health check、TLS 設定 |\n| **Kong 送出 > Router 收到** | 請求在中間被擋或逾時，沒進到 Router；Kong 會出現自己回的 502 / 504 |\n| **Router 收到 > Kong 送出** | 有其他來源直接打 Router（內部服務、繞過 Kong、LB health check） |\n| **Router 排隊等 Pod** 高 | Pod 數不夠或 Pod 的 maxconn 太小，請求在 Router 等 |\n| **Router 連線** 高 | Router 連不太上 Pod：Pod 網路、SDN、Pod 忙到 accept 不了 |\n| **Router 等 Pod 回應** 高、App 自己處理也高 | App 慢：看 ④ CPU throttling、GC、DB、下游服務 |\n| **Router 等 Pod 回應** 高、App 自己處理不高 | 請求在 Pod 裡排隊（thread pool 滿）或 Pod 網路慢 |\n| 只有某台 Kong / Router Pod / AP Pod 慢 | 那台機器的 Node、LB 分配不均、那個 Pod 的資料或 GC |\n| Kong 等後端回應 p99 卡在 30 秒 / 60 秒 | 碰到逾時：Router 預設 30 秒、Kong 預設 60 秒；誰卡住看 ①c |\n\n**注意**：Router 的平均是每個 Router Pod 最近 1024 筆請求的平均，流量很小時會反應比較慢。要追單筆請求，用 X-Request-ID 串 Kong、Router、App 的 log。"
           },
           "gridPos": {
             "x": 0,
@@ -1653,7 +1653,7 @@
     {
       "id": 16,
       "type": "row",
-      "title": "② Kong：Kong 自己處理、各節點、慢請求",
+      "title": "①c 很慢 / 逾時（p99 卡在 30 秒、60 秒）：卡在 F5、Router 還是 AP Pod？",
       "collapsed": false,
       "gridPos": {
         "x": 0,
@@ -1665,6 +1665,598 @@
     },
     {
       "id": 17,
+      "type": "bargauge",
+      "title": "時間範圍內最慢：每一段的最高值",
+      "description": "整個時間範圍內，每一段最慢的時候（每分鐘看一次）。Kong 是 p99；Router 只有平均，取最慢那台 Router Pod；App 是 Micrometer 記的最慢一筆（不用開 histogram）。\n\n**怎麼看**：Kong 等後端回應很大、App 最慢的一筆也一樣大 → AP Pod；App 很小 → 慢在 App 以外（F5、網路、Router、Pod 裡排隊）。",
+      "datasource": {
+        "type": "datasource",
+        "uid": "-- Mixed --"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${kong_ds}"
+          },
+          "expr": "max_over_time((histogram_quantile(0.99, sum by (le) (rate(kong_kong_latency_ms_bucket{service=~\"$kong_service\", route=~\"$kong_route\"}[1m]))))[$__range:1m])",
+          "legendFormat": "Kong 自己處理 p99",
+          "range": false,
+          "instant": true,
+          "editorMode": "code",
+          "hide": false
+        },
+        {
+          "refId": "B",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${kong_ds}"
+          },
+          "expr": "max_over_time((histogram_quantile(0.99, sum by (le) (rate(kong_upstream_latency_ms_bucket{service=~\"$kong_service\", route=~\"$kong_route\"}[1m]))))[$__range:1m])",
+          "legendFormat": "Kong 等後端回應 p99",
+          "range": false,
+          "instant": true,
+          "editorMode": "code",
+          "hide": false
+        },
+        {
+          "refId": "C",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${ocp_ds}"
+          },
+          "expr": "max_over_time((max(haproxy_backend_http_average_response_latency_milliseconds{exported_namespace=\"$namespace\", route=~\"$router_route\"}))[$__range:1m])",
+          "legendFormat": "Router 等 Pod 回應（最慢 Router Pod 的平均）",
+          "range": false,
+          "instant": true,
+          "editorMode": "code",
+          "hide": false
+        },
+        {
+          "refId": "D",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${ocp_ds}"
+          },
+          "expr": "max_over_time((1000 * max(http_server_requests_seconds_max{namespace=\"$namespace\", pod=~\"$deployment-[a-z0-9]+-[a-z0-9]+\", uri!~\"/actuator.*\"}))[$__range:1m])",
+          "legendFormat": "App 最慢的一筆",
+          "range": false,
+          "instant": true,
+          "editorMode": "code",
+          "hide": false
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ms",
+          "min": 0,
+          "decimals": 0,
+          "color": {
+            "mode": "palette-classic"
+          },
+          "noValue": "—"
+        },
+        "overrides": []
+      },
+      "options": {
+        "orientation": "horizontal",
+        "displayMode": "basic",
+        "showUnfilled": true,
+        "valueMode": "text",
+        "namePlacement": "top",
+        "sizing": "auto",
+        "text": {
+          "titleSize": 13,
+          "valueSize": 15
+        },
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        }
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 56,
+        "w": 9,
+        "h": 10
+      }
+    },
+    {
+      "id": 18,
+      "type": "text",
+      "title": "",
+      "options": {
+        "mode": "markdown",
+        "content": "Kong 預設等後端 **60 秒**（connect / read timeout），OCP Router 預設等 Pod **30 秒**（`timeout server`）。\n所以請求如果有到 Router、是 Pod 太慢，Router 會在 30 秒先回 504；**Kong 一路等到 60 秒自己回 504，通常代表請求沒到 Router**，或 route 的 timeout 被調長了。\n\n| 看到 | 卡在 |\n|---|---|\n| **後端回的 504** 上升、Kong p99 ≈ 30 秒 | Router 等 Pod 等到逾時 → AP Pod 慢，看下面 App |\n| **Kong 自己回的 504** 上升、**App 最慢的一筆**也 ≥ 60 秒 | AP Pod 慢（或它呼叫的 DB / 外部服務），而且 route 的 timeout 被調長過 |\n| **Kong 自己回的 504** 上升、App 最慢的一筆很短、**執行緒忙碌 ≈ 100%** | AP Pod 執行緒用完，請求在 Pod 裡排隊（App 從開始處理才計時，看不到排隊） |\n| **Kong 自己回的 504** 上升、App 和 Router 都正常 | 請求沒到 Router：**A10 / F5、網路、連線建不起來**；對照 ⑤「Kong 送了、Router 沒收到」 |\n| 只有一台 Kong 節點的 p99 高（看 ②） | 那台 Kong 到後端的路徑（所在網段、LB） |\n\nRouter 只有平均，一筆 60 秒會被其他請求稀釋。要百分之百確認，暫時開 Router access log 查那段時間：有那筆請求、結束狀態 `sH` = Router 等 Pod 逾時；`CH` = Kong 先斷線（Router 還在等 Pod）；**完全沒有那筆** = 沒到 Router。"
+      },
+      "gridPos": {
+        "x": 9,
+        "y": 56,
+        "w": 15,
+        "h": 10
+      }
+    },
+    {
+      "id": 19,
+      "type": "timeseries",
+      "title": "最慢的請求走勢：Kong 等後端回應 p99 vs Router vs App 最慢的一筆",
+      "description": "三段同一張圖（對數刻度），虛線是 30 秒（Router 預設逾時）和 60 秒（Kong 預設逾時）。\n\n**怎麼看**：Kong 的線碰到虛線、App 的線沒跟著上去 → 卡在 App 以外；兩條一起上去 → AP Pod 慢。",
+      "datasource": {
+        "type": "datasource",
+        "uid": "-- Mixed --"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${kong_ds}"
+          },
+          "expr": "histogram_quantile(0.99, sum by (le) (rate(kong_upstream_latency_ms_bucket{service=~\"$kong_service\", route=~\"$kong_route\"}[$__rate_interval])))",
+          "legendFormat": "Kong 等後端回應 p99",
+          "range": true,
+          "instant": false,
+          "editorMode": "code",
+          "hide": false
+        },
+        {
+          "refId": "B",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${ocp_ds}"
+          },
+          "expr": "max(haproxy_backend_http_average_response_latency_milliseconds{exported_namespace=\"$namespace\", route=~\"$router_route\"})",
+          "legendFormat": "Router 等 Pod 回應（最慢 Router Pod 的平均）",
+          "range": true,
+          "instant": false,
+          "editorMode": "code",
+          "hide": false
+        },
+        {
+          "refId": "C",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${ocp_ds}"
+          },
+          "expr": "1000 * max(http_server_requests_seconds_max{namespace=\"$namespace\", pod=~\"$deployment-[a-z0-9]+-[a-z0-9]+\", uri!~\"/actuator.*\"})",
+          "legendFormat": "App 最慢的一筆",
+          "range": true,
+          "instant": false,
+          "editorMode": "code",
+          "hide": false
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ms",
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 1,
+            "fillOpacity": 10,
+            "showPoints": "never",
+            "spanNulls": true,
+            "stacking": {
+              "mode": "none",
+              "group": "A"
+            },
+            "thresholdsStyle": {
+              "mode": "dashed"
+            },
+            "scaleDistribution": {
+              "type": "log",
+              "log": 10
+            }
+          },
+          "color": {
+            "mode": "palette-classic"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 30000
+              },
+              {
+                "color": "red",
+                "value": 60000
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "calcs": [
+            "mean",
+            "max",
+            "lastNotNull"
+          ],
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "interval": "1m",
+      "gridPos": {
+        "x": 0,
+        "y": 66,
+        "w": 12,
+        "h": 9
+      }
+    },
+    {
+      "id": 20,
+      "type": "timeseries",
+      "title": "504 是誰回的（req/s）",
+      "description": "**Kong 自己回的 504** = Kong 等到自己的逾時（預設 60 秒）都沒收到回應；**後端回的 504** = 後面（Router 或 F5）先逾時、回了 504 給 Kong；Router 回的 5xx 包含 Router 自己回的 504 和 App 回的 5xx。\n\n**怎麼看**：只有 Kong 自己回的 → 後面完全沒回應，看左邊 App 和 ⑤；後端回的 504 和 Router 5xx 一起上升 → Router 等 Pod 逾時。",
+      "datasource": {
+        "type": "datasource",
+        "uid": "-- Mixed --"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${kong_ds}"
+          },
+          "expr": "sum(rate(kong_http_requests_total{service=~\"$kong_service\", route=~\"$kong_route\", source=\"kong\", code=\"504\"}[$__rate_interval]))",
+          "legendFormat": "Kong 自己回的 504（Kong 等到逾時）",
+          "range": true,
+          "instant": false,
+          "editorMode": "code",
+          "hide": false
+        },
+        {
+          "refId": "B",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${kong_ds}"
+          },
+          "expr": "sum(rate(kong_http_requests_total{service=~\"$kong_service\", route=~\"$kong_route\", source=\"service\", code=\"504\"}[$__rate_interval]))",
+          "legendFormat": "後端回的 504（Router 或 F5 先逾時）",
+          "range": true,
+          "instant": false,
+          "editorMode": "code",
+          "hide": false
+        },
+        {
+          "refId": "C",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${ocp_ds}"
+          },
+          "expr": "sum(rate(haproxy_backend_http_responses_total{exported_namespace=\"$namespace\", route=~\"$router_route\", code=~\"5.*\"}[$__rate_interval]))",
+          "legendFormat": "Router 回的 5xx",
+          "range": true,
+          "instant": false,
+          "editorMode": "code",
+          "hide": false
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "reqps",
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 1,
+            "fillOpacity": 10,
+            "showPoints": "never",
+            "spanNulls": true,
+            "axisSoftMin": 0,
+            "stacking": {
+              "mode": "none",
+              "group": "A"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "color": {
+            "mode": "palette-classic"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "calcs": [
+            "mean",
+            "max",
+            "lastNotNull"
+          ],
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "interval": "1m",
+      "gridPos": {
+        "x": 12,
+        "y": 66,
+        "w": 12,
+        "h": 9
+      }
+    },
+    {
+      "id": 21,
+      "type": "timeseries",
+      "title": "App 最慢的一筆（依 Pod）",
+      "description": "Micrometer 記錄的每個 Pod 最近最慢的一筆請求（http_server_requests_seconds_max，約 2 分鐘的視窗）。請求結束才記錄，Kong 逾時放棄後 App 還在跑的那筆，跑完一樣會記到。\n\n**怎麼看**：只有一個 Pod 很高 → 那個 Pod；全部都高 → App 共用的 DB / 下游服務。",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${ocp_ds}"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${ocp_ds}"
+          },
+          "expr": "1000 * max by (pod) (http_server_requests_seconds_max{namespace=\"$namespace\", pod=~\"$deployment-[a-z0-9]+-[a-z0-9]+\", uri!~\"/actuator.*\"})",
+          "legendFormat": "{{pod}}",
+          "range": true,
+          "instant": false,
+          "editorMode": "code",
+          "hide": false
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ms",
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 1,
+            "fillOpacity": 10,
+            "showPoints": "never",
+            "spanNulls": true,
+            "axisSoftMin": 0,
+            "stacking": {
+              "mode": "none",
+              "group": "A"
+            },
+            "thresholdsStyle": {
+              "mode": "dashed"
+            }
+          },
+          "color": {
+            "mode": "palette-classic"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 30000
+              },
+              {
+                "color": "red",
+                "value": 60000
+              }
+            ]
+          },
+          "noValue": "沒資料：App 沒有 Micrometer（http_server_requests_seconds）指標"
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "calcs": [
+            "mean",
+            "max",
+            "lastNotNull"
+          ],
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 75,
+        "w": 8,
+        "h": 9
+      }
+    },
+    {
+      "id": 22,
+      "type": "timeseries",
+      "title": "App 執行緒忙碌 ÷ 上限（Tomcat，依 Pod）",
+      "description": "每個 Pod 的 Tomcat 處理執行緒用了幾成。用完時新請求在 Pod 裡排隊，App 的計時看不到這段等待。\n\n**怎麼看**：接近 100% → Pod 處理不過來，請求在 Pod 裡排隊；加 Pod 或找出卡住執行緒的原因（DB、下游服務）。",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${ocp_ds}"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${ocp_ds}"
+          },
+          "expr": "max by (pod) (tomcat_threads_busy_threads{namespace=\"$namespace\", pod=~\"$deployment-[a-z0-9]+-[a-z0-9]+\"}) / max by (pod) (tomcat_threads_config_max_threads{namespace=\"$namespace\", pod=~\"$deployment-[a-z0-9]+-[a-z0-9]+\"})",
+          "legendFormat": "{{pod}}",
+          "range": true,
+          "instant": false,
+          "editorMode": "code",
+          "hide": false
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 1,
+            "fillOpacity": 10,
+            "showPoints": "never",
+            "spanNulls": true,
+            "axisSoftMin": 0,
+            "stacking": {
+              "mode": "none",
+              "group": "A"
+            },
+            "thresholdsStyle": {
+              "mode": "dashed"
+            },
+            "axisSoftMax": 1
+          },
+          "color": {
+            "mode": "palette-classic"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "red",
+                "value": 0.9
+              }
+            ]
+          },
+          "noValue": "沒資料：Spring Boot 要開 server.tomcat.mbeanregistry.enabled=true；Undertow / WebFlux 沒有這個指標"
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "calcs": [
+            "mean",
+            "max",
+            "lastNotNull"
+          ],
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "gridPos": {
+        "x": 8,
+        "y": 75,
+        "w": 8,
+        "h": 9
+      }
+    },
+    {
+      "id": 23,
+      "type": "timeseries",
+      "title": "GC 最長停頓（依 Pod）",
+      "description": "每個 Pod 最近最長的一次 GC 停頓（jvm_gc_pause_seconds_max）。停頓期間這個 Pod 所有請求都卡住。\n\n**怎麼看**：停頓到秒級 → 記憶體不夠或 heap 設定問題，對照 OCP 壓測影響儀表板的記憶體。",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${ocp_ds}"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${ocp_ds}"
+          },
+          "expr": "1000 * max by (pod) (jvm_gc_pause_seconds_max{namespace=\"$namespace\", pod=~\"$deployment-[a-z0-9]+-[a-z0-9]+\"})",
+          "legendFormat": "{{pod}}",
+          "range": true,
+          "instant": false,
+          "editorMode": "code",
+          "hide": false
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ms",
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 1,
+            "fillOpacity": 10,
+            "showPoints": "never",
+            "spanNulls": true,
+            "axisSoftMin": 0,
+            "stacking": {
+              "mode": "none",
+              "group": "A"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "color": {
+            "mode": "palette-classic"
+          },
+          "noValue": "沒資料：App 沒有 Micrometer JVM 指標"
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "calcs": [
+            "mean",
+            "max",
+            "lastNotNull"
+          ],
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "gridPos": {
+        "x": 16,
+        "y": 75,
+        "w": 8,
+        "h": 9
+      }
+    },
+    {
+      "id": 24,
+      "type": "row",
+      "title": "② Kong：Kong 自己處理、各節點、慢請求",
+      "collapsed": false,
+      "gridPos": {
+        "x": 0,
+        "y": 84,
+        "w": 24,
+        "h": 1
+      },
+      "panels": []
+    },
+    {
+      "id": 25,
       "type": "timeseries",
       "title": "Kong 延遲 p95 / p99（總耗時 / 等後端回應 / Kong 自己處理）",
       "description": "Kong 的百分位數。**等後端回應** = Kong 把請求送出去，到收到後端回應的時間（包含 A10/F5、Router、App）；**Kong 自己處理** = 跑 plugin、路由等 Kong 本身的時間（plugin 呼叫外部服務，例如認證伺服器、Redis，也算在這裡）。虛線是常見的逾時：Router 預設 30s、Kong read_timeout 預設 60s。\n\n**怎麼看**：等後端回應 p99 高、Kong 自己處理低 → Kong 只是在等後端；Kong 自己處理高 → Kong 本身或 plugin 呼叫的外部服務慢。p99 卡在虛線附近 → 碰到逾時。",
@@ -1788,13 +2380,13 @@
       },
       "gridPos": {
         "x": 0,
-        "y": 56,
+        "y": 85,
         "w": 12,
         "h": 10
       }
     },
     {
-      "id": 18,
+      "id": 26,
       "type": "timeseries",
       "title": "Kong 回應數（依狀態碼、誰產生）",
       "description": "Kong 每秒回了多少，依狀態碼和誰回的：Kong 自己回的（沒拿到後端回應）、後端回的、plugin 直接擋下（沒送到後端）。\n\n**怎麼看**：502 / 504 Kong 自己回的 = 連不上或等不到後端；401 / 403 / 429 Kong 自己回的或 plugin 直接擋下 = 被 Kong plugin 擋下，沒有送到後端。",
@@ -1859,13 +2451,13 @@
       },
       "gridPos": {
         "x": 12,
-        "y": 56,
+        "y": 85,
         "w": 12,
         "h": 10
       }
     },
     {
-      "id": 19,
+      "id": 27,
       "type": "timeseries",
       "title": "各 Kong 節點：等後端回應 p99（找哪台 Kong 異常）",
       "description": "每台 Kong 節點自己的等後端回應 p99。\n\n**怎麼看**：只有一台特別高 → 那台 Kong 到後端的路徑（所在網段、LB）有問題；全部一起高 → 問題在後面。",
@@ -1933,13 +2525,13 @@
       },
       "gridPos": {
         "x": 0,
-        "y": 66,
+        "y": 95,
         "w": 12,
         "h": 9
       }
     },
     {
-      "id": 20,
+      "id": 28,
       "type": "timeseries",
       "title": "各 Kong 節點：每秒請求數",
       "description": "每台 Kong 節點處理多少請求。\n\n**怎麼看**：差很多 → 前面的 LB（A10 / F5）分配不平均。",
@@ -2004,13 +2596,13 @@
       },
       "gridPos": {
         "x": 12,
-        "y": 66,
+        "y": 95,
         "w": 12,
         "h": 9
       }
     },
     {
-      "id": 21,
+      "id": 29,
       "type": "timeseries",
       "title": "Kong 連線狀態（nginx）",
       "description": "每台 Kong 節點的連線：全部、讀請求中、處理 / 回應中、閒置（連線保留著等下一個請求）。\n\n**怎麼看**：處理 / 回應中持續升高 → 很多請求卡著在等後端；全部突然暴增 → 前面湧入大量連線或連線沒有重用。",
@@ -2074,26 +2666,26 @@
       },
       "gridPos": {
         "x": 0,
-        "y": 75,
+        "y": 104,
         "w": 24,
         "h": 9
       }
     },
     {
-      "id": 22,
+      "id": 30,
       "type": "row",
       "title": "③ OCP Router（HAProxy）：排隊、連線、各 Router Pod",
       "collapsed": false,
       "gridPos": {
         "x": 0,
-        "y": 84,
+        "y": 113,
         "w": 24,
         "h": 1
       },
       "panels": []
     },
     {
-      "id": 23,
+      "id": 31,
       "type": "timeseries",
       "title": "Router 平均耗時：排隊 / 連線到 Pod / 等 Pod 回應",
       "description": "Router 量到的三段平均（各 Router Pod 依流量加權）。排隊 = 等可用的 Pod 連線；連線到 Pod = 建立 TCP 連線；等 Pod 回應 = 送出到收到回應標頭。\n\n**怎麼看**：排隊高 → Pod 不夠或 maxconn 太小；連線高 → Pod 網路或 Pod 忙到 accept 不了；等 Pod 回應高 → 看 ④ 是哪個 Pod、App 自己慢不慢。",
@@ -2184,13 +2776,13 @@
       },
       "gridPos": {
         "x": 0,
-        "y": 85,
+        "y": 114,
         "w": 12,
         "h": 9
       }
     },
     {
-      "id": 24,
+      "id": 32,
       "type": "timeseries",
       "title": "各 Router Pod：等 Pod 回應平均（找哪台 Router 異常）",
       "description": "每個 Router Pod 自己量到的等 Pod 回應平均。\n\n**怎麼看**：只有一台特別高 → 那台 Router 所在的 Node 有問題（CPU、網路）。",
@@ -2255,13 +2847,13 @@
       },
       "gridPos": {
         "x": 12,
-        "y": 85,
+        "y": 114,
         "w": 12,
         "h": 9
       }
     },
     {
-      "id": 25,
+      "id": 33,
       "type": "timeseries",
       "title": "各 Router Pod：每秒回應數（LB 分配是否平均）",
       "description": "每個 Router Pod 處理多少這條 route 的請求。\n\n**怎麼看**：差很多 → 前面的 LB（A10 / F5）只往部分 Router 送，或某台 Router 被 LB 判定不健康。",
@@ -2326,13 +2918,13 @@
       },
       "gridPos": {
         "x": 0,
-        "y": 94,
+        "y": 123,
         "w": 12,
         "h": 10
       }
     },
     {
-      "id": 26,
+      "id": 34,
       "type": "timeseries",
       "title": "Router 錯誤：連不上 Pod / 回應錯誤 / 重試 / 排隊中",
       "description": "Router 連 Pod 失敗、讀 Pod 回應失敗、重試的次數（每秒），以及目前在排隊的請求數。\n\n**怎麼看**：連不上 Pod 上升 → Pod 掛了或網路斷；回應錯誤上升 → Pod 回到一半斷線；排隊中 > 0 → Pod 處理不及。",
@@ -2436,13 +3028,13 @@
       },
       "gridPos": {
         "x": 12,
-        "y": 94,
+        "y": 123,
         "w": 12,
         "h": 10
       }
     },
     {
-      "id": 27,
+      "id": 35,
       "type": "timeseries",
       "title": "Router 對 Pod 開新連線的比例（新連線 ÷ 請求數）",
       "description": "Router 每處理一個請求，平均要對 Pod 開幾條新連線。接近 0 = 連線有重用；接近 1 = 每個請求都重新連線。\n\n**怎麼看**：比例突然升高、Router 連線到 Pod 的時間也上升 → 連線一直被關掉重開（Pod 或中間設備沒保持連線）。",
@@ -2508,13 +3100,13 @@
       },
       "gridPos": {
         "x": 0,
-        "y": 104,
+        "y": 133,
         "w": 12,
         "h": 10
       }
     },
     {
-      "id": 28,
+      "id": 36,
       "type": "timeseries",
       "title": "Router Pod：CPU 用量（核）與目前連線數",
       "description": "Router Pod（openshift-ingress）的 CPU，以及每台 Router 目前的連線數（右軸）。Router 是全叢集共用，別的服務流量也會算進來。\n\n**怎麼看**：某台 Router CPU 特別高或接近上限 → 那台 Router 本身變慢，所有走它的 route 都會受影響。",
@@ -2615,26 +3207,26 @@
       },
       "gridPos": {
         "x": 12,
-        "y": 104,
+        "y": 133,
         "w": 12,
         "h": 10
       }
     },
     {
-      "id": 29,
+      "id": 37,
       "type": "row",
       "title": "④ AP Pod：哪個 Pod 慢、App 自己慢不慢",
       "collapsed": false,
       "gridPos": {
         "x": 0,
-        "y": 114,
+        "y": 143,
         "w": 24,
         "h": 1
       },
       "panels": []
     },
     {
-      "id": 30,
+      "id": 38,
       "type": "timeseries",
       "title": "Router 看到的每個 Pod：等回應平均（找哪個 Pod 慢）",
       "description": "Router 等每個 AP Pod 回應的平均時間（取各 Router Pod 中最高的）。\n\n**怎麼看**：只有一個 Pod 特別高 → 那個 Pod 的 Node、GC 或分到的資料有問題；全部都高 → App 整體慢。",
@@ -2700,13 +3292,13 @@
       },
       "gridPos": {
         "x": 0,
-        "y": 115,
+        "y": 144,
         "w": 12,
         "h": 9
       }
     },
     {
-      "id": 31,
+      "id": 39,
       "type": "timeseries",
       "title": "Router 看到的每個 Pod：5xx（req/s）",
       "description": "Router 從每個 AP Pod 收到的 5xx。\n\n**怎麼看**：集中在某個 Pod → 那個 Pod 有問題（設定、資料、資源）；平均分散 → App 整體或下游的問題。",
@@ -2772,13 +3364,13 @@
       },
       "gridPos": {
         "x": 12,
-        "y": 115,
+        "y": 144,
         "w": 12,
         "h": 9
       }
     },
     {
-      "id": 32,
+      "id": 40,
       "type": "timeseries",
       "title": "App 自己量的處理時間：每個 Pod 平均（需 Micrometer）",
       "description": "App 自己記錄的處理時間（http_server_requests_seconds，不含 /actuator）。這是請求進到 App 之後的時間。\n\n**怎麼看**：跟上面 Router 看到的比：Router 的比 App 的高很多 → 請求在 Pod 裡排隊（thread pool 滿）或 Pod 網路慢。沒資料 = App 沒有 Micrometer 指標。",
@@ -2844,13 +3436,13 @@
       },
       "gridPos": {
         "x": 0,
-        "y": 124,
+        "y": 153,
         "w": 12,
         "h": 9
       }
     },
     {
-      "id": 33,
+      "id": 41,
       "type": "timeseries",
       "title": "Pod CPU throttling（各 Pod）",
       "description": "CPU 想用但被 limit 擋下的時間比例。\n\n**怎麼看**：超過 25% → App 被 CPU limit 卡住，處理時間會變長；調高 CPU limit 或加 Pod。",
@@ -2916,13 +3508,13 @@
       },
       "gridPos": {
         "x": 12,
-        "y": 124,
+        "y": 153,
         "w": 12,
         "h": 9
       }
     },
     {
-      "id": 34,
+      "id": 42,
       "type": "timeseries",
       "title": "Pod 狀態：Router 判定可用、Ready、重啟",
       "description": "Router 判定可以送流量的 Pod 數（haproxy_server_up，Router 沒輸出 Pod 層級指標時沒有這條）、Ready 的 Pod 數，以及每 5 分鐘重啟次數。\n\n**怎麼看**：Router 可用數掉下來 → 流量集中到剩下的 Pod，排隊和回應時間會上升；有重啟 → 看 OCP 壓測影響評估 Dashboard 的 2B 重啟原因。",
@@ -3013,26 +3605,26 @@
       },
       "gridPos": {
         "x": 0,
-        "y": 133,
+        "y": 162,
         "w": 24,
         "h": 9
       }
     },
     {
-      "id": 35,
+      "id": 43,
       "type": "row",
       "title": "⑤ 中間沒有指標的段：A10 / F5、網路（用差值推算）",
       "collapsed": false,
       "gridPos": {
         "x": 0,
-        "y": 142,
+        "y": 171,
         "w": 24,
         "h": 1
       },
       "panels": []
     },
     {
-      "id": 36,
+      "id": 44,
       "type": "timeseries",
       "title": "Kong ↔ Router 之間多花的時間（= Kong 等後端回應 − Router 量到的）",
       "description": "Kong 等後端回應的平均，扣掉 Router 量到的排隊、連線、等 Pod 回應。剩下的就是 Kong 和 Router 之間：A10 / F5、網路、TLS 握手、Router 前端。\n\n**怎麼看**：平常有一個固定的量（網路來回）；突然變大而 Router 各段沒變 → 問題在中間設備或網路。兩邊選的不是同一條路徑時這個數字沒有意義。",
@@ -3195,13 +3787,13 @@
       "interval": "1m",
       "gridPos": {
         "x": 0,
-        "y": 143,
+        "y": 172,
         "w": 12,
         "h": 9
       }
     },
     {
-      "id": 37,
+      "id": 45,
       "type": "timeseries",
       "title": "請求數對不上的部分（req/s）",
       "description": "**Kong 送了、Router 沒收到** = Kong 送往後端 − Router 收到；**Router 收到、不是 Kong 來的** = Router 收到 − Kong 送往後端。\n\n**怎麼看**：**先排除假警報**：Kong 選的 Service / Route 和 OCP Route 不是同一條路徑（Kong 一個 Service 可能對到好幾條 OCP route）；OCP route 是 TLS passthrough（Router 不記 HTTP 回應數，Router 收到 = 0）。看右邊的表確認。排除後：前者 > 0 → 請求在中間被擋、逾時或被導到別處（同時看 ① Kong 自己回的 502/504）；後者 > 0 → 有其他來源直接打這條 route（內部呼叫、繞過 Kong、LB health check）。",
@@ -3341,13 +3933,13 @@
       "interval": "1m",
       "gridPos": {
         "x": 12,
-        "y": 143,
+        "y": 172,
         "w": 12,
         "h": 9
       }
     },
     {
-      "id": 38,
+      "id": 46,
       "type": "table",
       "title": "這個 Namespace 每條 route 在 Router 上的流量（找 passthrough、選錯 route）",
       "description": "Namespace 裡每條 route 在 Router 上的 backend、HTTP 回應數、收到 / 送出的流量。backend 開頭是 be_http（HTTP）、be_edge_http（edge TLS）、be_secure（reencrypt）、be_tcp（**TLS passthrough**）。\n\n**怎麼看**：**有 bytes、但 HTTP 回應數是 0 或沒有** → passthrough，Router 只看得到 TCP，請求數、回應時間都沒有，只能看 Kong 的等後端回應和 App 自己的時間；**Kong 的流量跟某條沒選到的 route 對得上** → 上方 OCP Route 選錯了。",
@@ -3552,13 +4144,13 @@
       },
       "gridPos": {
         "x": 0,
-        "y": 152,
+        "y": 181,
         "w": 12,
         "h": 9
       }
     },
     {
-      "id": 39,
+      "id": 47,
       "type": "timeseries",
       "title": "Kong 自己回的 502 / 503 / 504（連不上 / 逾時）",
       "description": "Kong 沒拿到後端回應而自己回的錯誤，依狀態碼。502 = 連線失敗或後端回了不完整的回應；503 = 沒有可用的後端；504 = 等後端回應逾時。\n\n**怎麼看**：跟「Kong ↔ Router 之間」同時上升 → 中間設備或網路問題；Router 那邊沒看到同樣數量的錯誤 → 請求根本沒到 Router。",
@@ -3624,7 +4216,7 @@
       },
       "gridPos": {
         "x": 12,
-        "y": 152,
+        "y": 181,
         "w": 12,
         "h": 9
       }
