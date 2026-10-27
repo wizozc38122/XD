@@ -302,8 +302,10 @@ def table(line, title, key_cols, columns, description, sort_by, w=24, h=12, key_
     """columns: list of (name, expr, unit, thresholds or None, decimals, value mappings or None[, text when empty]).
 
     base: a query that returns exactly the rows the table should show. Each column is limited to those
-    rows, and falls back to NaN for rows it has no value for, shown as the given text (default "—").
-    Without it Grafana drops a whole column when its query returns nothing."""
+    rows, and falls back to -1 for rows it has no value for, shown as the given text (default "—").
+    Without it Grafana drops a whole column when its query returns nothing. -1 rather than NaN so that
+    sorting a column from high to low puts these rows last (Grafana sorts NaN first); every column here
+    is a count, usage or ratio, never negative, so -1 cannot be a real value."""
     targets, rename, index, overrides = [], {}, {}, []
     for i, k in enumerate(key_cols):
         index[k] = i
@@ -312,9 +314,9 @@ def table(line, title, key_cols, columns, description, sort_by, w=24, h=12, key_
         na = col[6] if len(col) > 6 else "—"
         if base:
             keys = ", ".join(key_cols)
-            expr = f"(({expr}) and on ({keys}) ({base})) or ({base} + NaN)"
-            mappings = (mappings or []) + [{"type": "special", "options": {
-                "match": "nan", "result": {"text": na, "color": "#8e8e8e", "index": 99}}}]
+            expr = f"(({expr}) and on ({keys}) ({base})) or ({base} - 1)"
+            mappings = (mappings or []) + [{"type": "value", "options": {
+                "-1": {"text": na, "color": "#8e8e8e", "index": 99}}}]
         ref = chr(65 + i)
         targets.append({"refId": ref, "datasource": DS, "expr": expr, "legendFormat": "",
                         "range": False, "instant": True, "format": "table"})
