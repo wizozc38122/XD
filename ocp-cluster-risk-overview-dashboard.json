@@ -96,7 +96,7 @@
       "title": "",
       "options": {
         "mode": "markdown",
-        "content": "**叢集風險總覽**：先找出嫌疑的 Node 與 Workload，再點 workload 名稱進細節 Dashboard 查證。上方切換資料來源 = 切換叢集。\n① 哪台 Node 吃緊 → ② 哪個 Workload 是大戶（表頭可排序、漏斗可篩選，紅 / 黃格要注意）→ ③④ Top 10 趨勢看是什麼時候飆起來。\n表格是時間範圍**結束前 5 分鐘**的快照；百分比都是 **用量 ÷ 欄名寫的分母**。預設排除 `openshift*`、`kube-*` namespace。"
+        "content": "**叢集風險總覽**：先找出嫌疑的 Node 與 Workload，再點 workload 名稱進細節 Dashboard 查證。上方切換資料來源 = 切換叢集。\n① 哪台 Node 吃緊 → ② 哪個 Workload 是大戶（表頭可排序、名稱欄的漏斗可篩選，紅 / 黃格要注意）→ ③④ Top 10 趨勢看是什麼時候飆起來。\n表格是時間範圍**結束前 5 分鐘**的快照；百分比都是 **用量 ÷ 欄名寫的分母**。預設排除 `openshift*`、`kube-*` namespace。"
       },
       "gridPos": {
         "h": 3,
@@ -122,7 +122,7 @@
       "id": 3,
       "type": "table",
       "title": "【Node】各 Node 狀態（時間範圍結束前 5 分鐘）",
-      "description": "**視角**：叢集內每一台 Node（該 Node 上所有 Pod 加總）\n\n**這是什麼**：每台 Node 共用資源的目前狀態。conntrack、磁碟、網卡都是每台 Node 一份，所有 Pod 共用。「網路封包處理 CPU」是核心處理網路封包（softirq）的 CPU，不算在 Pod 的 CPU limit 裡。\n\n**怎麼看**：紅色、黃色就是正在吃緊的 Node。記下 Node 名稱，再到第 2 區找跑在上面的大戶，或進細節 Dashboard 看該 Node 的 Top 10 鄰居。",
+      "description": "**視角**：叢集內每一台 Node（該 Node 上所有 Pod 加總）\n\n**這是什麼**：每台 Node 共用資源的目前狀態。conntrack、磁碟、網卡都是每台 Node 一份，所有 Pod 共用。**百分比都是用量 ÷ 容量**：CPU ÷ 總核數、記憶體 ÷ 總記憶體、conntrack ÷ 表格上限、磁碟空間 ÷ 磁碟容量（最滿的那個）；磁碟延遲取最慢的磁碟；iowait、封包處理 CPU 是佔 CPU 時間的比例。「網路封包處理 CPU」是核心處理網路封包（softirq）的 CPU，不算在 Pod 的 CPU limit 裡。\n\n**怎麼看**：紅色、黃色就是正在吃緊的 Node。記下 Node 名稱，再到第 2 區找跑在上面的大戶，或進細節 Dashboard 看該 Node 的 Top 10 鄰居。",
       "datasource": {
         "type": "prometheus",
         "uid": "${datasource}"
@@ -262,15 +262,15 @@
             },
             "renameByName": {
               "Value #A": "Pod 數",
-              "Value #B": "CPU 使用率（÷ 總核數）",
-              "Value #C": "記憶體使用率（÷ 總記憶體）",
-              "Value #D": "conntrack（÷ 表格上限）",
-              "Value #E": "磁碟延遲（最慢的磁碟）",
-              "Value #F": "磁碟空間（÷ 容量，最高）",
+              "Value #B": "CPU 使用率",
+              "Value #C": "記憶體使用率",
+              "Value #D": "conntrack",
+              "Value #E": "磁碟延遲",
+              "Value #F": "磁碟空間",
               "Value #G": "網路丟包",
-              "Value #H": "iowait（÷ CPU 時間）",
-              "Value #I": "網路封包處理 CPU（÷ CPU 時間）",
-              "Value #J": "Node 壓力狀態",
+              "Value #H": "iowait",
+              "Value #I": "封包處理 CPU",
+              "Value #J": "壓力狀態",
               "instance": "Node"
             },
             "indexByName": {
@@ -292,8 +292,10 @@
       "fieldConfig": {
         "defaults": {
           "custom": {
-            "filterable": true,
-            "align": "auto"
+            "filterable": false,
+            "align": "auto",
+            "minWidth": 80,
+            "wrapHeaderText": true
           }
         },
         "overrides": [
@@ -332,7 +334,7 @@
           {
             "matcher": {
               "id": "byName",
-              "options": "CPU 使用率（÷ 總核數）"
+              "options": "CPU 使用率"
             },
             "properties": [
               {
@@ -401,7 +403,7 @@
           {
             "matcher": {
               "id": "byName",
-              "options": "記憶體使用率（÷ 總記憶體）"
+              "options": "記憶體使用率"
             },
             "properties": [
               {
@@ -470,7 +472,7 @@
           {
             "matcher": {
               "id": "byName",
-              "options": "conntrack（÷ 表格上限）"
+              "options": "conntrack"
             },
             "properties": [
               {
@@ -539,7 +541,7 @@
           {
             "matcher": {
               "id": "byName",
-              "options": "磁碟延遲（最慢的磁碟）"
+              "options": "磁碟延遲"
             },
             "properties": [
               {
@@ -604,7 +606,7 @@
           {
             "matcher": {
               "id": "byName",
-              "options": "磁碟空間（÷ 容量，最高）"
+              "options": "磁碟空間"
             },
             "properties": [
               {
@@ -742,7 +744,7 @@
           {
             "matcher": {
               "id": "byName",
-              "options": "iowait（÷ CPU 時間）"
+              "options": "iowait"
             },
             "properties": [
               {
@@ -811,7 +813,7 @@
           {
             "matcher": {
               "id": "byName",
-              "options": "網路封包處理 CPU（÷ CPU 時間）"
+              "options": "封包處理 CPU"
             },
             "properties": [
               {
@@ -880,7 +882,7 @@
           {
             "matcher": {
               "id": "byName",
-              "options": "Node 壓力狀態"
+              "options": "壓力狀態"
             },
             "properties": [
               {
@@ -952,6 +954,22 @@
                 ]
               }
             ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Node"
+            },
+            "properties": [
+              {
+                "id": "custom.filterable",
+                "value": true
+              },
+              {
+                "id": "custom.width",
+                "value": 140
+              }
+            ]
           }
         ]
       },
@@ -959,7 +977,7 @@
         "showHeader": true,
         "sortBy": [
           {
-            "displayName": "conntrack（÷ 表格上限）",
+            "displayName": "conntrack",
             "desc": true
           }
         ],
@@ -1339,7 +1357,7 @@
       "id": 11,
       "type": "table",
       "title": "【Workload】CPU / 記憶體：用量與 Limit（時間範圍結束前 5 分鐘）",
-      "description": "**視角**：叢集內每一個 Workload（該 Workload 所有 Pod 合計）\n\n**這是什麼**：每個 Deployment / StatefulSet / DaemonSet 的 CPU、記憶體用量，以及離自己的 Limit 還有多遠。用量、Limit 是所有 Pod 加總；「用量 ÷ Limit」是最接近 Limit 的那個容器用了幾 %。\n\n**怎麼看**：CPU 用量 ÷ Limit 接近 100% → 會被 throttling 變慢（看 throttling 欄）；記憶體用量 ÷ Limit 接近 100% → 會被 OOMKilled。「沒設 Limit」= 沒有容器設 Limit，用量沒有上限，看下方「沒設 Limit 的 Workload」。",
+      "description": "**視角**：叢集內每一個 Workload（該 Workload 所有 Pod 合計）\n\n**這是什麼**：每個 Deployment / StatefulSet / DaemonSet 的 CPU、記憶體用量，以及離自己的 Limit 還有多遠。CPU（核）、記憶體、Limit 是所有 Pod 加總；**CPU ÷ Limit、記憶體 ÷ Limit = 最接近 Limit 的那個容器的用量 ÷ 它的 Limit**；throttling 是被 CPU Limit 擋最多的 Pod 的節流比例。\n\n**怎麼看**：CPU 用量 ÷ Limit 接近 100% → 會被 throttling 變慢（看 throttling 欄）；記憶體用量 ÷ Limit 接近 100% → 會被 OOMKilled。「沒設 Limit」= 沒有容器設 Limit，用量沒有上限，看下方「沒設 Limit 的 Workload」。",
       "datasource": {
         "type": "prometheus",
         "uid": "${datasource}"
@@ -1455,13 +1473,14 @@
             },
             "renameByName": {
               "Value #A": "Pod 數",
-              "Value #B": "CPU 用量（核）",
-              "Value #C": "CPU Limit（核）",
-              "Value #D": "CPU 用量 ÷ Limit（最高的容器）",
-              "Value #E": "CPU throttling（最高的 Pod）",
-              "Value #F": "記憶體用量",
+              "Value #B": "CPU（核）",
+              "Value #C": "CPU Limit",
+              "Value #D": "CPU ÷ Limit",
+              "Value #E": "throttling",
+              "Value #F": "記憶體",
               "Value #G": "記憶體 Limit",
-              "Value #H": "記憶體用量 ÷ Limit（最高的容器）"
+              "Value #H": "記憶體 ÷ Limit",
+              "workload_type": "類型"
             },
             "indexByName": {
               "namespace": 0,
@@ -1482,8 +1501,10 @@
       "fieldConfig": {
         "defaults": {
           "custom": {
-            "filterable": true,
-            "align": "auto"
+            "filterable": false,
+            "align": "auto",
+            "minWidth": 80,
+            "wrapHeaderText": true
           }
         },
         "overrides": [
@@ -1522,7 +1543,7 @@
           {
             "matcher": {
               "id": "byName",
-              "options": "CPU 用量（核）"
+              "options": "CPU（核）"
             },
             "properties": [
               {
@@ -1554,7 +1575,7 @@
           {
             "matcher": {
               "id": "byName",
-              "options": "CPU Limit（核）"
+              "options": "CPU Limit"
             },
             "properties": [
               {
@@ -1586,7 +1607,7 @@
           {
             "matcher": {
               "id": "byName",
-              "options": "CPU 用量 ÷ Limit（最高的容器）"
+              "options": "CPU ÷ Limit"
             },
             "properties": [
               {
@@ -1655,7 +1676,7 @@
           {
             "matcher": {
               "id": "byName",
-              "options": "CPU throttling（最高的 Pod）"
+              "options": "throttling"
             },
             "properties": [
               {
@@ -1724,7 +1745,7 @@
           {
             "matcher": {
               "id": "byName",
-              "options": "記憶體用量"
+              "options": "記憶體"
             },
             "properties": [
               {
@@ -1788,7 +1809,7 @@
           {
             "matcher": {
               "id": "byName",
-              "options": "記憶體用量 ÷ Limit（最高的容器）"
+              "options": "記憶體 ÷ Limit"
             },
             "properties": [
               {
@@ -1870,6 +1891,54 @@
                 ]
               }
             ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "namespace"
+            },
+            "properties": [
+              {
+                "id": "custom.filterable",
+                "value": true
+              },
+              {
+                "id": "custom.width",
+                "value": 120
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "workload"
+            },
+            "properties": [
+              {
+                "id": "custom.filterable",
+                "value": true
+              },
+              {
+                "id": "custom.width",
+                "value": 150
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "類型"
+            },
+            "properties": [
+              {
+                "id": "custom.filterable",
+                "value": true
+              },
+              {
+                "id": "custom.width",
+                "value": 100
+              }
+            ]
           }
         ]
       },
@@ -1877,7 +1946,7 @@
         "showHeader": true,
         "sortBy": [
           {
-            "displayName": "CPU 用量（核）",
+            "displayName": "CPU（核）",
             "desc": true
           }
         ],
@@ -1896,7 +1965,7 @@
       "id": 12,
       "type": "table",
       "title": "【Workload】沒設 Limit 的 Workload：用量沒有上限，會吃掉 Node 的資源（時間範圍結束前 5 分鐘）",
-      "description": "**視角**：叢集內每一個 Workload（該 Workload 所有 Pod 合計）\n\n**這是什麼**：有容器沒設 CPU 或記憶體 Limit 的 Workload。沒設 Limit 的容器可以一直用到 Node 沒有資源為止，所以只能跟 Request（排程時保證的量）比。容器數是所有 Pod 加總。\n\n**怎麼看**：用量 ÷ Request 超過 100% → 正在用 Node 上別人沒用到的資源，Node 一忙起來就會互搶；遠超過 → 建議補上 Limit，或把 Request 調到接近實際用量。",
+      "description": "**視角**：叢集內每一個 Workload（該 Workload 所有 Pod 合計）\n\n**這是什麼**：有容器沒設 CPU 或記憶體 Limit 的 Workload。沒設 Limit 的容器可以一直用到 Node 沒有資源為止，所以只能跟 Request（排程時保證的量）比。**沒設 CPU Limit / 沒設記憶體 Limit = 沒設的容器數**（所有 Pod 加總）；**CPU ÷ Request、記憶體 ÷ Request = 用量 ÷ Request**（所有 Pod 加總）。\n\n**怎麼看**：用量 ÷ Request 超過 100% → 正在用 Node 上別人沒用到的資源，Node 一忙起來就會互搶；遠超過 → 建議補上 Limit，或把 Request 調到接近實際用量。",
       "datasource": {
         "type": "prometheus",
         "uid": "${datasource}"
@@ -2008,17 +2077,19 @@
           "id": "organize",
           "options": {
             "excludeByName": {
-              "Time": true
+              "Time": true,
+              "workload_type": true
             },
             "renameByName": {
-              "Value #A": "沒設 CPU Limit 的容器",
-              "Value #B": "沒設記憶體 Limit 的容器",
-              "Value #C": "CPU 用量（核）",
-              "Value #D": "CPU Request（核）",
-              "Value #E": "CPU 用量 ÷ Request",
-              "Value #F": "記憶體用量",
+              "Value #A": "沒設 CPU Limit",
+              "Value #B": "沒設記憶體 Limit",
+              "Value #C": "CPU（核）",
+              "Value #D": "CPU Request",
+              "Value #E": "CPU ÷ Request",
+              "Value #F": "記憶體",
               "Value #G": "記憶體 Request",
-              "Value #H": "記憶體用量 ÷ Request"
+              "Value #H": "記憶體 ÷ Request",
+              "workload_type": "類型"
             },
             "indexByName": {
               "namespace": 0,
@@ -2039,15 +2110,17 @@
       "fieldConfig": {
         "defaults": {
           "custom": {
-            "filterable": true,
-            "align": "auto"
+            "filterable": false,
+            "align": "auto",
+            "minWidth": 80,
+            "wrapHeaderText": true
           }
         },
         "overrides": [
           {
             "matcher": {
               "id": "byName",
-              "options": "沒設 CPU Limit 的容器"
+              "options": "沒設 CPU Limit"
             },
             "properties": [
               {
@@ -2112,7 +2185,7 @@
           {
             "matcher": {
               "id": "byName",
-              "options": "沒設記憶體 Limit 的容器"
+              "options": "沒設記憶體 Limit"
             },
             "properties": [
               {
@@ -2177,7 +2250,7 @@
           {
             "matcher": {
               "id": "byName",
-              "options": "CPU 用量（核）"
+              "options": "CPU（核）"
             },
             "properties": [
               {
@@ -2209,7 +2282,7 @@
           {
             "matcher": {
               "id": "byName",
-              "options": "CPU Request（核）"
+              "options": "CPU Request"
             },
             "properties": [
               {
@@ -2241,7 +2314,7 @@
           {
             "matcher": {
               "id": "byName",
-              "options": "CPU 用量 ÷ Request"
+              "options": "CPU ÷ Request"
             },
             "properties": [
               {
@@ -2310,7 +2383,7 @@
           {
             "matcher": {
               "id": "byName",
-              "options": "記憶體用量"
+              "options": "記憶體"
             },
             "properties": [
               {
@@ -2374,7 +2447,7 @@
           {
             "matcher": {
               "id": "byName",
-              "options": "記憶體用量 ÷ Request"
+              "options": "記憶體 ÷ Request"
             },
             "properties": [
               {
@@ -2456,6 +2529,54 @@
                 ]
               }
             ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "namespace"
+            },
+            "properties": [
+              {
+                "id": "custom.filterable",
+                "value": true
+              },
+              {
+                "id": "custom.width",
+                "value": 120
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "workload"
+            },
+            "properties": [
+              {
+                "id": "custom.filterable",
+                "value": true
+              },
+              {
+                "id": "custom.width",
+                "value": 150
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "類型"
+            },
+            "properties": [
+              {
+                "id": "custom.filterable",
+                "value": true
+              },
+              {
+                "id": "custom.width",
+                "value": 100
+              }
+            ]
           }
         ]
       },
@@ -2463,7 +2584,7 @@
         "showHeader": true,
         "sortBy": [
           {
-            "displayName": "CPU 用量（核）",
+            "displayName": "CPU（核）",
             "desc": true
           }
         ],
@@ -2570,7 +2691,8 @@
           "id": "organize",
           "options": {
             "excludeByName": {
-              "Time": true
+              "Time": true,
+              "workload_type": true
             },
             "renameByName": {
               "Value #A": "Pod 數",
@@ -2578,7 +2700,8 @@
               "Value #C": "網路流量",
               "Value #D": "網路丟包",
               "Value #E": "磁碟寫入",
-              "Value #F": "可寫層用量"
+              "Value #F": "可寫層用量",
+              "workload_type": "類型"
             },
             "indexByName": {
               "namespace": 0,
@@ -2597,8 +2720,10 @@
       "fieldConfig": {
         "defaults": {
           "custom": {
-            "filterable": true,
-            "align": "auto"
+            "filterable": false,
+            "align": "auto",
+            "minWidth": 80,
+            "wrapHeaderText": true
           }
         },
         "overrides": [
@@ -2882,6 +3007,54 @@
                     "url": "/d/ocp-loadtest-impact/?var-datasource=${datasource}&var-namespace=${__data.fields.namespace}&var-workload=${__data.fields.workload}&${__url_time_range}"
                   }
                 ]
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "namespace"
+            },
+            "properties": [
+              {
+                "id": "custom.filterable",
+                "value": true
+              },
+              {
+                "id": "custom.width",
+                "value": 120
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "workload"
+            },
+            "properties": [
+              {
+                "id": "custom.filterable",
+                "value": true
+              },
+              {
+                "id": "custom.width",
+                "value": 150
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "類型"
+            },
+            "properties": [
+              {
+                "id": "custom.filterable",
+                "value": true
+              },
+              {
+                "id": "custom.width",
+                "value": 100
               }
             ]
           }

@@ -254,7 +254,11 @@ def ts(line, title, expr, legend, unit, description, w=12, h=8):
     }, w, h)
 
 
-def table(line, title, key_cols, columns, description, sort_by, w=24, h=12, key_rename=None, key_links=None, base=None):
+KEY_WIDTH = {"namespace": 120, "workload": 150, "workload_type": 100, "instance": 140}
+
+
+def table(line, title, key_cols, columns, description, sort_by, w=24, h=12, key_rename=None, key_links=None, base=None,
+          hide=()):
     """columns: list of (name, expr, unit, thresholds or None, decimals, value mappings or None[, text when empty]).
 
     base: a query that returns exactly the rows the table should show. Each column is limited to those
@@ -297,10 +301,17 @@ def table(line, title, key_cols, columns, description, sort_by, w=24, h=12, key_
         "datasource": DS, "targets": targets,
         "transformations": [
             {"id": "merge", "options": {}},
-            {"id": "organize", "options": {"excludeByName": {"Time": True},
+            {"id": "organize", "options": {"excludeByName": {"Time": True, **{k: True for k in hide}},
                                            "renameByName": rename, "indexByName": index}},
         ],
-        "fieldConfig": {"defaults": {"custom": {"filterable": True, "align": "auto"}}, "overrides": overrides},
+        # 欄位多時讓欄寬可以縮、欄名換行,不要整欄被擠出畫面或欄名被截斷
+        "fieldConfig": {"defaults": {"custom": {"filterable": False, "align": "auto", "minWidth": 80,
+                                                "wrapHeaderText": True}},
+                        # 名稱欄固定寬度、可以篩選,剩下的寬度留給數字欄
+                        "overrides": overrides + [{"matcher": {"id": "byName", "options": rename.get(k, k)},
+                                                   "properties": [{"id": "custom.filterable", "value": True},
+                                                                  {"id": "custom.width", "value": KEY_WIDTH.get(k, 120)}]}
+                                                  for k in key_cols]},
         "options": {"showHeader": True, "sortBy": [{"displayName": sort_by, "desc": True}],
                     "footer": {"show": False}},
     }, w, h)
@@ -312,7 +323,7 @@ V_CLUSTER_WL = "叢集內每一個 Workload（該 Workload 所有 Pod 合計）"
 # ---------------------------------------------------------------- guide
 L = Line()
 text(L, """**叢集風險總覽**：先找出嫌疑的 Node 與 Workload，再點 workload 名稱進細節 Dashboard 查證。上方切換資料來源 = 切換叢集。
-① 哪台 Node 吃緊 → ② 哪個 Workload 是大戶（表頭可排序、漏斗可篩選，紅 / 黃格要注意）→ ③④ Top 10 趨勢看是什麼時候飆起來。
+① 哪台 Node 吃緊 → ② 哪個 Workload 是大戶（表頭可排序、名稱欄的漏斗可篩選，紅 / 黃格要注意）→ ③④ Top 10 趨勢看是什麼時候飆起來。
 表格是時間範圍**結束前 5 分鐘**的快照；百分比都是 **用量 ÷ 欄名寫的分母**。預設排除 `openshift*`、`kube-*` namespace。""", h=3)
 L.newline()
 
@@ -321,21 +332,23 @@ row("1. 【Node】叢集各 Node 狀態：哪台機器正在變吃緊")
 L = Line()
 table(L, "【Node】各 Node 狀態（時間範圍結束前 5 分鐘）", ["instance"], [
     ("Pod 數", n_pods(), "none", None, 0, None),
-    ("CPU 使用率（÷ 總核數）", n_cpu(W5), "percentunit", steps((Y, 0.8), (RD, 0.9)), 1, None),
-    ("記憶體使用率（÷ 總記憶體）", n_mem(), "percentunit", steps((Y, 0.8), (RD, 0.9)), 1, None),
-    ("conntrack（÷ 表格上限）", n_conntrack(), "percentunit", steps((Y, 0.5), (RD, 0.7)), 1, None),
-    ("磁碟延遲（最慢的磁碟）", n_disk_latency(W5), "s", steps((Y, 0.01), (RD, 0.02)), None, None),
-    ("磁碟空間（÷ 容量，最高）", n_fs(), "percentunit", steps((Y, 0.8), (RD, 0.85)), 1, None),
+    ("CPU 使用率", n_cpu(W5), "percentunit", steps((Y, 0.8), (RD, 0.9)), 1, None),
+    ("記憶體使用率", n_mem(), "percentunit", steps((Y, 0.8), (RD, 0.9)), 1, None),
+    ("conntrack", n_conntrack(), "percentunit", steps((Y, 0.5), (RD, 0.7)), 1, None),
+    ("磁碟延遲", n_disk_latency(W5), "s", steps((Y, 0.01), (RD, 0.02)), None, None),
+    ("磁碟空間", n_fs(), "percentunit", steps((Y, 0.8), (RD, 0.85)), 1, None),
     ("網路丟包", n_drops(W5), "pps", steps((Y, 1), (RD, 50)), 1, None),
-    ("iowait（÷ CPU 時間）", n_iowait(W5), "percentunit", steps((Y, 0.05), (RD, 0.1)), 1, None),
-    ("網路封包處理 CPU（÷ CPU 時間）", n_softirq(W5), "percentunit", steps((Y, 0.05), (RD, 0.1)), 1, None),
-    ("Node 壓力狀態", n_pressure(), "none", steps((RD, 1)), 0,
+    ("iowait", n_iowait(W5), "percentunit", steps((Y, 0.05), (RD, 0.1)), 1, None),
+    ("封包處理 CPU", n_softirq(W5), "percentunit", steps((Y, 0.05), (RD, 0.1)), 1, None),
+    ("壓力狀態", n_pressure(), "none", steps((RD, 1)), 0,
      [{"type": "value", "options": {"0": {"text": "正常"}, "1": {"text": "發生中"}}}]),
 ], desc(V_CLUSTER_NODE,
         "每台 Node 共用資源的目前狀態。conntrack、磁碟、網卡都是每台 Node 一份，所有 Pod 共用。"
+        "**百分比都是用量 ÷ 容量**：CPU ÷ 總核數、記憶體 ÷ 總記憶體、conntrack ÷ 表格上限、磁碟空間 ÷ 磁碟容量（最滿的那個）；"
+        "磁碟延遲取最慢的磁碟；iowait、封包處理 CPU 是佔 CPU 時間的比例。"
         "「網路封包處理 CPU」是核心處理網路封包（softirq）的 CPU，不算在 Pod 的 CPU limit 裡。",
         "紅色、黃色就是正在吃緊的 Node。記下 Node 名稱，再到第 2 區找跑在上面的大戶，或進細節 Dashboard 看該 Node 的 Top 10 鄰居。"),
-    sort_by="conntrack（÷ 表格上限）", h=10, key_rename={"instance": "Node"},
+    sort_by="conntrack", h=10, key_rename={"instance": "Node"},
     base="max by (instance) (node_memory_MemTotal_bytes) * 0")
 L.newline()
 L = Line()
@@ -361,47 +374,51 @@ DETAIL_LINK = [{"title": "開啟此 Workload 的細節 Dashboard",
                        "&var-namespace=${__data.fields.namespace}"
                        "&var-workload=${__data.fields.workload}&${__url_time_range}"}]
 WL_KEYS = ["namespace", "workload", "workload_type"]
+WL_RENAME = {"workload_type": "類型"}
 WL_ROWS = f'count by (namespace, workload, workload_type) ({WL}) * 0'
 NO_LIMIT = "沒設 Limit"
 L = Line()
 table(L, "【Workload】CPU / 記憶體：用量與 Limit（時間範圍結束前 5 分鐘）", WL_KEYS, [
     ("Pod 數", f'count by (namespace, workload, workload_type) ({WL})', "none", None, 0, None),
-    ("CPU 用量（核）", by_wl(cpu(W5)), "none", None, 2, None),
-    ("CPU Limit（核）", by_wl(total("limits", "cpu")), "none", None, 2, None, NO_LIMIT),
-    ("CPU 用量 ÷ Limit（最高的容器）", by_wl(cpu_limit(W5), "max"), "percentunit", steps((Y, 0.8), (RD, 0.95)), 0, None, NO_LIMIT),
-    ("CPU throttling（最高的 Pod）", by_wl(throttle(W5), "max"), "percentunit", steps((Y, 0.25), (RD, 0.5)), 0, None),
-    ("記憶體用量", by_wl(mem()), "bytes", None, 1, None),
+    ("CPU（核）", by_wl(cpu(W5)), "none", None, 2, None),
+    ("CPU Limit", by_wl(total("limits", "cpu")), "none", None, 2, None, NO_LIMIT),
+    ("CPU ÷ Limit", by_wl(cpu_limit(W5), "max"), "percentunit", steps((Y, 0.8), (RD, 0.95)), 0, None, NO_LIMIT),
+    ("throttling", by_wl(throttle(W5), "max"), "percentunit", steps((Y, 0.25), (RD, 0.5)), 0, None),
+    ("記憶體", by_wl(mem()), "bytes", None, 1, None),
     ("記憶體 Limit", by_wl(total("limits", "memory")), "bytes", None, 1, None, NO_LIMIT),
-    ("記憶體用量 ÷ Limit（最高的容器）", by_wl(mem_limit(), "max"), "percentunit", steps((Y, 0.8), (RD, 0.9)), 0, None, NO_LIMIT),
+    ("記憶體 ÷ Limit", by_wl(mem_limit(), "max"), "percentunit", steps((Y, 0.8), (RD, 0.9)), 0, None, NO_LIMIT),
 ], desc(V_CLUSTER_WL,
         "每個 Deployment / StatefulSet / DaemonSet 的 CPU、記憶體用量，以及離自己的 Limit 還有多遠。"
-        "用量、Limit 是所有 Pod 加總；「用量 ÷ Limit」是最接近 Limit 的那個容器用了幾 %。",
+        "CPU（核）、記憶體、Limit 是所有 Pod 加總；**CPU ÷ Limit、記憶體 ÷ Limit = 最接近 Limit 的那個容器的用量 ÷ 它的 Limit**；"
+        "throttling 是被 CPU Limit 擋最多的 Pod 的節流比例。",
         "CPU 用量 ÷ Limit 接近 100% → 會被 throttling 變慢（看 throttling 欄）；"
         "記憶體用量 ÷ Limit 接近 100% → 會被 OOMKilled。"
         "「沒設 Limit」= 沒有容器設 Limit，用量沒有上限，看下方「沒設 Limit 的 Workload」。"),
-    sort_by="CPU 用量（核）", h=12, key_links={"workload": DETAIL_LINK}, base=WL_ROWS)
+    sort_by="CPU（核）", h=12, key_links={"workload": DETAIL_LINK}, key_rename=WL_RENAME, base=WL_ROWS)
 L.newline()
 
 L = Line()
 NOLIM_ROWS = (f'max by (namespace, workload, workload_type) (({no_limit(cpu_ct(W5), "cpu")} or {no_limit(mem_ct(), "memory")})'
               f' * on (namespace, pod) group_left (workload, workload_type) {WL}) * 0')
 table(L, "【Workload】沒設 Limit 的 Workload：用量沒有上限，會吃掉 Node 的資源（時間範圍結束前 5 分鐘）", WL_KEYS, [
-    ("沒設 CPU Limit 的容器", by_wl(no_limit(cpu_ct(W5), "cpu")), "none", steps((Y, 1)), 0, None, "0"),
-    ("沒設記憶體 Limit 的容器", by_wl(no_limit(mem_ct(), "memory")), "none", steps((Y, 1)), 0, None, "0"),
-    ("CPU 用量（核）", by_wl(cpu(W5)), "none", None, 2, None),
-    ("CPU Request（核）", by_wl(total("requests", "cpu")), "none", None, 2, None, "沒設 Request"),
-    ("CPU 用量 ÷ Request", f'{by_wl(cpu(W5))} / {by_wl(total("requests", "cpu"))}', "percentunit",
+    ("沒設 CPU Limit", by_wl(no_limit(cpu_ct(W5), "cpu")), "none", steps((Y, 1)), 0, None, "0"),
+    ("沒設記憶體 Limit", by_wl(no_limit(mem_ct(), "memory")), "none", steps((Y, 1)), 0, None, "0"),
+    ("CPU（核）", by_wl(cpu(W5)), "none", None, 2, None),
+    ("CPU Request", by_wl(total("requests", "cpu")), "none", None, 2, None, "沒設 Request"),
+    ("CPU ÷ Request", f'{by_wl(cpu(W5))} / {by_wl(total("requests", "cpu"))}', "percentunit",
      steps((Y, 1.0), (RD, 2.0)), 0, None, "沒設 Request"),
-    ("記憶體用量", by_wl(mem()), "bytes", None, 1, None),
+    ("記憶體", by_wl(mem()), "bytes", None, 1, None),
     ("記憶體 Request", by_wl(total("requests", "memory")), "bytes", None, 1, None, "沒設 Request"),
-    ("記憶體用量 ÷ Request", f'{by_wl(mem())} / {by_wl(total("requests", "memory"))}', "percentunit",
+    ("記憶體 ÷ Request", f'{by_wl(mem())} / {by_wl(total("requests", "memory"))}', "percentunit",
      steps((Y, 1.0), (RD, 2.0)), 0, None, "沒設 Request"),
 ], desc(V_CLUSTER_WL,
         "有容器沒設 CPU 或記憶體 Limit 的 Workload。沒設 Limit 的容器可以一直用到 Node 沒有資源為止，"
-        "所以只能跟 Request（排程時保證的量）比。容器數是所有 Pod 加總。",
+        "所以只能跟 Request（排程時保證的量）比。**沒設 CPU Limit / 沒設記憶體 Limit = 沒設的容器數**（所有 Pod 加總）；"
+        "**CPU ÷ Request、記憶體 ÷ Request = 用量 ÷ Request**（所有 Pod 加總）。",
         "用量 ÷ Request 超過 100% → 正在用 Node 上別人沒用到的資源，Node 一忙起來就會互搶；"
         "遠超過 → 建議補上 Limit，或把 Request 調到接近實際用量。"),
-    sort_by="CPU 用量（核）", h=9, key_links={"workload": DETAIL_LINK}, base=NOLIM_ROWS)
+    sort_by="CPU（核）", h=9, key_links={"workload": DETAIL_LINK}, key_rename=WL_RENAME, base=NOLIM_ROWS,
+    hide=("workload_type",))
 L.newline()
 
 L = Line()
@@ -415,7 +432,8 @@ table(L, "【Workload】共用資源與重啟：limit 管不到，會影響同 N
 ], desc(V_CLUSTER_WL,
         "網路、本機磁碟這些整台 Node 共用、limit 管不到的資源，以及重啟次數。",
         "點表頭排序找大戶；網路丟包、重啟是紅 / 黃格要注意。磁碟寫入、可寫層「沒收集」= 叢集沒有收集 Pod 層級的磁碟指標。"),
-    sort_by="網路流量", h=10, key_links={"workload": DETAIL_LINK}, base=WL_ROWS)
+    sort_by="網路流量", h=10, key_links={"workload": DETAIL_LINK}, key_rename=WL_RENAME, base=WL_ROWS,
+    hide=("workload_type",))
 L.newline()
 
 # ---------------------------------------------------------------- 3/4 workload trends
