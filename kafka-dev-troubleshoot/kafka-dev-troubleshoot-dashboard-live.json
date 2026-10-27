@@ -1,0 +1,2879 @@
+{
+  "title": "Kafka 即時現況（開發人員）",
+  "uid": "kafka-dev-troubleshoot-live",
+  "description": "最新狀態，不受時間影響。回看過去、評估壓測看「Kafka 問題排查」。",
+  "tags": [
+    "kafka",
+    "troubleshooting",
+    "kafka-dev-troubleshoot"
+  ],
+  "editable": true,
+  "graphTooltip": 1,
+  "fiscalYearStartMonth": 0,
+  "liveNow": false,
+  "refresh": "30s",
+  "time": {
+    "from": "now-15m",
+    "to": "now"
+  },
+  "timepicker": {
+    "refresh_intervals": [
+      "10s",
+      "30s",
+      "1m",
+      "5m",
+      "15m"
+    ],
+    "hidden": true
+  },
+  "timezone": "browser",
+  "schemaVersion": 41,
+  "version": 1,
+  "links": [
+    {
+      "type": "dashboards",
+      "tags": [
+        "kafka-dev-troubleshoot"
+      ],
+      "asDropdown": false,
+      "includeVars": true,
+      "keepTime": false,
+      "targetBlank": false,
+      "title": "",
+      "icon": "external link",
+      "tooltip": ""
+    }
+  ],
+  "annotations": {
+    "list": [
+      {
+        "builtIn": 1,
+        "datasource": {
+          "type": "grafana",
+          "uid": "-- Grafana --"
+        },
+        "enable": true,
+        "hide": true,
+        "iconColor": "rgba(0, 211, 255, 1)",
+        "name": "Annotations & Alerts",
+        "type": "dashboard"
+      }
+    ]
+  },
+  "templating": {
+    "list": [
+      {
+        "name": "datasource",
+        "label": "環境",
+        "type": "datasource",
+        "query": "prometheus",
+        "regex": "",
+        "refresh": 1,
+        "hide": 0,
+        "current": {},
+        "options": []
+      },
+      {
+        "name": "cluster",
+        "label": "Cluster",
+        "type": "query",
+        "datasource": {
+          "type": "prometheus",
+          "uid": "${datasource}"
+        },
+        "query": {
+          "query": "label_values(kafka_brokers, cluster)",
+          "refId": "PrometheusVariableQueryEditor-VariableQuery"
+        },
+        "definition": "label_values(kafka_brokers, cluster)",
+        "regex": "",
+        "refresh": 2,
+        "sort": 1,
+        "hide": 0,
+        "multi": false,
+        "includeAll": false,
+        "current": {},
+        "options": []
+      },
+      {
+        "name": "topic",
+        "label": "Topic",
+        "type": "query",
+        "datasource": {
+          "type": "prometheus",
+          "uid": "${datasource}"
+        },
+        "query": {
+          "query": "label_values(kafka_topic_partitions{cluster=\"$cluster\"}, topic)",
+          "refId": "PrometheusVariableQueryEditor-VariableQuery"
+        },
+        "definition": "label_values(kafka_topic_partitions{cluster=\"$cluster\"}, topic)",
+        "regex": "/^(?!__).*/",
+        "refresh": 2,
+        "sort": 1,
+        "hide": 0,
+        "multi": true,
+        "includeAll": true,
+        "current": {},
+        "options": [],
+        "allValue": ".*"
+      },
+      {
+        "name": "consumergroup",
+        "label": "Consumer Group",
+        "type": "query",
+        "datasource": {
+          "type": "prometheus",
+          "uid": "${datasource}"
+        },
+        "query": {
+          "query": "label_values(kafka_consumergroup_members{cluster=\"$cluster\"}, consumergroup)",
+          "refId": "PrometheusVariableQueryEditor-VariableQuery"
+        },
+        "definition": "label_values(kafka_consumergroup_members{cluster=\"$cluster\"}, consumergroup)",
+        "regex": "",
+        "refresh": 2,
+        "sort": 1,
+        "hide": 0,
+        "multi": true,
+        "includeAll": true,
+        "current": {},
+        "options": [],
+        "allValue": ".*"
+      },
+      {
+        "name": "compare_window",
+        "label": "比較區間",
+        "type": "custom",
+        "query": "5m : 300,15m : 900,1h : 3600",
+        "description": "速度、寫入 / 消費筆數、Lag 變化、追上需要都用這一段算：短 = 反應快，長 = 穩但慢半拍",
+        "current": {
+          "text": "5m",
+          "value": "300"
+        },
+        "hide": 0,
+        "multi": false,
+        "includeAll": false,
+        "options": [
+          {
+            "text": "5m",
+            "value": "300",
+            "selected": true
+          },
+          {
+            "text": "15m",
+            "value": "900",
+            "selected": false
+          },
+          {
+            "text": "1h",
+            "value": "3600",
+            "selected": false
+          }
+        ]
+      }
+    ]
+  },
+  "panels": [
+    {
+      "id": 1,
+      "type": "text",
+      "title": "",
+      "options": {
+        "mode": "markdown",
+        "content": "**即時現況**：永遠是最新狀態（每 30 秒更新），不受時間影響。要回看過去、評估壓測 → 右上 **Kafka 問題排查**。「近 ${compare_window:text}」= 上方 **比較區間**。每個面板的 ⓘ 有說明。"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 0,
+        "w": 24,
+        "h": 2
+      }
+    },
+    {
+      "id": 2,
+      "type": "row",
+      "title": "Kafka 本身有沒有壞",
+      "collapsed": false,
+      "gridPos": {
+        "x": 0,
+        "y": 2,
+        "w": 24,
+        "h": 1
+      },
+      "panels": []
+    },
+    {
+      "id": 3,
+      "type": "stat",
+      "title": "Broker 數",
+      "description": "叢集裡的 broker 台數。\n\n**正常**：等於部署台數。\n\n- 變少 → 有 broker 掛了",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${datasource}"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "editorMode": "code",
+          "expr": "max(kafka_brokers{cluster=\"$cluster\"})",
+          "legendFormat": "__auto",
+          "refId": "A",
+          "range": false,
+          "instant": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "blue",
+                "value": null
+              }
+            ]
+          },
+          "mappings": [],
+          "noValue": "exporter 沒資料"
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "background",
+        "graphMode": "none",
+        "textMode": "value",
+        "justifyMode": "center",
+        "orientation": "auto",
+        "wideLayout": true,
+        "showPercentChange": false
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 3,
+        "w": 6,
+        "h": 3
+      }
+    },
+    {
+      "id": 4,
+      "type": "stat",
+      "title": "離線 Partition",
+      "description": "沒有 leader、不能讀寫的 partition 數。\n\n**正常**：0。\n\n- > 0 → 讀寫會失敗或 timeout，立刻找維運",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${datasource}"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "editorMode": "code",
+          "expr": "max(kafka_controller_kafkacontroller_offlinepartitionscount{cluster=\"$cluster\"})",
+          "legendFormat": "__auto",
+          "refId": "A",
+          "range": false,
+          "instant": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "red",
+                "value": 1
+              }
+            ]
+          },
+          "mappings": []
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "background",
+        "graphMode": "none",
+        "textMode": "value",
+        "justifyMode": "center",
+        "orientation": "auto",
+        "wideLayout": true,
+        "showPercentChange": false
+      },
+      "gridPos": {
+        "x": 6,
+        "y": 3,
+        "w": 6,
+        "h": 3
+      }
+    },
+    {
+      "id": 5,
+      "type": "stat",
+      "title": "ISR 不足",
+      "description": "同步副本數少於 min.insync.replicas 的 partition 數。\n\n**正常**：0。\n\n- > 0 → acks=all 寫入會收到 NOT_ENOUGH_REPLICAS",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${datasource}"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "editorMode": "code",
+          "expr": "sum(kafka_server_replicamanager_underminisrpartitioncount{cluster=\"$cluster\"})",
+          "legendFormat": "__auto",
+          "refId": "A",
+          "range": false,
+          "instant": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "red",
+                "value": 1
+              }
+            ]
+          },
+          "mappings": []
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "background",
+        "graphMode": "none",
+        "textMode": "value",
+        "justifyMode": "center",
+        "orientation": "auto",
+        "wideLayout": true,
+        "showPercentChange": false
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 3,
+        "w": 6,
+        "h": 3
+      }
+    },
+    {
+      "id": 6,
+      "type": "stat",
+      "title": "副本不足",
+      "description": "有副本沒跟上 leader 的 partition 數。\n\n**正常**：0（broker 重啟時短暫 > 0 正常）。\n\n- 長時間 > 0 → 某台 broker 掛了或太慢",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${datasource}"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "editorMode": "code",
+          "expr": "sum(kafka_server_replicamanager_underreplicatedpartitions{cluster=\"$cluster\"})",
+          "legendFormat": "__auto",
+          "refId": "A",
+          "range": false,
+          "instant": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 1
+              }
+            ]
+          },
+          "mappings": []
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "background",
+        "graphMode": "none",
+        "textMode": "value",
+        "justifyMode": "center",
+        "orientation": "auto",
+        "wideLayout": true,
+        "showPercentChange": false
+      },
+      "gridPos": {
+        "x": 18,
+        "y": 3,
+        "w": 6,
+        "h": 3
+      }
+    },
+    {
+      "id": 7,
+      "type": "stat",
+      "title": "Active Controller",
+      "description": "負責管理叢集的 controller 數。\n\n**正常**：剛好 1。\n\n- 0 → 建 topic、換 leader 都會失敗",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${datasource}"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "editorMode": "code",
+          "expr": "sum(kafka_controller_kafkacontroller_activecontrollercount{cluster=\"$cluster\"})",
+          "legendFormat": "__auto",
+          "refId": "A",
+          "range": false,
+          "instant": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "red",
+                "value": null
+              },
+              {
+                "color": "green",
+                "value": 1
+              },
+              {
+                "color": "red",
+                "value": 2
+              }
+            ]
+          },
+          "mappings": []
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "background",
+        "graphMode": "none",
+        "textMode": "value",
+        "justifyMode": "center",
+        "orientation": "auto",
+        "wideLayout": true,
+        "showPercentChange": false
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 6,
+        "w": 6,
+        "h": 3
+      }
+    },
+    {
+      "id": 8,
+      "type": "stat",
+      "title": "權限錯誤（次/分）",
+      "description": "client 收到 *_AUTHORIZATION_FAILED 的次數。\n\n**正常**：0。\n\n- > 0 → 看 ④ 權限被拒",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${datasource}"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "editorMode": "code",
+          "expr": "sum(rate(kafka_network_requestmetrics_errors_total{cluster=\"$cluster\",error=~\".*AUTHORIZATION_FAILED\"}[2m])) * 60",
+          "legendFormat": "__auto",
+          "refId": "A",
+          "range": false,
+          "instant": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 1
+              }
+            ]
+          },
+          "mappings": [],
+          "noValue": "0",
+          "decimals": 0
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "background",
+        "graphMode": "none",
+        "textMode": "value",
+        "justifyMode": "center",
+        "orientation": "auto",
+        "wideLayout": true,
+        "showPercentChange": false
+      },
+      "gridPos": {
+        "x": 6,
+        "y": 6,
+        "w": 6,
+        "h": 3
+      }
+    },
+    {
+      "id": 9,
+      "type": "stat",
+      "title": "登入失敗（次/分）",
+      "description": "SASL 登入失敗次數。\n\n**正常**：0。\n\n- > 0 → 密碼錯、帳號被刪或 mechanism 設錯，看 ④ 登入失敗",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${datasource}"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "editorMode": "code",
+          "expr": "max_over_time((sum((kafka_server_socket_server_metrics_failed_authentication_rate{cluster=\"$cluster\"} or label_replace({__name__=~\"kafka_server_socket_server_metrics_listener_.+_networkprocessor_[0-9]+_failed_authentication_rate\",cluster=\"$cluster\"}, \"listener\", \"$1\", \"__name__\", \"kafka_server_socket_server_metrics_listener_(.+)_networkprocessor_[0-9]+_failed_authentication_rate\"))) * 60)[5m:30s])",
+          "legendFormat": "__auto",
+          "refId": "A",
+          "range": false,
+          "instant": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 1
+              }
+            ]
+          },
+          "mappings": [],
+          "noValue": "未收集",
+          "decimals": 0
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "background",
+        "graphMode": "none",
+        "textMode": "value",
+        "justifyMode": "center",
+        "orientation": "auto",
+        "wideLayout": true,
+        "showPercentChange": false
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 6,
+        "w": 6,
+        "h": 3
+      }
+    },
+    {
+      "id": 10,
+      "type": "stat",
+      "title": "沒人讀的 Group",
+      "description": "有 lag、但沒有 consumer 連著的 group 數。\n\n**正常**：0（跑完就停的批次程式也算）。\n\n- > 0 → 程式掛了或停了，訊息一直堆",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${datasource}"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "editorMode": "code",
+          "expr": "count((sum by(consumergroup)(clamp_min(kafka_consumergroup_lag{cluster=\"$cluster\"}, 0)) > 0) and on(consumergroup) (max by(consumergroup)(kafka_consumergroup_members{cluster=\"$cluster\"}) == 0))",
+          "legendFormat": "__auto",
+          "refId": "A",
+          "range": false,
+          "instant": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 1
+              }
+            ]
+          },
+          "mappings": [],
+          "noValue": "0"
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "background",
+        "graphMode": "none",
+        "textMode": "value",
+        "justifyMode": "center",
+        "orientation": "auto",
+        "wideLayout": true,
+        "showPercentChange": false
+      },
+      "gridPos": {
+        "x": 18,
+        "y": 6,
+        "w": 6,
+        "h": 3
+      }
+    },
+    {
+      "id": 11,
+      "type": "row",
+      "title": "Consumer 追得上嗎",
+      "collapsed": false,
+      "gridPos": {
+        "x": 0,
+        "y": 9,
+        "w": 24,
+        "h": 1
+      },
+      "panels": []
+    },
+    {
+      "id": 12,
+      "type": "table",
+      "title": "追得上嗎（速度 = 近 ${compare_window:text}）",
+      "description": "每個 group × topic 現在落後多少、多久追上。\n\n- **追上需要**：Lag ÷ lag 每秒減少多少。已跟上 = 沒有 lag 或不到 30 秒的寫入量；持平 = lag 增減在 ±10 筆內（沒在追上）；資料不足 = 比較區間開頭還沒有資料\n- **還落後**：Lag ÷ 近期平均寫入速度，≈ 正在處理多久以前的資料（估算；寫入忽快忽慢時只是概略值）\n\n**正常**：成員 ≥ 1、追上需要「已跟上」。\n\n- 沒人在讀 → 程式沒在跑\n- 越落越多 → 處理太慢：加 consumer（不超過 partition 數）或加快處理",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${datasource}"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "editorMode": "code",
+          "expr": "(sum by(consumergroup,topic)(clamp_min(kafka_consumergroup_lag{cluster=\"$cluster\",topic=~\"$topic\",consumergroup=~\"$consumergroup\"}, 0))) or (sum by(consumergroup,topic)(clamp_min(kafka_consumergroup_lag{cluster=\"$cluster\",topic=~\"$topic\",consumergroup=~\"$consumergroup\"}, 0)) * 0 + NaN)",
+          "legendFormat": "__auto",
+          "refId": "A",
+          "range": false,
+          "instant": true,
+          "format": "table"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "editorMode": "code",
+          "expr": "(max by(consumergroup,topic)(kafka_consumergroup_lag{cluster=\"$cluster\",topic=~\"$topic\",consumergroup=~\"$consumergroup\"}) * 0 + on(consumergroup) group_left() max by(consumergroup)(kafka_consumergroup_members{cluster=\"$cluster\",consumergroup=~\"$consumergroup\"})) or (sum by(consumergroup,topic)(clamp_min(kafka_consumergroup_lag{cluster=\"$cluster\",topic=~\"$topic\",consumergroup=~\"$consumergroup\"}, 0)) * 0 + NaN)",
+          "legendFormat": "__auto",
+          "refId": "B",
+          "range": false,
+          "instant": true,
+          "format": "table"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "editorMode": "code",
+          "expr": "(((sum by(consumergroup,topic)(clamp_min(kafka_consumergroup_lag{cluster=\"$cluster\",topic=~\"$topic\",consumergroup=~\"$consumergroup\"}, 0)) == 0) * 0 - 1) or (sum by(consumergroup,topic)(clamp_min(kafka_consumergroup_lag{cluster=\"$cluster\",topic=~\"$topic\",consumergroup=~\"$consumergroup\"}, 0)) * 0 - 2 and on(consumergroup) (max by(consumergroup)(kafka_consumergroup_members{cluster=\"$cluster\",consumergroup=~\"$consumergroup\"}) == 0)) or (sum by(consumergroup,topic)(clamp_min(kafka_consumergroup_lag{cluster=\"$cluster\",topic=~\"$topic\",consumergroup=~\"$consumergroup\"}, 0)) * 0 - 1 and on(consumergroup,topic) (sum by(consumergroup,topic)(clamp_min(kafka_consumergroup_lag{cluster=\"$cluster\",topic=~\"$topic\",consumergroup=~\"$consumergroup\"}, 0)) * ${compare_window} < sum by(consumergroup,topic)((avg_over_time(kafka_consumergroup_lag{cluster=\"$cluster\",topic=~\"$topic\",consumergroup=~\"$consumergroup\"}[60s]) - avg_over_time(kafka_consumergroup_lag{cluster=\"$cluster\",topic=~\"$topic\",consumergroup=~\"$consumergroup\"}[60s] offset ${compare_window}s) and on(consumergroup,topic,partition) (min_over_time(kafka_consumergroup_current_offset{cluster=\"$cluster\",topic=~\"$topic\",consumergroup=~\"$consumergroup\"}[60s]) >= 0 and on(consumergroup,topic,partition) min_over_time(kafka_consumergroup_current_offset{cluster=\"$cluster\",topic=~\"$topic\",consumergroup=~\"$consumergroup\"}[60s] offset ${compare_window}s) >= 0)) + (avg_over_time(kafka_consumergroup_current_offset{cluster=\"$cluster\",topic=~\"$topic\",consumergroup=~\"$consumergroup\"}[60s]) - avg_over_time(kafka_consumergroup_current_offset{cluster=\"$cluster\",topic=~\"$topic\",consumergroup=~\"$consumergroup\"}[60s] offset ${compare_window}s) and on(consumergroup,topic,partition) (min_over_time(kafka_consumergroup_current_offset{cluster=\"$cluster\",topic=~\"$topic\",consumergroup=~\"$consumergroup\"}[60s]) >= 0 and on(consumergroup,topic,partition) min_over_time(kafka_consumergroup_current_offset{cluster=\"$cluster\",topic=~\"$topic\",consumergroup=~\"$consumergroup\"}[60s] offset ${compare_window}s) >= 0))) * 30)) or (sum by(consumergroup,topic)(clamp_min(kafka_consumergroup_lag{cluster=\"$cluster\",topic=~\"$topic\",consumergroup=~\"$consumergroup\"}, 0)) / (0 - sum by(consumergroup,topic)((avg_over_time(kafka_consumergroup_lag{cluster=\"$cluster\",topic=~\"$topic\",consumergroup=~\"$consumergroup\"}[60s]) - avg_over_time(kafka_consumergroup_lag{cluster=\"$cluster\",topic=~\"$topic\",consumergroup=~\"$consumergroup\"}[60s] offset ${compare_window}s) and on(consumergroup,topic,partition) (min_over_time(kafka_consumergroup_current_offset{cluster=\"$cluster\",topic=~\"$topic\",consumergroup=~\"$consumergroup\"}[60s]) >= 0 and on(consumergroup,topic,partition) min_over_time(kafka_consumergroup_current_offset{cluster=\"$cluster\",topic=~\"$topic\",consumergroup=~\"$consumergroup\"}[60s] offset ${compare_window}s) >= 0))) > 10) * ${compare_window}) or (sum by(consumergroup,topic)(clamp_min(kafka_consumergroup_lag{cluster=\"$cluster\",topic=~\"$topic\",consumergroup=~\"$consumergroup\"}, 0)) * 0 - 3 and on(consumergroup,topic) (sum by(consumergroup,topic)((avg_over_time(kafka_consumergroup_lag{cluster=\"$cluster\",topic=~\"$topic\",consumergroup=~\"$consumergroup\"}[60s]) - avg_over_time(kafka_consumergroup_lag{cluster=\"$cluster\",topic=~\"$topic\",consumergroup=~\"$consumergroup\"}[60s] offset ${compare_window}s) and on(consumergroup,topic,partition) (min_over_time(kafka_consumergroup_current_offset{cluster=\"$cluster\",topic=~\"$topic\",consumergroup=~\"$consumergroup\"}[60s]) >= 0 and on(consumergroup,topic,partition) min_over_time(kafka_consumergroup_current_offset{cluster=\"$cluster\",topic=~\"$topic\",consumergroup=~\"$consumergroup\"}[60s] offset ${compare_window}s) >= 0))) > 10)) or (sum by(consumergroup,topic)(clamp_min(kafka_consumergroup_lag{cluster=\"$cluster\",topic=~\"$topic\",consumergroup=~\"$consumergroup\"}, 0)) * 0 - 4 and on(consumergroup,topic) sum by(consumergroup,topic)((avg_over_time(kafka_consumergroup_lag{cluster=\"$cluster\",topic=~\"$topic\",consumergroup=~\"$consumergroup\"}[60s]) - avg_over_time(kafka_consumergroup_lag{cluster=\"$cluster\",topic=~\"$topic\",consumergroup=~\"$consumergroup\"}[60s] offset ${compare_window}s) and on(consumergroup,topic,partition) (min_over_time(kafka_consumergroup_current_offset{cluster=\"$cluster\",topic=~\"$topic\",consumergroup=~\"$consumergroup\"}[60s]) >= 0 and on(consumergroup,topic,partition) min_over_time(kafka_consumergroup_current_offset{cluster=\"$cluster\",topic=~\"$topic\",consumergroup=~\"$consumergroup\"}[60s] offset ${compare_window}s) >= 0))))) or (sum by(consumergroup,topic)(clamp_min(kafka_consumergroup_lag{cluster=\"$cluster\",topic=~\"$topic\",consumergroup=~\"$consumergroup\"}, 0)) * 0 + NaN)",
+          "legendFormat": "__auto",
+          "refId": "C",
+          "range": false,
+          "instant": true,
+          "format": "table"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "editorMode": "code",
+          "expr": "((sum by(consumergroup,topic)(clamp_min(kafka_consumergroup_lag{cluster=\"$cluster\",topic=~\"$topic\",consumergroup=~\"$consumergroup\"}, 0)) / on(topic) group_left() (sum by(topic)(rate(kafka_topic_partition_current_offset{cluster=\"$cluster\",topic=~\"$topic\"}[${compare_window}s])) > 0))) or (sum by(consumergroup,topic)(clamp_min(kafka_consumergroup_lag{cluster=\"$cluster\",topic=~\"$topic\",consumergroup=~\"$consumergroup\"}, 0)) * 0 + NaN)",
+          "legendFormat": "__auto",
+          "refId": "D",
+          "range": false,
+          "instant": true,
+          "format": "table"
+        }
+      ],
+      "transformations": [
+        {
+          "id": "merge",
+          "options": {}
+        },
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": {
+              "Time": true
+            },
+            "indexByName": {
+              "consumergroup": 0,
+              "topic": 1,
+              "Value #A": 2,
+              "Value #B": 3,
+              "Value #C": 4,
+              "Value #D": 5
+            },
+            "renameByName": {
+              "consumergroup": "Consumer Group",
+              "topic": "Topic",
+              "Value #A": "Lag",
+              "Value #B": "成員",
+              "Value #C": "追上需要",
+              "Value #D": "還落後"
+            }
+          }
+        },
+        {
+          "id": "sortBy",
+          "options": {
+            "sort": [
+              {
+                "field": "Lag",
+                "desc": true
+              }
+            ]
+          }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "align": "auto",
+            "cellOptions": {
+              "type": "auto"
+            },
+            "filterable": false,
+            "minWidth": 60
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Consumer Group"
+            },
+            "properties": [
+              {
+                "id": "custom.width",
+                "value": 160
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Lag"
+            },
+            "properties": [
+              {
+                "id": "decimals",
+                "value": 0
+              },
+              {
+                "id": "mappings",
+                "value": [
+                  {
+                    "type": "special",
+                    "options": {
+                      "match": "nan",
+                      "result": {
+                        "text": "—",
+                        "color": "#8e8e8e",
+                        "index": 99
+                      }
+                    }
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "成員"
+            },
+            "properties": [
+              {
+                "id": "decimals",
+                "value": 0
+              },
+              {
+                "id": "thresholds",
+                "value": {
+                  "mode": "absolute",
+                  "steps": [
+                    {
+                      "color": "red",
+                      "value": null
+                    },
+                    {
+                      "color": "green",
+                      "value": 1
+                    }
+                  ]
+                }
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-text"
+                }
+              },
+              {
+                "id": "mappings",
+                "value": [
+                  {
+                    "type": "special",
+                    "options": {
+                      "match": "nan",
+                      "result": {
+                        "text": "—",
+                        "color": "#8e8e8e",
+                        "index": 99
+                      }
+                    }
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "追上需要"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "s"
+              },
+              {
+                "id": "noValue",
+                "value": "資料不足"
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-text"
+                }
+              },
+              {
+                "id": "thresholds",
+                "value": {
+                  "mode": "absolute",
+                  "steps": [
+                    {
+                      "color": "orange",
+                      "value": null
+                    }
+                  ]
+                }
+              },
+              {
+                "id": "mappings",
+                "value": [
+                  {
+                    "type": "value",
+                    "options": {
+                      "-1": {
+                        "text": "已跟上",
+                        "color": "green",
+                        "index": 0
+                      },
+                      "-2": {
+                        "text": "沒人在讀",
+                        "color": "red",
+                        "index": 1
+                      },
+                      "-3": {
+                        "text": "越落越多",
+                        "color": "red",
+                        "index": 2
+                      },
+                      "-4": {
+                        "text": "持平",
+                        "color": "orange",
+                        "index": 3
+                      }
+                    }
+                  },
+                  {
+                    "type": "range",
+                    "options": {
+                      "from": 86400,
+                      "to": null,
+                      "result": {
+                        "text": "> 1 天",
+                        "color": "orange",
+                        "index": 8
+                      }
+                    }
+                  },
+                  {
+                    "type": "special",
+                    "options": {
+                      "match": "nan",
+                      "result": {
+                        "text": "資料不足",
+                        "color": "#8e8e8e",
+                        "index": 99
+                      }
+                    }
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "還落後"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "s"
+              },
+              {
+                "id": "noValue",
+                "value": "沒有新寫入"
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-text"
+                }
+              },
+              {
+                "id": "thresholds",
+                "value": {
+                  "mode": "absolute",
+                  "steps": [
+                    {
+                      "color": "green",
+                      "value": null
+                    },
+                    {
+                      "color": "yellow",
+                      "value": 60
+                    },
+                    {
+                      "color": "red",
+                      "value": 600
+                    }
+                  ]
+                }
+              },
+              {
+                "id": "mappings",
+                "value": [
+                  {
+                    "type": "special",
+                    "options": {
+                      "match": "nan",
+                      "result": {
+                        "text": "沒有新寫入",
+                        "color": "#8e8e8e",
+                        "index": 99
+                      }
+                    }
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm",
+        "footer": {
+          "show": false
+        }
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 10,
+        "w": 12,
+        "h": 8
+      }
+    },
+    {
+      "id": 13,
+      "type": "table",
+      "title": "近 ${compare_window:text} 寫入 / 消費（筆）",
+      "description": "比較區間頭尾相減的筆數（頭尾各取 60s 平均），**寫入 − 消費 = Lag 變化**（四捨五入可能差 1）。\n\n- **寫入、消費**：只算這個 group 有 commit 過的 partition，所以可能比 Topic 表少\n\n**正常**：Lag 變化 ≤ 0。\n\n- Lag 變化 > 0 → 越落越多\n- 消費是負數 → offset 被往回重設（重讀）",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${datasource}"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "editorMode": "code",
+          "expr": "(sum by(consumergroup,topic)((avg_over_time(kafka_consumergroup_lag{cluster=\"$cluster\",topic=~\"$topic\",consumergroup=~\"$consumergroup\"}[60s]) - avg_over_time(kafka_consumergroup_lag{cluster=\"$cluster\",topic=~\"$topic\",consumergroup=~\"$consumergroup\"}[60s] offset ${compare_window}s) and on(consumergroup,topic,partition) (min_over_time(kafka_consumergroup_current_offset{cluster=\"$cluster\",topic=~\"$topic\",consumergroup=~\"$consumergroup\"}[60s]) >= 0 and on(consumergroup,topic,partition) min_over_time(kafka_consumergroup_current_offset{cluster=\"$cluster\",topic=~\"$topic\",consumergroup=~\"$consumergroup\"}[60s] offset ${compare_window}s) >= 0)) + (avg_over_time(kafka_consumergroup_current_offset{cluster=\"$cluster\",topic=~\"$topic\",consumergroup=~\"$consumergroup\"}[60s]) - avg_over_time(kafka_consumergroup_current_offset{cluster=\"$cluster\",topic=~\"$topic\",consumergroup=~\"$consumergroup\"}[60s] offset ${compare_window}s) and on(consumergroup,topic,partition) (min_over_time(kafka_consumergroup_current_offset{cluster=\"$cluster\",topic=~\"$topic\",consumergroup=~\"$consumergroup\"}[60s]) >= 0 and on(consumergroup,topic,partition) min_over_time(kafka_consumergroup_current_offset{cluster=\"$cluster\",topic=~\"$topic\",consumergroup=~\"$consumergroup\"}[60s] offset ${compare_window}s) >= 0)))) or (sum by(consumergroup,topic)(clamp_min(kafka_consumergroup_lag{cluster=\"$cluster\",topic=~\"$topic\",consumergroup=~\"$consumergroup\"}, 0)) * 0 + NaN)",
+          "legendFormat": "__auto",
+          "refId": "A",
+          "range": false,
+          "instant": true,
+          "format": "table"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "editorMode": "code",
+          "expr": "(sum by(consumergroup,topic)((avg_over_time(kafka_consumergroup_current_offset{cluster=\"$cluster\",topic=~\"$topic\",consumergroup=~\"$consumergroup\"}[60s]) - avg_over_time(kafka_consumergroup_current_offset{cluster=\"$cluster\",topic=~\"$topic\",consumergroup=~\"$consumergroup\"}[60s] offset ${compare_window}s) and on(consumergroup,topic,partition) (min_over_time(kafka_consumergroup_current_offset{cluster=\"$cluster\",topic=~\"$topic\",consumergroup=~\"$consumergroup\"}[60s]) >= 0 and on(consumergroup,topic,partition) min_over_time(kafka_consumergroup_current_offset{cluster=\"$cluster\",topic=~\"$topic\",consumergroup=~\"$consumergroup\"}[60s] offset ${compare_window}s) >= 0)))) or (sum by(consumergroup,topic)(clamp_min(kafka_consumergroup_lag{cluster=\"$cluster\",topic=~\"$topic\",consumergroup=~\"$consumergroup\"}, 0)) * 0 + NaN)",
+          "legendFormat": "__auto",
+          "refId": "B",
+          "range": false,
+          "instant": true,
+          "format": "table"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "editorMode": "code",
+          "expr": "(sum by(consumergroup,topic)((avg_over_time(kafka_consumergroup_lag{cluster=\"$cluster\",topic=~\"$topic\",consumergroup=~\"$consumergroup\"}[60s]) - avg_over_time(kafka_consumergroup_lag{cluster=\"$cluster\",topic=~\"$topic\",consumergroup=~\"$consumergroup\"}[60s] offset ${compare_window}s) and on(consumergroup,topic,partition) (min_over_time(kafka_consumergroup_current_offset{cluster=\"$cluster\",topic=~\"$topic\",consumergroup=~\"$consumergroup\"}[60s]) >= 0 and on(consumergroup,topic,partition) min_over_time(kafka_consumergroup_current_offset{cluster=\"$cluster\",topic=~\"$topic\",consumergroup=~\"$consumergroup\"}[60s] offset ${compare_window}s) >= 0)))) or (sum by(consumergroup,topic)(clamp_min(kafka_consumergroup_lag{cluster=\"$cluster\",topic=~\"$topic\",consumergroup=~\"$consumergroup\"}, 0)) * 0 + NaN)",
+          "legendFormat": "__auto",
+          "refId": "C",
+          "range": false,
+          "instant": true,
+          "format": "table"
+        }
+      ],
+      "transformations": [
+        {
+          "id": "merge",
+          "options": {}
+        },
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": {
+              "Time": true
+            },
+            "indexByName": {
+              "consumergroup": 0,
+              "topic": 1,
+              "Value #A": 2,
+              "Value #B": 3,
+              "Value #C": 4
+            },
+            "renameByName": {
+              "consumergroup": "Consumer Group",
+              "topic": "Topic",
+              "Value #A": "寫入",
+              "Value #B": "消費",
+              "Value #C": "Lag 變化"
+            }
+          }
+        },
+        {
+          "id": "sortBy",
+          "options": {
+            "sort": [
+              {
+                "field": "寫入",
+                "desc": true
+              }
+            ]
+          }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "align": "auto",
+            "cellOptions": {
+              "type": "auto"
+            },
+            "filterable": false,
+            "minWidth": 60
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Consumer Group"
+            },
+            "properties": [
+              {
+                "id": "custom.width",
+                "value": 160
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "寫入"
+            },
+            "properties": [
+              {
+                "id": "decimals",
+                "value": 0
+              },
+              {
+                "id": "mappings",
+                "value": [
+                  {
+                    "type": "special",
+                    "options": {
+                      "match": "nan",
+                      "result": {
+                        "text": "—",
+                        "color": "#8e8e8e",
+                        "index": 99
+                      }
+                    }
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "消費"
+            },
+            "properties": [
+              {
+                "id": "decimals",
+                "value": 0
+              },
+              {
+                "id": "mappings",
+                "value": [
+                  {
+                    "type": "special",
+                    "options": {
+                      "match": "nan",
+                      "result": {
+                        "text": "—",
+                        "color": "#8e8e8e",
+                        "index": 99
+                      }
+                    }
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Lag 變化"
+            },
+            "properties": [
+              {
+                "id": "decimals",
+                "value": 0
+              },
+              {
+                "id": "thresholds",
+                "value": {
+                  "mode": "absolute",
+                  "steps": [
+                    {
+                      "color": "green",
+                      "value": null
+                    },
+                    {
+                      "color": "orange",
+                      "value": 10
+                    }
+                  ]
+                }
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-text"
+                }
+              },
+              {
+                "id": "mappings",
+                "value": [
+                  {
+                    "type": "special",
+                    "options": {
+                      "match": "nan",
+                      "result": {
+                        "text": "—",
+                        "color": "#8e8e8e",
+                        "index": 99
+                      }
+                    }
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm",
+        "footer": {
+          "show": false
+        }
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 10,
+        "w": 12,
+        "h": 8
+      }
+    },
+    {
+      "id": 14,
+      "type": "table",
+      "title": "會不會沒讀就被刪",
+      "description": "沒讀的資料離被 Kafka 刪掉還有多遠。\n\n- **Lag 佔保留量**：還沒讀的筆數 ÷ partition 還留著的筆數（最糟的 partition）。接近 100% = 快讀不到就被刪；> 100% = 已掉資料。partition 只留幾筆時常常是 100%，要搭配 Lag 看（細節見 README）。沒人在讀 = 成員 0，% 沒意義不顯示\n\n**正常**：遠低於 70%、沒 commit 的 Partition 0。\n\n- 接近 100% → 加快消費；已掉資料 → 沒讀的已被刪，consumer 依 auto.offset.reset 跳過\n- 沒 commit 的 Partition > 0 → 這些 partition 的 lag 看不到（exporter 回報 -1）",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${datasource}"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "editorMode": "code",
+          "expr": "((max by(consumergroup,topic)(clamp_min(kafka_consumergroup_lag{cluster=\"$cluster\",topic=~\"$topic\",consumergroup=~\"$consumergroup\"}, 0) / on(topic,partition) group_left() clamp_min((kafka_topic_partition_current_offset{cluster=\"$cluster\",topic=~\"$topic\"} - kafka_topic_partition_oldest_offset{cluster=\"$cluster\",topic=~\"$topic\"}), 1)) and on(consumergroup) max by(consumergroup)(kafka_consumergroup_members{cluster=\"$cluster\",consumergroup=~\"$consumergroup\"}) > 0) or ((max by(consumergroup,topic)(clamp_min(kafka_consumergroup_lag{cluster=\"$cluster\",topic=~\"$topic\",consumergroup=~\"$consumergroup\"}, 0) / on(topic,partition) group_left() clamp_min((kafka_topic_partition_current_offset{cluster=\"$cluster\",topic=~\"$topic\"} - kafka_topic_partition_oldest_offset{cluster=\"$cluster\",topic=~\"$topic\"}), 1)) > 1) * 0 - 3 and on(consumergroup) (max by(consumergroup)(kafka_consumergroup_members{cluster=\"$cluster\",consumergroup=~\"$consumergroup\"}) == 0)) or ((max by(consumergroup,topic)(clamp_min(kafka_consumergroup_lag{cluster=\"$cluster\",topic=~\"$topic\",consumergroup=~\"$consumergroup\"}, 0) / on(topic,partition) group_left() clamp_min((kafka_topic_partition_current_offset{cluster=\"$cluster\",topic=~\"$topic\"} - kafka_topic_partition_oldest_offset{cluster=\"$cluster\",topic=~\"$topic\"}), 1)) > 0) * 0 - 2 and on(consumergroup) (max by(consumergroup)(kafka_consumergroup_members{cluster=\"$cluster\",consumergroup=~\"$consumergroup\"}) == 0)) or max by(consumergroup,topic)(clamp_min(kafka_consumergroup_lag{cluster=\"$cluster\",topic=~\"$topic\",consumergroup=~\"$consumergroup\"}, 0) / on(topic,partition) group_left() clamp_min((kafka_topic_partition_current_offset{cluster=\"$cluster\",topic=~\"$topic\"} - kafka_topic_partition_oldest_offset{cluster=\"$cluster\",topic=~\"$topic\"}), 1))) or (sum by(consumergroup,topic)(clamp_min(kafka_consumergroup_lag{cluster=\"$cluster\",topic=~\"$topic\",consumergroup=~\"$consumergroup\"}, 0)) * 0 + NaN)",
+          "legendFormat": "__auto",
+          "refId": "A",
+          "range": false,
+          "instant": true,
+          "format": "table"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "editorMode": "code",
+          "expr": "(count by(consumergroup,topic)(kafka_consumergroup_current_offset{cluster=\"$cluster\",topic=~\"$topic\",consumergroup=~\"$consumergroup\"} == -1) or sum by(consumergroup,topic)(clamp_min(kafka_consumergroup_lag{cluster=\"$cluster\",topic=~\"$topic\",consumergroup=~\"$consumergroup\"}, 0)) * 0) or (sum by(consumergroup,topic)(clamp_min(kafka_consumergroup_lag{cluster=\"$cluster\",topic=~\"$topic\",consumergroup=~\"$consumergroup\"}, 0)) * 0 + NaN)",
+          "legendFormat": "__auto",
+          "refId": "B",
+          "range": false,
+          "instant": true,
+          "format": "table"
+        }
+      ],
+      "transformations": [
+        {
+          "id": "merge",
+          "options": {}
+        },
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": {
+              "Time": true
+            },
+            "indexByName": {
+              "consumergroup": 0,
+              "topic": 1,
+              "Value #A": 2,
+              "Value #B": 3
+            },
+            "renameByName": {
+              "consumergroup": "Consumer Group",
+              "topic": "Topic",
+              "Value #A": "Lag 佔保留量",
+              "Value #B": "沒 commit 的 Partition"
+            }
+          }
+        },
+        {
+          "id": "sortBy",
+          "options": {
+            "sort": [
+              {
+                "field": "Lag 佔保留量",
+                "desc": true
+              }
+            ]
+          }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "align": "auto",
+            "cellOptions": {
+              "type": "auto"
+            },
+            "filterable": false,
+            "minWidth": 60
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Consumer Group"
+            },
+            "properties": [
+              {
+                "id": "custom.width",
+                "value": 160
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Lag 佔保留量"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "percentunit"
+              },
+              {
+                "id": "min",
+                "value": 0
+              },
+              {
+                "id": "max",
+                "value": 1
+              },
+              {
+                "id": "thresholds",
+                "value": {
+                  "mode": "absolute",
+                  "steps": [
+                    {
+                      "color": "green",
+                      "value": null
+                    },
+                    {
+                      "color": "yellow",
+                      "value": 0.7
+                    },
+                    {
+                      "color": "red",
+                      "value": 0.85
+                    }
+                  ]
+                }
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "gauge"
+                }
+              },
+              {
+                "id": "noValue",
+                "value": "—"
+              },
+              {
+                "id": "mappings",
+                "value": [
+                  {
+                    "type": "value",
+                    "options": {
+                      "-2": {
+                        "text": "沒人在讀",
+                        "color": "#8e8e8e",
+                        "index": 0
+                      },
+                      "-3": {
+                        "text": "已掉資料（沒人讀）",
+                        "color": "orange",
+                        "index": 1
+                      }
+                    }
+                  },
+                  {
+                    "type": "range",
+                    "options": {
+                      "from": 1.000001,
+                      "to": null,
+                      "result": {
+                        "text": "已掉資料",
+                        "color": "red",
+                        "index": 9
+                      }
+                    }
+                  },
+                  {
+                    "type": "special",
+                    "options": {
+                      "match": "nan",
+                      "result": {
+                        "text": "—",
+                        "color": "#8e8e8e",
+                        "index": 99
+                      }
+                    }
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "沒 commit 的 Partition"
+            },
+            "properties": [
+              {
+                "id": "decimals",
+                "value": 0
+              },
+              {
+                "id": "thresholds",
+                "value": {
+                  "mode": "absolute",
+                  "steps": [
+                    {
+                      "color": "text",
+                      "value": null
+                    },
+                    {
+                      "color": "orange",
+                      "value": 1
+                    }
+                  ]
+                }
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-text"
+                }
+              },
+              {
+                "id": "mappings",
+                "value": [
+                  {
+                    "type": "special",
+                    "options": {
+                      "match": "nan",
+                      "result": {
+                        "text": "—",
+                        "color": "#8e8e8e",
+                        "index": 99
+                      }
+                    }
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm",
+        "footer": {
+          "show": false
+        }
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 18,
+        "w": 12,
+        "h": 8
+      }
+    },
+    {
+      "id": 15,
+      "type": "table",
+      "title": "有 lag 的 Partition（10 分鐘內有沒有前進）",
+      "description": "有 lag 的 partition，以及 commit 位置 10 分鐘內前進幾筆。\n\n**正常**：前進 > 0。\n\n- 前進 0（紅）→ 卡住：某筆一直處理失敗，或沒有 consumer 分到\n- 只有一兩個 partition lag 特別大 → key 集中（熱點）",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${datasource}"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "editorMode": "code",
+          "expr": "(max by(consumergroup,topic,partition)(kafka_consumergroup_lag{cluster=\"$cluster\",topic=~\"$topic\",consumergroup=~\"$consumergroup\"}) > 0) or (max by(consumergroup,topic,partition)(kafka_consumergroup_lag{cluster=\"$cluster\",topic=~\"$topic\",consumergroup=~\"$consumergroup\"}) * 0 + NaN)",
+          "legendFormat": "__auto",
+          "refId": "A",
+          "range": false,
+          "instant": true,
+          "format": "table"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "editorMode": "code",
+          "expr": "(max by(consumergroup,topic,partition)(kafka_consumergroup_current_offset{cluster=\"$cluster\",topic=~\"$topic\",consumergroup=~\"$consumergroup\"} - kafka_consumergroup_current_offset{cluster=\"$cluster\",topic=~\"$topic\",consumergroup=~\"$consumergroup\"} offset 10m and on(consumergroup,topic,partition) kafka_consumergroup_current_offset{cluster=\"$cluster\",topic=~\"$topic\",consumergroup=~\"$consumergroup\"} offset 10m >= 0)) or (max by(consumergroup,topic,partition)(kafka_consumergroup_lag{cluster=\"$cluster\",topic=~\"$topic\",consumergroup=~\"$consumergroup\"}) * 0 + NaN)",
+          "legendFormat": "__auto",
+          "refId": "B",
+          "range": false,
+          "instant": true,
+          "format": "table"
+        }
+      ],
+      "transformations": [
+        {
+          "id": "merge",
+          "options": {}
+        },
+        {
+          "id": "filterByValue",
+          "options": {
+            "filters": [
+              {
+                "fieldName": "Value #A",
+                "config": {
+                  "id": "greater",
+                  "options": {
+                    "value": 0
+                  }
+                }
+              }
+            ],
+            "type": "include",
+            "match": "all"
+          }
+        },
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": {
+              "Time": true
+            },
+            "indexByName": {
+              "consumergroup": 0,
+              "topic": 1,
+              "partition": 2,
+              "Value #A": 3,
+              "Value #B": 4
+            },
+            "renameByName": {
+              "consumergroup": "Consumer Group",
+              "topic": "Topic",
+              "partition": "Partition",
+              "Value #A": "Lag",
+              "Value #B": "10 分鐘前進"
+            }
+          }
+        },
+        {
+          "id": "sortBy",
+          "options": {
+            "sort": [
+              {
+                "field": "Lag",
+                "desc": true
+              }
+            ]
+          }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "align": "auto",
+            "cellOptions": {
+              "type": "auto"
+            },
+            "filterable": false,
+            "minWidth": 60
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "noValue": "沒有 lag"
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Consumer Group"
+            },
+            "properties": [
+              {
+                "id": "custom.width",
+                "value": 160
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Lag"
+            },
+            "properties": [
+              {
+                "id": "decimals",
+                "value": 0
+              },
+              {
+                "id": "mappings",
+                "value": [
+                  {
+                    "type": "special",
+                    "options": {
+                      "match": "nan",
+                      "result": {
+                        "text": "—",
+                        "color": "#8e8e8e",
+                        "index": 99
+                      }
+                    }
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "10 分鐘前進"
+            },
+            "properties": [
+              {
+                "id": "decimals",
+                "value": 0
+              },
+              {
+                "id": "thresholds",
+                "value": {
+                  "mode": "absolute",
+                  "steps": [
+                    {
+                      "color": "red",
+                      "value": null
+                    },
+                    {
+                      "color": "green",
+                      "value": 1
+                    }
+                  ]
+                }
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-background"
+                }
+              },
+              {
+                "id": "noValue",
+                "value": "10 分鐘前還沒 commit"
+              },
+              {
+                "id": "mappings",
+                "value": [
+                  {
+                    "type": "special",
+                    "options": {
+                      "match": "nan",
+                      "result": {
+                        "text": "10 分鐘前還沒 commit",
+                        "color": "#8e8e8e",
+                        "index": 99
+                      }
+                    }
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm",
+        "footer": {
+          "show": false
+        }
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 18,
+        "w": 12,
+        "h": 8
+      }
+    },
+    {
+      "id": 16,
+      "type": "row",
+      "title": "Topic",
+      "collapsed": false,
+      "gridPos": {
+        "x": 0,
+        "y": 26,
+        "w": 24,
+        "h": 1
+      },
+      "panels": []
+    },
+    {
+      "id": 17,
+      "type": "table",
+      "title": "Topic 規模",
+      "description": "每個 topic 的 partition、副本、大小。\n\n- **磁碟（單份）**：不含副本；未收集 = jmx exporter 沒收 kafka.log:type=Log,name=Size\n\n**正常**：副本不足 0。\n\n- 副本不足 > 0 → 某台 broker 掛了或太慢",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${datasource}"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "editorMode": "code",
+          "expr": "(max by(topic)(kafka_topic_partitions{cluster=\"$cluster\",topic=~\"$topic\",topic!~\"__.*\"})) or (max by(topic)(kafka_topic_partitions{cluster=\"$cluster\",topic=~\"$topic\",topic!~\"__.*\"}) * 0 + NaN)",
+          "legendFormat": "__auto",
+          "refId": "A",
+          "range": false,
+          "instant": true,
+          "format": "table"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "editorMode": "code",
+          "expr": "(max by(topic)(kafka_topic_partition_replicas{cluster=\"$cluster\",topic=~\"$topic\",topic!~\"__.*\"})) or (max by(topic)(kafka_topic_partitions{cluster=\"$cluster\",topic=~\"$topic\",topic!~\"__.*\"}) * 0 + NaN)",
+          "legendFormat": "__auto",
+          "refId": "B",
+          "range": false,
+          "instant": true,
+          "format": "table"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "editorMode": "code",
+          "expr": "(sum by(topic)(max by(topic,partition)(kafka_log_log_size{cluster=\"$cluster\",topic=~\"$topic\",topic!~\"__.*\"}))) or (max by(topic)(kafka_topic_partitions{cluster=\"$cluster\",topic=~\"$topic\",topic!~\"__.*\"}) * 0 + NaN)",
+          "legendFormat": "__auto",
+          "refId": "C",
+          "range": false,
+          "instant": true,
+          "format": "table"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "editorMode": "code",
+          "expr": "(sum by(topic)((kafka_topic_partition_current_offset{cluster=\"$cluster\",topic=~\"$topic\",topic!~\"__.*\"} - kafka_topic_partition_oldest_offset{cluster=\"$cluster\",topic=~\"$topic\",topic!~\"__.*\"}))) or (max by(topic)(kafka_topic_partitions{cluster=\"$cluster\",topic=~\"$topic\",topic!~\"__.*\"}) * 0 + NaN)",
+          "legendFormat": "__auto",
+          "refId": "D",
+          "range": false,
+          "instant": true,
+          "format": "table"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "editorMode": "code",
+          "expr": "(sum by(topic)(kafka_topic_partition_under_replicated_partition{cluster=\"$cluster\",topic=~\"$topic\",topic!~\"__.*\"})) or (max by(topic)(kafka_topic_partitions{cluster=\"$cluster\",topic=~\"$topic\",topic!~\"__.*\"}) * 0 + NaN)",
+          "legendFormat": "__auto",
+          "refId": "E",
+          "range": false,
+          "instant": true,
+          "format": "table"
+        }
+      ],
+      "transformations": [
+        {
+          "id": "merge",
+          "options": {}
+        },
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": {
+              "Time": true
+            },
+            "indexByName": {
+              "topic": 0,
+              "Value #A": 1,
+              "Value #B": 2,
+              "Value #C": 3,
+              "Value #D": 4,
+              "Value #E": 5
+            },
+            "renameByName": {
+              "topic": "Topic",
+              "Value #A": "Partition",
+              "Value #B": "副本數",
+              "Value #C": "磁碟（單份）",
+              "Value #D": "保留訊息",
+              "Value #E": "副本不足"
+            }
+          }
+        },
+        {
+          "id": "sortBy",
+          "options": {
+            "sort": [
+              {
+                "field": "Partition",
+                "desc": true
+              }
+            ]
+          }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "align": "auto",
+            "cellOptions": {
+              "type": "auto"
+            },
+            "filterable": false,
+            "minWidth": 60
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Consumer Group"
+            },
+            "properties": [
+              {
+                "id": "custom.width",
+                "value": 160
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Partition"
+            },
+            "properties": [
+              {
+                "id": "mappings",
+                "value": [
+                  {
+                    "type": "special",
+                    "options": {
+                      "match": "nan",
+                      "result": {
+                        "text": "—",
+                        "color": "#8e8e8e",
+                        "index": 99
+                      }
+                    }
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "副本數"
+            },
+            "properties": [
+              {
+                "id": "mappings",
+                "value": [
+                  {
+                    "type": "special",
+                    "options": {
+                      "match": "nan",
+                      "result": {
+                        "text": "—",
+                        "color": "#8e8e8e",
+                        "index": 99
+                      }
+                    }
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "磁碟（單份）"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "bytes"
+              },
+              {
+                "id": "noValue",
+                "value": "未收集"
+              },
+              {
+                "id": "mappings",
+                "value": [
+                  {
+                    "type": "special",
+                    "options": {
+                      "match": "nan",
+                      "result": {
+                        "text": "未收集",
+                        "color": "#8e8e8e",
+                        "index": 99
+                      }
+                    }
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "保留訊息"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "short"
+              },
+              {
+                "id": "mappings",
+                "value": [
+                  {
+                    "type": "special",
+                    "options": {
+                      "match": "nan",
+                      "result": {
+                        "text": "—",
+                        "color": "#8e8e8e",
+                        "index": 99
+                      }
+                    }
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "副本不足"
+            },
+            "properties": [
+              {
+                "id": "thresholds",
+                "value": {
+                  "mode": "absolute",
+                  "steps": [
+                    {
+                      "color": "green",
+                      "value": null
+                    },
+                    {
+                      "color": "red",
+                      "value": 1
+                    }
+                  ]
+                }
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-text"
+                }
+              },
+              {
+                "id": "mappings",
+                "value": [
+                  {
+                    "type": "special",
+                    "options": {
+                      "match": "nan",
+                      "result": {
+                        "text": "—",
+                        "color": "#8e8e8e",
+                        "index": 99
+                      }
+                    }
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm",
+        "footer": {
+          "show": false
+        }
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 27,
+        "w": 12,
+        "h": 8
+      }
+    },
+    {
+      "id": 18,
+      "type": "table",
+      "title": "Topic 流量（近 ${compare_window:text} 平均）",
+      "description": "每個 topic 的寫入 / 讀取速度。\n\n- **不均度**：最忙的 partition ÷ 平均，1 = 平均分散\n\n**正常**：不均度接近 1。\n\n- 不均度 > 2 → 熱點 partition（key 集中）\n- 讀取遠大於寫入 → 很多 group 讀，或有程式從頭重讀",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${datasource}"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "editorMode": "code",
+          "expr": "(sum by(topic)(rate(kafka_server_brokertopicmetrics_messagesin_total{cluster=\"$cluster\",topic=~\"$topic\",topic!=\"\",topic!~\"__.*\"}[${compare_window}s]))) or (max by(topic)(kafka_topic_partitions{cluster=\"$cluster\",topic=~\"$topic\",topic!~\"__.*\"}) * 0 + NaN)",
+          "legendFormat": "__auto",
+          "refId": "A",
+          "range": false,
+          "instant": true,
+          "format": "table"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "editorMode": "code",
+          "expr": "(sum by(topic)(rate(kafka_server_brokertopicmetrics_bytesin_total{cluster=\"$cluster\",topic=~\"$topic\",topic!=\"\",topic!~\"__.*\"}[${compare_window}s]))) or (max by(topic)(kafka_topic_partitions{cluster=\"$cluster\",topic=~\"$topic\",topic!~\"__.*\"}) * 0 + NaN)",
+          "legendFormat": "__auto",
+          "refId": "B",
+          "range": false,
+          "instant": true,
+          "format": "table"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "editorMode": "code",
+          "expr": "(sum by(topic)(rate(kafka_server_brokertopicmetrics_bytesout_total{cluster=\"$cluster\",topic=~\"$topic\",topic!=\"\",topic!~\"__.*\"}[${compare_window}s]))) or (max by(topic)(kafka_topic_partitions{cluster=\"$cluster\",topic=~\"$topic\",topic!~\"__.*\"}) * 0 + NaN)",
+          "legendFormat": "__auto",
+          "refId": "C",
+          "range": false,
+          "instant": true,
+          "format": "table"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "editorMode": "code",
+          "expr": "(max by(topic)(rate(kafka_topic_partition_current_offset{cluster=\"$cluster\",topic=~\"$topic\",topic!~\"__.*\"}[${compare_window}s])) / (avg by(topic)(rate(kafka_topic_partition_current_offset{cluster=\"$cluster\",topic=~\"$topic\",topic!~\"__.*\"}[${compare_window}s])) > 0)) or (max by(topic)(kafka_topic_partitions{cluster=\"$cluster\",topic=~\"$topic\",topic!~\"__.*\"}) * 0 + NaN)",
+          "legendFormat": "__auto",
+          "refId": "D",
+          "range": false,
+          "instant": true,
+          "format": "table"
+        }
+      ],
+      "transformations": [
+        {
+          "id": "merge",
+          "options": {}
+        },
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": {
+              "Time": true
+            },
+            "indexByName": {
+              "topic": 0,
+              "Value #A": 1,
+              "Value #B": 2,
+              "Value #C": 3,
+              "Value #D": 4
+            },
+            "renameByName": {
+              "topic": "Topic",
+              "Value #A": "寫入（筆/秒）",
+              "Value #B": "寫入",
+              "Value #C": "讀取",
+              "Value #D": "不均度"
+            }
+          }
+        },
+        {
+          "id": "sortBy",
+          "options": {
+            "sort": [
+              {
+                "field": "寫入（筆/秒）",
+                "desc": true
+              }
+            ]
+          }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "align": "auto",
+            "cellOptions": {
+              "type": "auto"
+            },
+            "filterable": false,
+            "minWidth": 60
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Consumer Group"
+            },
+            "properties": [
+              {
+                "id": "custom.width",
+                "value": 160
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "寫入（筆/秒）"
+            },
+            "properties": [
+              {
+                "id": "decimals",
+                "value": 1
+              },
+              {
+                "id": "mappings",
+                "value": [
+                  {
+                    "type": "special",
+                    "options": {
+                      "match": "nan",
+                      "result": {
+                        "text": "—",
+                        "color": "#8e8e8e",
+                        "index": 99
+                      }
+                    }
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "寫入"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "Bps"
+              },
+              {
+                "id": "mappings",
+                "value": [
+                  {
+                    "type": "special",
+                    "options": {
+                      "match": "nan",
+                      "result": {
+                        "text": "—",
+                        "color": "#8e8e8e",
+                        "index": 99
+                      }
+                    }
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "讀取"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "Bps"
+              },
+              {
+                "id": "mappings",
+                "value": [
+                  {
+                    "type": "special",
+                    "options": {
+                      "match": "nan",
+                      "result": {
+                        "text": "—",
+                        "color": "#8e8e8e",
+                        "index": 99
+                      }
+                    }
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "不均度"
+            },
+            "properties": [
+              {
+                "id": "decimals",
+                "value": 1
+              },
+              {
+                "id": "noValue",
+                "value": "—"
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-text"
+                }
+              },
+              {
+                "id": "thresholds",
+                "value": {
+                  "mode": "absolute",
+                  "steps": [
+                    {
+                      "color": "green",
+                      "value": null
+                    },
+                    {
+                      "color": "yellow",
+                      "value": 1.5
+                    },
+                    {
+                      "color": "red",
+                      "value": 2
+                    }
+                  ]
+                }
+              },
+              {
+                "id": "mappings",
+                "value": [
+                  {
+                    "type": "special",
+                    "options": {
+                      "match": "nan",
+                      "result": {
+                        "text": "—",
+                        "color": "#8e8e8e",
+                        "index": 99
+                      }
+                    }
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm",
+        "footer": {
+          "show": false
+        }
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 27,
+        "w": 12,
+        "h": 8
+      }
+    },
+    {
+      "id": 19,
+      "type": "row",
+      "title": "連線與副本",
+      "collapsed": false,
+      "gridPos": {
+        "x": 0,
+        "y": 35,
+        "w": 24,
+        "h": 1
+      },
+      "panels": []
+    },
+    {
+      "id": 20,
+      "type": "table",
+      "title": "連線的 client 程式",
+      "description": "連線中的 client 函式庫與版本（client 自己回報）。\n\n**正常**：版本一致。\n\n- 很舊的版本 → 可能有已知 bug\n- unknown → 太舊的 client，或連線還沒完成",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${datasource}"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "editorMode": "code",
+          "expr": "sum by(client,listener)((label_join(kafka_server_socket_server_metrics_client_connections{cluster=\"$cluster\"}, \"client\", \" \", \"clientsoftwarename\", \"clientsoftwareversion\") or label_replace(label_replace({__name__=~\"kafka_server_socket_server_metrics_clientsoftwarename_.+_connections\",cluster=\"$cluster\"}, \"client\", \"$1 $2\", \"__name__\", \"kafka_server_socket_server_metrics_clientsoftwarename_(.+)_clientsoftwareversion_(.+)_listener_(.+)_networkprocessor_[0-9]+_connections\"), \"listener\", \"$1\", \"__name__\", \".+_listener_(.+)_networkprocessor_[0-9]+_connections\")))",
+          "legendFormat": "__auto",
+          "refId": "A",
+          "range": false,
+          "instant": true,
+          "format": "table"
+        }
+      ],
+      "transformations": [
+        {
+          "id": "merge",
+          "options": {}
+        },
+        {
+          "id": "filterByValue",
+          "options": {
+            "filters": [
+              {
+                "fieldName": "Value",
+                "config": {
+                  "id": "greater",
+                  "options": {
+                    "value": 0
+                  }
+                }
+              }
+            ],
+            "type": "include",
+            "match": "all"
+          }
+        },
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": {
+              "Time": true
+            },
+            "indexByName": {
+              "client": 0,
+              "listener": 1,
+              "Value": 2
+            },
+            "renameByName": {
+              "client": "Client 程式 / 版本",
+              "listener": "Listener",
+              "Value": "連線數"
+            }
+          }
+        },
+        {
+          "id": "sortBy",
+          "options": {
+            "sort": [
+              {
+                "field": "連線數",
+                "desc": true
+              }
+            ]
+          }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "align": "auto",
+            "cellOptions": {
+              "type": "auto"
+            },
+            "filterable": false,
+            "minWidth": 60
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "noValue": "沒有資料：jmx exporter 設定沒收 kafka.server:type=socket-server-metrics（見 README）"
+        },
+        "overrides": []
+      },
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm",
+        "footer": {
+          "show": false
+        }
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 36,
+        "w": 12,
+        "h": 8
+      }
+    },
+    {
+      "id": 21,
+      "type": "table",
+      "title": "副本沒跟上的 Partition",
+      "description": "同步副本（ISR）比副本數少的 partition。\n\n**正常**：全部正常。\n\n- 同一台 broker 的 partition 都在這 → 那台掛了或太慢",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${datasource}"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "editorMode": "code",
+          "expr": "max by(topic,partition)(kafka_topic_partition_replicas{cluster=\"$cluster\",topic=~\"$topic\"}) - max by(topic,partition)(kafka_topic_partition_in_sync_replica{cluster=\"$cluster\",topic=~\"$topic\"}) > 0",
+          "legendFormat": "__auto",
+          "refId": "A",
+          "range": false,
+          "instant": true,
+          "format": "table"
+        }
+      ],
+      "transformations": [
+        {
+          "id": "merge",
+          "options": {}
+        },
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": {
+              "Time": true
+            },
+            "indexByName": {
+              "topic": 0,
+              "partition": 1,
+              "Value": 2
+            },
+            "renameByName": {
+              "topic": "Topic",
+              "partition": "Partition",
+              "Value": "少幾個副本"
+            }
+          }
+        },
+        {
+          "id": "sortBy",
+          "options": {
+            "sort": [
+              {
+                "field": "少幾個副本",
+                "desc": true
+              }
+            ]
+          }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "align": "auto",
+            "cellOptions": {
+              "type": "auto"
+            },
+            "filterable": false,
+            "minWidth": 60
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "noValue": "全部正常"
+        },
+        "overrides": []
+      },
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm",
+        "footer": {
+          "show": false
+        }
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 36,
+        "w": 12,
+        "h": 8
+      }
+    },
+    {
+      "id": 22,
+      "type": "bargauge",
+      "title": "Leader 不在首選 broker",
+      "description": "leader 不在首選副本上的 partition 數。\n\n**正常**：0。\n\n- 長時間 > 0 → 負載集中在部分 broker，請維運處理",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${datasource}"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "editorMode": "code",
+          "expr": "topk(15, sum by(topic)(1 - kafka_topic_partition_leader_is_preferred{cluster=\"$cluster\",topic=~\"$topic\"}) > 0)",
+          "legendFormat": "{{topic}}",
+          "refId": "A",
+          "range": false,
+          "instant": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "min": 0,
+          "color": {
+            "mode": "continuous-BlYlRd"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "decimals": 0,
+          "noValue": "全部在首選 broker"
+        },
+        "overrides": []
+      },
+      "options": {
+        "orientation": "horizontal",
+        "displayMode": "basic",
+        "showUnfilled": true,
+        "valueMode": "text",
+        "namePlacement": "left",
+        "sizing": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        }
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 44,
+        "w": 12,
+        "h": 8
+      }
+    },
+    {
+      "id": 23,
+      "type": "bargauge",
+      "title": "磁碟幾小時後滿",
+      "description": "照最近 6 小時剩餘空間減少的速度推估；空間沒在減少的不列。\n\n**正常**：> 72 小時，或不列出。\n\n- < 24 小時 → 請維運擴容或調 retention",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${datasource}"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "editorMode": "code",
+          "expr": "bottomk(10, (node_filesystem_avail_bytes{cluster=\"$cluster\",fstype!~\"tmpfs|overlay|squashfs|proc|sysfs|cgroup2?|nsfs|autofs\"} / -deriv(node_filesystem_avail_bytes{cluster=\"$cluster\",fstype!~\"tmpfs|overlay|squashfs|proc|sysfs|cgroup2?|nsfs|autofs\"}[6h])) / 3600 > 0)",
+          "legendFormat": "{{instance}} {{mountpoint}}",
+          "refId": "A",
+          "range": false,
+          "instant": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "h",
+          "min": 0,
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "red",
+                "value": null
+              },
+              {
+                "color": "yellow",
+                "value": 24
+              },
+              {
+                "color": "green",
+                "value": 72
+              }
+            ]
+          },
+          "decimals": 0,
+          "noValue": "空間沒在減少"
+        },
+        "overrides": []
+      },
+      "options": {
+        "orientation": "horizontal",
+        "displayMode": "basic",
+        "showUnfilled": true,
+        "valueMode": "text",
+        "namePlacement": "left",
+        "sizing": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        }
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 44,
+        "w": 12,
+        "h": 8
+      }
+    }
+  ]
+}
