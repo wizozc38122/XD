@@ -56,12 +56,42 @@ def per_pod(expr, by=BY_CT):
     return f'sum by (namespace, pod) ({one(expr, by)})'
 
 
+def cpu_ct(w):
+    """CPU used per container (cores)."""
+    return one(f'rate(container_cpu_usage_seconds_total{{{CT}}}[{w}])')
+
+
+def mem_ct():
+    """Memory working set per container (bytes)."""
+    return one(f'container_memory_working_set_bytes{{{CT}}}')
+
+
+def spec(kind, resource):
+    """Request or limit per container. Containers without one have no series at all."""
+    return one(f'kube_pod_container_resource_{kind}{{resource="{resource}", {NSF}}}')
+
+
 def cpu(w):
-    return per_pod(f'rate(container_cpu_usage_seconds_total{{{CT}}}[{w}])')
+    return f'sum by (namespace, pod) ({cpu_ct(w)})'
 
 
-def cpu_req():
-    return f'sum by (namespace, pod) (kube_pod_container_resource_requests{{resource="cpu", {NSF}}})'
+def mem():
+    return f'sum by (namespace, pod) ({mem_ct()})'
+
+
+def total(kind, resource):
+    """Sum of requests or limits per pod (only containers that set one)."""
+    return f'sum by (namespace, pod) ({spec(kind, resource)})'
+
+
+def used_over_limit(used_ct, resource):
+    """Usage ÷ limit of the container closest to its limit. Containers without a limit are skipped."""
+    return f'max by (namespace, pod) ({used_ct} / on (namespace, pod, container) {spec("limits", resource)})'
+
+
+def no_limit(used_ct, resource):
+    """Running containers per pod that have no limit for this resource."""
+    return f'count by (namespace, pod) ({used_ct} unless on (namespace, pod, container) {spec("limits", resource)})'
 
 
 def throttle(w):
@@ -71,9 +101,11 @@ def throttle(w):
 
 
 def mem_limit():
-    ws = one(f'container_memory_working_set_bytes{{{CT}}}')
-    limit = one(f'kube_pod_container_resource_limits{{resource="memory", {NSF}}}')
-    return f'max by (namespace, pod) ({ws} / on (namespace, pod, container) {limit})'
+    return used_over_limit(mem_ct(), "memory")
+
+
+def cpu_limit(w):
+    return used_over_limit(cpu_ct(w), "cpu")
 
 
 def restarts():
@@ -119,7 +151,7 @@ def n_softirq(w):
 
 
 def n_mem():
-    return 'max by (instance) (node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes)'
+    return 'max by (instance) (1 - node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes)'
 
 
 def n_conntrack():
@@ -222,12 +254,23 @@ def ts(line, title, expr, legend, unit, description, w=12, h=8):
     }, w, h)
 
 
-def table(line, title, key_cols, columns, description, sort_by, w=24, h=12, key_rename=None, key_links=None):
-    """columns: list of (name, expr, unit, thresholds or None, decimals, value mappings or None)."""
+def table(line, title, key_cols, columns, description, sort_by, w=24, h=12, key_rename=None, key_links=None, base=None):
+    """columns: list of (name, expr, unit, thresholds or None, decimals, value mappings or None[, text when empty]).
+
+    base: a query that returns exactly the rows the table should show. Each column is limited to those
+    rows, and falls back to NaN for rows it has no value for, shown as the given text (default "—").
+    Without it Grafana drops a whole column when its query returns nothing."""
     targets, rename, index, overrides = [], {}, {}, []
     for i, k in enumerate(key_cols):
         index[k] = i
-    for i, (name, expr, unit, thr, decimals, mappings) in enumerate(columns):
+    for i, col in enumerate(columns):
+        name, expr, unit, thr, decimals, mappings = col[:6]
+        na = col[6] if len(col) > 6 else "—"
+        if base:
+            keys = ", ".join(key_cols)
+            expr = f"(({expr}) and on ({keys}) ({base})) or ({base} + NaN)"
+            mappings = (mappings or []) + [{"type": "special", "options": {
+                "match": "nan", "result": {"text": na, "color": "#8e8e8e", "index": 99}}}]
         ref = chr(65 + i)
         targets.append({"refId": ref, "datasource": DS, "expr": expr, "legendFormat": "",
                         "range": False, "instant": True, "format": "table"})
@@ -268,18 +311,9 @@ V_CLUSTER_WL = "叢集內每一個 Workload（該 Workload 所有 Pod 合計）"
 
 # ---------------------------------------------------------------- guide
 L = Line()
-text(L, """### 叢集風險總覽：先找出嫌疑對象，再進細節 Dashboard 查證
-一個資料來源 = 一個 OCP 叢集。上方切換資料來源就是切換叢集。
-
-**建議流程**
-1. **第 1 區【Node】**：先看哪幾台 Node 正在變吃緊（conntrack、磁碟延遲、網路丟包、iowait）。
-2. **第 2 區【Workload】風險排行**：表頭可點擊排序，每欄右側的漏斗可以篩選。紅色、黃色格子就是要注意的地方。
-3. **點表格中的 `workload` 名稱**：會帶著 namespace、workload 與目前時間範圍，開啟「OCP 壓測影響評估」細節 Dashboard，查他所在 Node 有沒有被拖慢（細節 Dashboard 目前只支援 Deployment）。
-4. **第 3、4 區 Top 10 趨勢**：看是誰在什麼時間點飆起來，對照第 1 區 Node 變吃緊的時間。
-
-**百分比的分母都寫在欄位名稱的「÷ …」**：÷ 自己的 Request / Limit 是跟他自己的設定比；÷ 總核數、總記憶體、容量、表格上限是跟 Node 的容量比。
-
-**注意**：表格是時間範圍**結束前 5 分鐘**的快照，要看壓測當下，請把時間範圍的結束點拉到壓測期間。用量排名高只代表是大戶，不代表造成影響，要進細節 Dashboard 對照 Node 壓力的時間點。預設排除 `openshift*`、`kube-*` 系統 namespace，可在上方「排除的 Namespace」清空。""", h=11)
+text(L, """**叢集風險總覽**：先找出嫌疑的 Node 與 Workload，再點 workload 名稱進細節 Dashboard 查證。上方切換資料來源 = 切換叢集。
+① 哪台 Node 吃緊 → ② 哪個 Workload 是大戶（表頭可排序、漏斗可篩選，紅 / 黃格要注意）→ ③④ Top 10 趨勢看是什麼時候飆起來。
+表格是時間範圍**結束前 5 分鐘**的快照；百分比都是 **用量 ÷ 欄名寫的分母**。預設排除 `openshift*`、`kube-*` namespace。""", h=3)
 L.newline()
 
 # ---------------------------------------------------------------- 1 nodes
@@ -288,7 +322,7 @@ L = Line()
 table(L, "【Node】各 Node 狀態（時間範圍結束前 5 分鐘）", ["instance"], [
     ("Pod 數", n_pods(), "none", None, 0, None),
     ("CPU 使用率（÷ 總核數）", n_cpu(W5), "percentunit", steps((Y, 0.8), (RD, 0.9)), 1, None),
-    ("剩餘記憶體（÷ 總記憶體）", n_mem(), "percentunit", steps((Y, 0.1), (G, 0.2), base=RD), 1, None),
+    ("記憶體使用率（÷ 總記憶體）", n_mem(), "percentunit", steps((Y, 0.8), (RD, 0.9)), 1, None),
     ("conntrack（÷ 表格上限）", n_conntrack(), "percentunit", steps((Y, 0.5), (RD, 0.7)), 1, None),
     ("磁碟延遲（最慢的磁碟）", n_disk_latency(W5), "s", steps((Y, 0.01), (RD, 0.02)), None, None),
     ("磁碟空間（÷ 容量，最高）", n_fs(), "percentunit", steps((Y, 0.8), (RD, 0.85)), 1, None),
@@ -301,7 +335,8 @@ table(L, "【Node】各 Node 狀態（時間範圍結束前 5 分鐘）", ["inst
         "每台 Node 共用資源的目前狀態。conntrack、磁碟、網卡都是每台 Node 一份，所有 Pod 共用。"
         "「網路封包處理 CPU」是核心處理網路封包（softirq）的 CPU，不算在 Pod 的 CPU limit 裡。",
         "紅色、黃色就是正在吃緊的 Node。記下 Node 名稱，再到第 2 區找跑在上面的大戶，或進細節 Dashboard 看該 Node 的 Top 10 鄰居。"),
-    sort_by="conntrack（÷ 表格上限）", h=10, key_rename={"instance": "Node"})
+    sort_by="conntrack（÷ 表格上限）", h=10, key_rename={"instance": "Node"},
+    base="max by (instance) (node_memory_MemTotal_bytes) * 0")
 L.newline()
 L = Line()
 NODE_HOW = "看哪台 Node 在什麼時間往上飆，再對照第 4 區 Workload 的 Top 10 趨勢，找同一時間上升的是誰。"
@@ -325,44 +360,88 @@ DETAIL_LINK = [{"title": "開啟此 Workload 的細節 Dashboard",
                 "url": "/d/" + DETAIL_UID + "/?var-datasource=${datasource}"
                        "&var-namespace=${__data.fields.namespace}"
                        "&var-workload=${__data.fields.workload}&${__url_time_range}"}]
+WL_KEYS = ["namespace", "workload", "workload_type"]
+WL_ROWS = f'count by (namespace, workload, workload_type) ({WL}) * 0'
+NO_LIMIT = "沒設 Limit"
 L = Line()
-table(L, "【Workload】風險排行（時間範圍結束前 5 分鐘）", ["namespace", "workload", "workload_type"], [
+table(L, "【Workload】CPU / 記憶體：用量與 Limit（時間範圍結束前 5 分鐘）", WL_KEYS, [
     ("Pod 數", f'count by (namespace, workload, workload_type) ({WL})', "none", None, 0, None),
     ("CPU 用量（核）", by_wl(cpu(W5)), "none", None, 2, None),
-    ("CPU（÷ 自己的 Request）", f'{by_wl(cpu(W5))} / {by_wl(cpu_req())}', "percentunit", steps((Y, 1.0), (RD, 1.5)), 0, None),
-    ("最高 CPU throttling", by_wl(throttle(W5), "max"), "percentunit", steps((Y, 0.25), (RD, 0.5)), 0, None),
-    ("記憶體（÷ 自己的 Limit，最高）", by_wl(mem_limit(), "max"), "percentunit", steps((Y, 0.8), (RD, 0.9)), 0, None),
-    ("重啟（1 小時）", by_wl(restarts()), "none", steps((Y, 1), (RD, 5)), 0, None),
+    ("CPU Limit（核）", by_wl(total("limits", "cpu")), "none", None, 2, None, NO_LIMIT),
+    ("CPU 用量 ÷ Limit（最高的容器）", by_wl(cpu_limit(W5), "max"), "percentunit", steps((Y, 0.8), (RD, 0.95)), 0, None, NO_LIMIT),
+    ("CPU throttling（最高的 Pod）", by_wl(throttle(W5), "max"), "percentunit", steps((Y, 0.25), (RD, 0.5)), 0, None),
+    ("記憶體用量", by_wl(mem()), "bytes", None, 1, None),
+    ("記憶體 Limit", by_wl(total("limits", "memory")), "bytes", None, 1, None, NO_LIMIT),
+    ("記憶體用量 ÷ Limit（最高的容器）", by_wl(mem_limit(), "max"), "percentunit", steps((Y, 0.8), (RD, 0.9)), 0, None, NO_LIMIT),
+], desc(V_CLUSTER_WL,
+        "每個 Deployment / StatefulSet / DaemonSet 的 CPU、記憶體用量，以及離自己的 Limit 還有多遠。"
+        "用量、Limit 是所有 Pod 加總；「用量 ÷ Limit」是最接近 Limit 的那個容器用了幾 %。",
+        "CPU 用量 ÷ Limit 接近 100% → 會被 throttling 變慢（看 throttling 欄）；"
+        "記憶體用量 ÷ Limit 接近 100% → 會被 OOMKilled。"
+        "「沒設 Limit」= 沒有容器設 Limit，用量沒有上限，看下方「沒設 Limit 的 Workload」。"),
+    sort_by="CPU 用量（核）", h=12, key_links={"workload": DETAIL_LINK}, base=WL_ROWS)
+L.newline()
+
+L = Line()
+NOLIM_ROWS = (f'max by (namespace, workload, workload_type) (({no_limit(cpu_ct(W5), "cpu")} or {no_limit(mem_ct(), "memory")})'
+              f' * on (namespace, pod) group_left (workload, workload_type) {WL}) * 0')
+table(L, "【Workload】沒設 Limit 的 Workload：用量沒有上限，會吃掉 Node 的資源（時間範圍結束前 5 分鐘）", WL_KEYS, [
+    ("沒設 CPU Limit 的容器", by_wl(no_limit(cpu_ct(W5), "cpu")), "none", steps((Y, 1)), 0, None, "0"),
+    ("沒設記憶體 Limit 的容器", by_wl(no_limit(mem_ct(), "memory")), "none", steps((Y, 1)), 0, None, "0"),
+    ("CPU 用量（核）", by_wl(cpu(W5)), "none", None, 2, None),
+    ("CPU Request（核）", by_wl(total("requests", "cpu")), "none", None, 2, None, "沒設 Request"),
+    ("CPU 用量 ÷ Request", f'{by_wl(cpu(W5))} / {by_wl(total("requests", "cpu"))}', "percentunit",
+     steps((Y, 1.0), (RD, 2.0)), 0, None, "沒設 Request"),
+    ("記憶體用量", by_wl(mem()), "bytes", None, 1, None),
+    ("記憶體 Request", by_wl(total("requests", "memory")), "bytes", None, 1, None, "沒設 Request"),
+    ("記憶體用量 ÷ Request", f'{by_wl(mem())} / {by_wl(total("requests", "memory"))}', "percentunit",
+     steps((Y, 1.0), (RD, 2.0)), 0, None, "沒設 Request"),
+], desc(V_CLUSTER_WL,
+        "有容器沒設 CPU 或記憶體 Limit 的 Workload。沒設 Limit 的容器可以一直用到 Node 沒有資源為止，"
+        "所以只能跟 Request（排程時保證的量）比。容器數是所有 Pod 加總。",
+        "用量 ÷ Request 超過 100% → 正在用 Node 上別人沒用到的資源，Node 一忙起來就會互搶；"
+        "遠超過 → 建議補上 Limit，或把 Request 調到接近實際用量。"),
+    sort_by="CPU 用量（核）", h=9, key_links={"workload": DETAIL_LINK}, base=NOLIM_ROWS)
+L.newline()
+
+L = Line()
+table(L, "【Workload】共用資源與重啟：limit 管不到，會影響同 Node 鄰居（時間範圍結束前 5 分鐘）", WL_KEYS, [
+    ("Pod 數", f'count by (namespace, workload, workload_type) ({WL})', "none", None, 0, None),
+    ("重啟（1 小時）", by_wl(restarts()), "none", steps((Y, 1), (RD, 5)), 0, None, "0"),
     ("網路流量", by_wl(net(W5)), "Bps", None, 1, None),
     ("網路丟包", by_wl(drops(W5)), "pps", steps((Y, 1), (RD, 50)), 1, None),
-    ("磁碟寫入", by_wl(disk_write(W5)), "Bps", None, 1, None),
-    ("可寫層用量", by_wl(fs_usage()), "bytes", None, 1, None),
+    ("磁碟寫入", by_wl(disk_write(W5)), "Bps", None, 1, None, "沒收集"),
+    ("可寫層用量", by_wl(fs_usage()), "bytes", None, 1, None, "沒收集"),
 ], desc(V_CLUSTER_WL,
-        "全叢集每個 Deployment / StatefulSet / DaemonSet 的用量與風險指標。",
-        "點表頭排序找出前幾名；紅色、黃色格子要注意。CPU ÷ 自己的 Request 超過 100% 代表在借用 Node 的共用 CPU；"
-        "網路丟包、磁碟寫入、可寫層用量是 limit 管不到、會影響同 Node 鄰居的資源。點 workload 名稱進細節 Dashboard 查證。"),
-    sort_by="CPU（÷ 自己的 Request）", h=14, key_links={"workload": DETAIL_LINK})
+        "網路、本機磁碟這些整台 Node 共用、limit 管不到的資源，以及重啟次數。",
+        "點表頭排序找大戶；網路丟包、重啟是紅 / 黃格要注意。磁碟寫入、可寫層「沒收集」= 叢集沒有收集 Pod 層級的磁碟指標。"),
+    sort_by="網路流量", h=10, key_links={"workload": DETAIL_LINK}, base=WL_ROWS)
 L.newline()
 
 # ---------------------------------------------------------------- 3/4 workload trends
 WL_HOW = "看誰在什麼時間往上飆，對照第 1 區 Node 變吃緊的時間點；右側圖例依最大值排序。"
-row("3. 【Workload】limit 相關 Top 10 趨勢（主要影響他自己）")
+row("3. 【Workload】Limit 相關 Top 10 趨勢（主要影響他自己）")
 L = Line()
-ts(L, "【Workload】CPU ÷ 自己的 Request Top 10",
-   f'topk(10, {by_wl(cpu(WR))} / {by_wl(cpu_req())})', "{{namespace}}/{{workload}}", "percentunit",
-   desc(V_CLUSTER_WL, "CPU 用量占保證額度的比例。超過 100% 代表在借用 Node 的閒置 CPU。", WL_HOW))
-ts(L, "【Workload】最高 CPU throttling Top 10",
+ts(L, "【Workload】CPU 用量 ÷ Limit（最高的容器）Top 10",
+   f'topk(10, {by_wl(cpu_limit(WR), "max")})', "{{namespace}}/{{workload}}", "percentunit",
+   desc(V_CLUSTER_WL, "最接近 CPU Limit 的容器用了 Limit 的幾 %，接近 100% 會被 throttling。沒設 Limit 的不在這裡。", WL_HOW))
+ts(L, "【Workload】CPU throttling（最高的 Pod）Top 10",
    f'topk(10, {by_wl(throttle(WR), "max")})', "{{namespace}}/{{workload}}", "percentunit",
-   desc(V_CLUSTER_WL, "該 Workload 中被 limit 擋最多的 Pod 的節流比例。只影響他自己。", WL_HOW))
-ts(L, "【Workload】記憶體 ÷ 自己的 Limit（最高）Top 10",
+   desc(V_CLUSTER_WL, "該 Workload 中被 CPU Limit 擋最多的 Pod 的節流比例。只影響他自己。", WL_HOW))
+ts(L, "【Workload】記憶體用量 ÷ Limit（最高的容器）Top 10",
    f'topk(10, {by_wl(mem_limit(), "max")})', "{{namespace}}/{{workload}}", "percentunit",
-   desc(V_CLUSTER_WL, "最接近 memory limit 的容器的使用比例，到 100% 會被 OOMKilled。", WL_HOW))
+   desc(V_CLUSTER_WL, "最接近記憶體 Limit 的容器用了 Limit 的幾 %，到 100% 會被 OOMKilled。沒設 Limit 的不在這裡。", WL_HOW))
 ts(L, "【Workload】重啟次數 Top 10（每 1 小時）",
    f'topk(10, {by_wl(restarts())})', "{{namespace}}/{{workload}}", "none",
    desc(V_CLUSTER_WL, "過去 1 小時的重啟次數。", WL_HOW))
 L.newline()
 row("4. 【Workload】共用資源 Top 10 趨勢（limit 管不到，會影響同 Node 鄰居）")
 L = Line()
+# 只算沒設 CPU Limit 的容器:這些容器的 CPU 沒有上限
+NOLIM_CPU = (f'sum by (namespace, pod) ({cpu_ct(WR)} unless on (namespace, pod, container) {spec("limits", "cpu")})')
+ts(L, "【Workload】沒設 CPU Limit 的容器 CPU 用量（核）Top 10",
+   f'topk(10, {by_wl(NOLIM_CPU)})', "{{namespace}}/{{workload}}", "none",
+   desc(V_CLUSTER_WL, "沒設 CPU Limit 的容器用了幾核。這些容器沒有上限，Node 忙的時候會跟鄰居搶 CPU。", WL_HOW))
 ts(L, "【Workload】網路流量 Top 10",
    f'topk(10, {by_wl(net(WR))})', "{{namespace}}/{{workload}}", "Bps",
    desc(V_CLUSTER_WL, "送出加接收的網路流量，所在 Node 的網卡由所有 Pod 共用。", WL_HOW))

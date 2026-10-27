@@ -48,14 +48,19 @@ OCP 沒有特別設定時，不會限制 Pod 的網路頻寬與磁碟讀寫速�
 
 | 區塊 | 內容 |
 |---|---|
-| 1.【Node】各 Node 狀態 | 每台 Node 的 CPU（÷ 總核數）、剩餘記憶體（÷ 總記憶體）、conntrack（÷ 表格上限）、磁碟延遲、磁碟空間（÷ 容量）、網路丟包、iowait、網路封包處理 CPU、壓力狀態，加上各項 Top 10 趨勢 |
-| 2.【Workload】風險排行 | 每個 Deployment / StatefulSet / DaemonSet 的 Pod 數、CPU 用量、CPU ÷ 自己的 Request、throttling、記憶體 ÷ 自己的 Limit、重啟、網路流量與丟包、磁碟寫入、可寫層用量 |
-| 3.【Workload】limit 相關 Top 10 | 主要影響他自己的指標隨時間的變化 |
-| 4.【Workload】共用資源 Top 10 | limit 管不到、會影響同 Node 鄰居的指標隨時間的變化 |
+| 1.【Node】各 Node 狀態 | 每台 Node 的 CPU 使用率（÷ 總核數）、記憶體使用率（÷ 總記憶體）、conntrack（÷ 表格上限）、磁碟延遲、磁碟空間（÷ 容量）、網路丟包、iowait、網路封包處理 CPU、壓力狀態，加上各項 Top 10 趨勢 |
+| 2.【Workload】CPU / 記憶體：用量與 Limit | 每個 Deployment / StatefulSet / DaemonSet 的 CPU 用量、CPU Limit、**CPU 用量 ÷ Limit**、throttling、記憶體用量、記憶體 Limit、**記憶體用量 ÷ Limit** |
+| 2.【Workload】沒設 Limit 的 Workload | 有容器沒設 CPU 或記憶體 Limit 的 Workload：幾個容器沒設、用量、Request、**用量 ÷ Request** |
+| 2.【Workload】共用資源與重啟 | 重啟、網路流量與丟包、磁碟寫入、可寫層用量 |
+| 3.【Workload】Limit 相關 Top 10 | CPU / 記憶體用量 ÷ Limit、throttling、重啟隨時間的變化 |
+| 4.【Workload】共用資源 Top 10 | 沒設 CPU Limit 的容器 CPU 用量、網路、磁碟這些 limit 管不到、會影響同 Node 鄰居的指標隨時間的變化 |
 
 注意事項：
 
 - **表格是快照**：表格取的是時間範圍**結束前 5 分鐘**。要看壓測當下的排名，把時間範圍的結束點拉到壓測期間；Top 10 趨勢圖則會顯示整段時間。
+- **用量 ÷ Limit**：Workload 的用量、Limit 是所有 Pod 加總；「用量 ÷ Limit」取最接近 Limit 的那個容器。CPU 接近 100% 會被 throttling，記憶體到 100% 會被 OOMKilled。
+- **沒設 Limit**：沒設 Limit 的容器用量沒有上限，可以一直用到 Node 沒資源，所以不放在「÷ Limit」裡比，另外列在「沒設 Limit 的 Workload」，改跟 Request 比。用量 ÷ Request 超過 100% 代表正在用 Node 上別人沒用到的資源，Node 一忙就會互搶。
+- **表格格子是灰字**（—、沒設 Limit、沒設 Request、沒收集）：那一格算不出來，文字就是原因；欄位不會因為沒資料而消失。
 - **排名高不等於造成影響**：只代表是大戶，要進細節 Dashboard 對照 Node 壓力的時間點。
 - **預設排除系統 namespace**：`openshift.*|kube-.*`，可在上方「排除的 Namespace」修改或清空。
 - **點擊跳轉只支援 Deployment**：細節 Dashboard 以 Pod 名稱規則對應 Deployment，StatefulSet、DaemonSet 點進去會沒有資料。
