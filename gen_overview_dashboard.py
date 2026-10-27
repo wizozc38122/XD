@@ -35,7 +35,7 @@ WL = ('max by (namespace, pod, workload, workload_type) ('
 def by_wl(per_pod, agg="sum"):
     """Rolls a per-pod vector (labels: namespace, pod) up to its workload."""
     return (f'{agg} by (namespace, workload, workload_type) ('
-            f'{per_pod} * on (namespace, pod) group_left (workload, workload_type) {WL})')
+            f'({per_pod}) * on (namespace, pod) group_left (workload, workload_type) {WL})')
 
 
 # ---- per-pod building blocks (result labels: namespace, pod)
@@ -113,7 +113,7 @@ K_CT = "namespace, workload, workload_type, container"
 
 def by_wl_ct(per_ct, agg="sum"):
     """Rolls a per-container vector up to (workload, container): the same container across all pods."""
-    return f'{agg} by ({K_CT}) ({per_ct} * on (namespace, pod) group_left (workload, workload_type) {WL})'
+    return f'{agg} by ({K_CT}) (({per_ct}) * on (namespace, pod) group_left (workload, workload_type) {WL})'
 
 
 def limit_state(used_ct, resource):
@@ -475,7 +475,7 @@ def ct_over_request(used_ct, resource):
     return f'{by_wl_ct(used)} / {by_wl_ct(spec("requests", resource))}'
 table(L, "【Workload】沒設 Limit 的容器：用量沒有上限，會吃掉 Node 的資源（時間範圍結束前 5 分鐘）",
       ["namespace", "workload", "workload_type", "container"], [
-    ("沒設哪個 Limit", MISS, "none", None, 0, [{"type": "value", "options": {
+    ("沒設的 Limit", MISS, "none", None, 0, [{"type": "value", "options": {
         "1": {"text": "CPU", "color": "orange", "index": 0},
         "2": {"text": "記憶體", "color": "orange", "index": 1},
         "3": {"text": "CPU、記憶體", "color": "red", "index": 2}}}]),
@@ -491,7 +491,7 @@ table(L, "【Workload】沒設 Limit 的容器：用量沒有上限，會吃掉 
         "沒設 Limit（或設 0）的容器，每列一個容器。同一個 Workload 的 Pod 共用一份設定，所以容器只列一次；"
         "用量、Request 是這個容器在所有 Pod 加總，Pod 數是有幾個 Pod 跑這個容器。"
         "沒設 Limit 的資源可以一直用到 Node 沒有為止，所以只能跟 Request（排程時保證的量）比。",
-        "**沒設哪個 Limit** 寫的那一項沒有上限。÷ Request 遠超過 100% → 建議補上 Limit，或把 Request 調到接近實際用量；"
+        "**沒設的 Limit** 寫的那一項沒有上限。÷ Request 遠超過 100% → 建議補上 Limit，或把 Request 調到接近實際用量；"
         "「沒設」= 連 Request 也沒設，排程時完全沒有幫它保留資源。"),
     sort_by="CPU 用量（核）", h=8, key_links={"workload": DETAIL_LINK},
     key_rename={**WL_RENAME, "container": "容器"}, base=f'(({MISS}) > 0) * 0', hide=("workload_type",))
@@ -505,19 +505,19 @@ MEM_SHARE, MEM_TIMES = skew(mem(), 0)
 NET_SHARE, NET_TIMES = skew(net(W5), 10240)
 table(L, "【Workload】Pod 之間分配不均：可能是 LB、key 分配或架構問題（時間範圍結束前 5 分鐘）", WL_KEYS, [
     POD_COUNT,
-    ("CPU：最忙 Pod 佔全部", CPU_SHARE, "percentunit", None, 0, None, "用量太少"),
-    ("CPU：最忙 Pod ÷ 平均", CPU_TIMES, "none", SKEW_TIMES, 1, None, "用量太少"),
-    ("網路：最忙 Pod 佔全部", NET_SHARE, "percentunit", None, 0, None, "流量太少"),
-    ("網路：最忙 Pod ÷ 平均", NET_TIMES, "none", SKEW_TIMES, 1, None, "流量太少"),
-    ("記憶體：最多 Pod ÷ 平均", MEM_TIMES, "none", SKEW_TIMES, 1, None),
+    ("CPU 最忙佔比", CPU_SHARE, "percentunit", None, 0, None, "用量太少"),
+    ("CPU 最忙 ÷ 平均", CPU_TIMES, "none", SKEW_TIMES, 1, None, "用量太少"),
+    ("網路最忙佔比", NET_SHARE, "percentunit", None, 0, None, "流量太少"),
+    ("網路最忙 ÷ 平均", NET_TIMES, "none", SKEW_TIMES, 1, None, "流量太少"),
+    ("記憶體最多 ÷ 平均", MEM_TIMES, "none", SKEW_TIMES, 1, None),
 ], desc(V_CLUSTER_WL,
         "同一個 Workload 的 Pod 理論上應該分到差不多的量（N 個 Pod 各約 1/N）。只列 2 個 Pod 以上的 Workload。"
-        "**最忙 Pod ÷ 平均** = 最忙的 Pod 是平均的幾倍，1 = 很平均。"
+        "**最忙佔比** = 最忙的 Pod 佔全部幾 %；**最忙 ÷ 平均** = 最忙的 Pod 是平均的幾倍，1 = 很平均。"
         "例：3 個 Pod，一個佔 90% → 佔全部 90%、是平均的 2.7 倍。用量太少（CPU < 0.05 核、網路 < 10 KB/s）不算。",
         "CPU、網路 ÷ 平均 > 2.5（紅）→ 流量集中在少數 Pod：檢查 Service / LB 設定、長連線（gRPC、HTTP keep-alive）"
         "是否都黏在同一個 Pod、message key 或分片是否集中；記憶體只有一個 Pod 特別高 → 那個 Pod 可能有快取或記憶體洩漏。"
         "點 workload 名稱進細節 Dashboard 看是哪個 Pod。"),
-    sort_by="CPU：最忙 Pod ÷ 平均", h=8, key_links={"workload": DETAIL_LINK}, key_rename=WL_RENAME, base=SKEW_ROWS,
+    sort_by="CPU 最忙 ÷ 平均", h=8, key_links={"workload": DETAIL_LINK}, key_rename=WL_RENAME, base=SKEW_ROWS,
     hide=("workload_type",))
 L.newline()
 
