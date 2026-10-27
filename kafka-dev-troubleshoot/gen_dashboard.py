@@ -11,7 +11,10 @@ C = 'cluster="$cluster"'
 CT = C + ',topic=~"$topic"'
 CG = CT + ',consumergroup=~"$consumergroup"'
 RI = "$__rate_interval"
-RW = "$rate_window"  # ② 的速度取樣區間 (上方變數)
+# ② 的比較區間 (上方變數,值是秒數,顯示文字是 5m / 15m / 1h):速度、Lag 變化、追上需要全部用同一段
+WS = "${rate_window}"
+RW = WS + "s"
+WT = "${rate_window:text}"
 # BrokerTopicMetrics 有一條不帶 topic 的總計,另外排除內部 topic
 BT = C + ',topic=~"$topic",topic!="",topic!~"__.*"'
 DISK = 'device!~"loop.*|ram.*|dm-.*"'
@@ -163,11 +166,11 @@ def nojmx(mbean):
     return f"沒有資料：jmx exporter 設定沒收 {mbean}（見最上方說明）"
 
 GUIDE = """### 這個 Dashboard 怎麼用
-上方先選 **環境 (Prometheus)** → **Cluster**，再視需要選 **Topic** / **Consumer Group**（預設全部）。每張圖標題旁的 **ⓘ** 都有「是什麼／正常／不正常時」說明；② 的速度用 **速度取樣** 區間的平均。
+上方先選 **環境 (Prometheus)** → **Cluster**，再視需要選 **Topic** / **Consumer Group**（預設全部）。每張圖標題旁的 **ⓘ** 都有「是什麼／正常／不正常時」說明；② 的速度、Lag 變化都用 **比較區間** 這一段算，標題會寫是哪一段。
 
 | 症狀 | 先看哪裡 |
 |---|---|
-| 消費很慢、資料處理延遲、lag 一直漲 | ② **Consumer Group 現況**（追上要多久、還落後多久的資料）→ **消費 vs 寫入速度** → ④ 讀取延遲 |
+| 消費很慢、資料處理延遲、lag 一直漲 | ② **Consumer Group 現況**（Lag 變化、追上需要）→ **消費 vs 寫入速度** → ④ 讀取延遲 |
 | Consumer 收不到資料 | ② **成員數**（0 = 沒有程式在讀）、**卡住的 partition** → ④ **錯誤回應** |
 | 寫入失敗、timeout、NOT_ENOUGH_REPLICAS | ① 健康總覽（離線 partition / ISR 不足）→ ④ **錯誤回應** → ③ **寫入延遲拆解** |
 | 寫入變慢 | ③ **寫入延遲拆解**（慢在排隊、寫磁碟還是等副本）→ ⑤ **被限速** → ⑥ Broker 資源 |
@@ -235,14 +238,25 @@ y += H
 # ② Consumer 與 Topic
 panels.append(row("② Consumer 有沒有追上、Topic 是否滿載", y)); y += 1
 LAG = f'kafka_consumergroup_lag{{{CG}}}'
-CONS_RATE = f'sum by(consumergroup,topic)(rate(kafka_consumergroup_current_offset{{{CG}}}[{RW}]))'
-PROD_RATE = f'sum by(topic)(rate(kafka_topic_partition_current_offset{{{CT}}}[{RW}]))'
+COMMITTED = f'kafka_consumergroup_current_offset{{{CG}}}'
+END = f'kafka_topic_partition_current_offset{{{CT}}}'
+# offset 是 gauge:被往回重設時 rate() 會當成 counter reset 算出暴增,有往回的區間不算
+CONS_RATE = f'sum by(consumergroup,topic)(rate({COMMITTED}[{RW}]) unless resets({COMMITTED}[{RW}]) > 0)'
+PROD_RATE = f'sum by(topic)(rate({END}[{RW}]))'
+# 比較區間頭尾相減:頭尾各取 1 分鐘平均 (抹掉 commit 造成的鋸齒),中間剛好隔一個比較區間。
+# lag = log end − commit 位置 (同一次 scrape),三個量用同一種算法、同一批 partition → 寫入 − 消費 = Lag 變化
+def change(m):
+    return f'(avg_over_time({m}[1m]) - avg_over_time({m}[1m] offset {RW}))'
+D_LAG = f'sum by(consumergroup,topic)({change(LAG)})'
+D_CONS = f'sum by(consumergroup,topic)({change(COMMITTED)} and on(consumergroup,topic,partition) {change(LAG)})'
+D_PROD = f'sum by(consumergroup,topic)({change(LAG)} * 0 + on(topic,partition) group_left() {change(END)})'
+FLAT = 10  # Lag 變化在 ±10 筆內視為持平
 def retained(sel):
     return f'(kafka_topic_partition_current_offset{{{sel}}} - kafka_topic_partition_oldest_offset{{{sel}}})'
 RETAINED = retained(CT)
 LAGS = f'sum by(consumergroup,topic)(clamp_min({LAG}, 0))'
 MEMBERS = f'max by(consumergroup)(kafka_consumergroup_members{{{C},consumergroup=~"$consumergroup"}})'
-# 還落後 = lag / 寫入速度;取樣區間內沒有寫入就沒有值 (不能拿 0 除)
+# 還落後 = lag / 寫入速度 (只用在圖上,是估算);比較區間內沒有寫入就沒有值 (不能拿 0 除)
 BEHIND = f'({LAGS} / on(topic) group_left() ({PROD_RATE} > 0))'
 RATIO = f'max by(consumergroup,topic)(clamp_min({LAG}, 0) / on(topic,partition) group_left() clamp_min({RETAINED}, 1))'
 cg_targets = [
@@ -250,16 +264,18 @@ cg_targets = [
     tgt(f'max by(consumergroup,topic)({LAG}) * 0 + on(consumergroup) group_left() '
         f'max by(consumergroup)(kafka_consumergroup_members{{{C},consumergroup=~"$consumergroup"}})',
         ref="B", instant=True, fmt="table"),
-    tgt(CONS_RATE, ref="C", instant=True, fmt="table"),
-    tgt(f'max by(consumergroup,topic)({LAG}) * 0 + on(topic) group_left() {PROD_RATE}', ref="D", instant=True, fmt="table"),
-    # 還落後多久的資料 = lag / 寫入速度
-    tgt(BEHIND, ref="E", instant=True, fmt="table"),
-    # 追上要多久,依序判斷 (or 左邊優先):lag 0 或還落後 < 30 秒 → 已跟上 (-1);沒有 consumer → 沒人在讀 (-2);
-    # 消費比寫入快 → lag / (消費 - 寫入);都不是 (消費沒比寫入快) → 沒有值 = 追不上
+    tgt(D_PROD, ref="C", instant=True, fmt="table"),
+    tgt(D_CONS, ref="D", instant=True, fmt="table"),
+    tgt(D_LAG, ref="E", instant=True, fmt="table"),
+    # 追上要多久,依序判斷 (or 左邊優先):lag 0 → 已跟上 (-1);沒有 consumer → 沒人在讀 (-2);
+    # lag 不到 30 秒的寫入量 → 已跟上 (-1);lag 有在減少 → lag ÷ 每秒減少量;lag 在增加 → 越落越多 (-3);
+    # 持平 → 沒在追上 (-4);比較區間前還沒有資料 → 沒有值
     tgt(f'(({LAGS} == 0) * 0 - 1) '
         f'or ({LAGS} * 0 - 2 and on(consumergroup) ({MEMBERS} == 0)) '
-        f'or ({LAGS} * 0 - 1 and on(consumergroup,topic) ({BEHIND} < 30)) '
-        f'or ({LAGS} / (({CONS_RATE}) - on(topic) group_left() {PROD_RATE} > 0))',
+        f'or ({LAGS} * 0 - 1 and on(consumergroup,topic) ({LAGS} * {WS} < {D_PROD} * 30)) '
+        f'or ({LAGS} / (0 - {D_LAG} > {FLAT}) * {WS}) '
+        f'or ({LAGS} * 0 - 3 and on(consumergroup,topic) ({D_LAG} > {FLAT})) '
+        f'or ({LAGS} * 0 - 4 and on(consumergroup,topic) {D_LAG})',
         ref="F", instant=True, fmt="table"),
     # lag 佔保留量:取最糟的 partition。沒人讀的 group 遲早都是 100%,% 沒意義 → 依序 (or 左邊優先):
     # 有成員 → %;沒成員且 > 100% → 已掉資料 (沒人讀) (-3);沒成員且有 lag → 沒人在讀 (-2);其餘 (lag 0) → %
@@ -268,22 +284,24 @@ cg_targets = [
         f'or (({RATIO} > 0) * 0 - 2 and on(consumergroup) ({MEMBERS} == 0)) '
         f'or {RATIO}',
         ref="G", instant=True, fmt="table"),
-    tgt(f'sum by(consumergroup,topic)(deriv({LAG}[{RW}]))', ref="H", instant=True, fmt="table"),
 ]
 panels.append(table(
-    "Consumer Group 現況（現在）",
-    desc("每個 group × topic 現在追得怎樣。速度都是上方「速度取樣」區間的平均。",
+    f"Consumer Group 現況（現在；寫入 / 消費 / Lag 變化 = 近 {WT}）",
+    desc("每個 group × topic 現在追得怎樣。寫入、消費、Lag 變化都是上方「比較區間」頭尾相減的筆數"
+         "（頭尾各取 1 分鐘平均，抹掉 commit 造成的起伏），所以一定對得上：**寫入 − 消費 = Lag 變化**。",
          "成員 ≥ 1、追上需要顯示「已跟上」。",
          "成員 0 → 程式沒在跑",
-         "追不上、Lag 趨勢 > 0 → 處理太慢：加 consumer（不能超過 partition 數）或加快處理",
+         "追不上（越落越多）→ 處理太慢：加 consumer（不能超過 partition 數）或加快處理",
          "Lag 佔保留量接近 100%（有成員）→ 沒讀到的資料快被刪掉；「已掉資料」→ 已經刪了；「沒人在讀」→ 先處理成員 0（各情境見欄位說明）",
-         "還落後 / 追上需要跳動很大 → 把「速度取樣」調長（短 = 反應快但跳動大，長 = 穩但慢半拍）",
-         cols=[("Lag", "還沒讀的訊息數"),
+         "想看更長的走勢 → 把「比較區間」調長，或看下方 Lag 圖",
+         cols=[("Lag", "現在還沒讀的訊息數。已處理但還沒 commit 的也算，所以會隨 commit 小幅起伏"),
                ("成員", "連著的 consumer 數，0 = 沒人在讀"),
-               ("消費/秒、寫入/秒", "每秒讀完（commit）/ 寫入幾筆"),
-               ("還落後", "Lag ÷ 寫入速度 ≈ 正在處理多久以前的資料（寫入很少時偏大）；沒有新寫入 = 取樣區間內沒寫入，算不出來"),
-               ("追上需要", "Lag ÷（消費 − 寫入）。已跟上 = 沒有 lag 或還落後不到 30 秒；沒人在讀 = 有 lag 但沒有 consumer；"
-                          "追不上 = 消費沒有比寫入快；> 1 天 = 兩邊幾乎一樣快，lag 不會明顯下降"),
+               ("寫入、消費", "比較區間內寫進 / 讀完（commit）幾筆。消費是負數 = offset 被往回重設（重讀）"),
+               ("Lag 變化", f"比較區間內 lag 增減幾筆（= 寫入 − 消費）。正數 = 越落越多；負數 = 正在追上；±{FLAT} 筆內視為持平"),
+               ("追上需要", "Lag ÷ 比較區間內 lag 減少的速度。"
+                          "已跟上 = 沒有 lag，或 lag 不到 30 秒的寫入量；沒人在讀 = 有 lag 但沒有 consumer；"
+                          f"追不上（越落越多）= Lag 變化 > {FLAT}；沒在追上（持平）= Lag 變化在 ±{FLAT} 內；"
+                          "> 1 天 = lag 減少得很慢；資料不足 = 比較區間開頭還沒有這個 group 的資料"),
                ("Lag 佔保留量", "還沒讀的筆數 ÷ Kafka 這個 partition 現在還留著的筆數（取最糟的 partition）。"
                             "例：還留著 1,000 筆、其中 950 筆沒讀 = 95%。只用 offset 算，看不出 Kafka 什麼時候會刪"
                             "（retention 設多少要用 `kafka-configs --describe --entity-type topics --entity-name <topic>` 查）。\n"
@@ -295,31 +313,29 @@ panels.append(table(
                             "依 auto.offset.reset 跳到最舊或最新\n"
                             "  - **沒人在讀**（成員 0、有 lag）：沒人讀的 group 遲早都會到 100%，% 沒意義，所以不顯示。"
                             "確認程式該不該在跑；不用了就刪掉 group（`kafka-consumer-groups --delete --group <group>`）\n"
-                            "  - **已掉資料（沒人讀）**（成員 0、超過 100%）：沒人讀的期間資料已被刪；程式重開時會依 auto.offset.reset 跳過被刪的部分"),
-               ("Lag 趨勢", "lag 每秒的變化（筆/秒，速度取樣區間平均）。正數 = 越落越多；負數 = 正在追上（例：-2.6 = 每秒少 2.6 筆）；"
-                          "在 0 附近小幅正負跳動 = 持平（consumer 每隔幾秒才 commit 一次）；"
-                          "沒人在讀時 ≈ 寫入速度（寫進來的都變 lag），也沒有寫入時才是 0")]),
+                            "  - **已掉資料（沒人讀）**（成員 0、超過 100%）：沒人讀的期間資料已被刪；程式重開時會依 auto.offset.reset 跳過被刪的部分")]),
     cg_targets, gp(0, y, 24, 9),
     rename={"consumergroup": "Consumer Group", "topic": "Topic", "Value #A": "Lag", "Value #B": "成員",
-            "Value #C": "消費/秒", "Value #D": "寫入/秒", "Value #E": "還落後", "Value #F": "追上需要",
-            "Value #G": "Lag 佔保留量", "Value #H": "Lag 趨勢"},
+            "Value #C": "寫入", "Value #D": "消費", "Value #E": "Lag 變化", "Value #F": "追上需要",
+            "Value #G": "Lag 佔保留量"},
     order=["consumergroup", "topic", "Value #A", "Value #B", "Value #C", "Value #D", "Value #E", "Value #F",
-           "Value #G", "Value #H"],
+           "Value #G"],
     sort=("Lag", True), filterable=False, min_width=60,
     overrides=[
         col("Consumer Group", [{"id": "custom.width", "value": 150}]),
         col("成員", [{"id": "thresholds", "value": steps(("red", None), ("green", 1))}, cell("color-text"),
                      {"id": "custom.width", "value": 70}]),
-        col("消費/秒", [{"id": "decimals", "value": 1}]),
-        col("寫入/秒", [{"id": "decimals", "value": 1}]),
-        col("還落後", [{"id": "unit", "value": "s"}, {"id": "noValue", "value": "沒有新寫入"},
-                       {"id": "thresholds", "value": steps(("green", None), ("yellow", 60), ("red", 600))},
-                       cell("color-text")]),
-        # 沒有值 = 消費比寫入慢 (追不上),或 lag 已經是 0
-        col("追上需要", [{"id": "unit", "value": "s"}, {"id": "noValue", "value": "追不上"},
-                         {"id": "mappings", "value": vmap({"-1": ("已跟上", "green"), "-2": ("沒人在讀", "red")}) + [
+        col("寫入", [{"id": "decimals", "value": 0}]),
+        col("消費", [{"id": "decimals", "value": 0}]),
+        col("Lag 變化", [{"id": "decimals", "value": 0},
+                         {"id": "thresholds", "value": steps(("green", None), ("orange", FLAT))}, cell("color-text")]),
+        # 沒有值 = 比較區間開頭還沒有資料
+        col("追上需要", [{"id": "unit", "value": "s"}, {"id": "noValue", "value": "資料不足"},
+                         {"id": "mappings", "value": vmap({"-1": ("已跟上", "green"), "-2": ("沒人在讀", "red"),
+                                                           "-3": ("追不上（越落越多）", "red"),
+                                                           "-4": ("沒在追上（持平）", "orange")}) + [
                              {"type": "range", "options": {"from": 86400, "to": None,
-                                                           "result": {"text": "> 1 天（幾乎持平）", "color": "orange", "index": 2}}}]},
+                                                           "result": {"text": "> 1 天（減少得很慢）", "color": "orange", "index": 4}}}]},
                          cell("color-text"),
                          {"id": "thresholds", "value": steps(("orange", None))}]),
         col("Lag 佔保留量", [{"id": "unit", "value": "percentunit"}, {"id": "min", "value": 0}, {"id": "max", "value": 1},
@@ -329,8 +345,6 @@ panels.append(table(
                                                               "-3": ("已掉資料（沒人讀）", "orange")}) + [
                                 {"type": "range", "options": {
                                     "from": 1.000001, "to": None, "result": {"text": "已掉資料", "color": "red", "index": 2}}}]}]),
-        col("Lag 趨勢", [{"id": "decimals", "value": 1},
-                                 {"id": "thresholds", "value": steps(("green", None), ("orange", 1))}, cell("color-text")]),
     ]))
 y += 9
 
@@ -338,14 +352,19 @@ y += 9
 SIZE1 = f'sum by(topic)(max by(topic,partition)(kafka_log_log_size{{{CT},topic!~"__.*"}}))'
 
 panels += [
-    ts("Lag（依 Group × Topic）",
-       desc("每個 group 在每個 topic 還沒讀的訊息數。", "小且穩定，或升高後會降回來。",
+    # 每個點取前一小段的最高值:時間範圍拉長、點變稀時,才不會剛好取到 commit 後的低點而漏掉高點
+    ts("Lag（依 Group × Topic，每點取該段最高）",
+       desc("每個 group 在每個 topic 還沒讀的訊息數。每個點是前一小段（約 1 分鐘，時間範圍拉長時跟著變長）裡的最高值。",
+            "小且穩定，或升高後會降回來；隨 consumer commit 小幅鋸齒是正常的。",
             "一路往上 → 消費跟不上（看右邊速度）", "突然歸零又暴增 → offset 被重設或重新部署"),
-       [tgt(f'sum by(consumergroup,topic)(clamp_min({LAG}, 0))', "{{consumergroup}} → {{topic}}")],
+       [tgt(f'max_over_time((sum by(consumergroup,topic)(clamp_min({LAG}, 0)))[{RI}:15s])', "{{consumergroup}} → {{topic}}")],
        gp(0, y, 12, 8)),
-    ts("消費 vs 寫入速度（筆/秒）",
-       desc("實線 = 每個 group 每秒讀完幾筆；虛線（寫入 →）= topic 每秒寫入幾筆。", "實線貼著同 topic 的虛線。",
-            "實線長期低於虛線 → lag 會一直漲", "實線掉到 0 → 程式停了或卡住（看成員數、有 lag 的 Partition）"),
+    ts(f"消費 vs 寫入速度（筆/秒，近 {WT} 平均）",
+       desc("實線 = 每個 group 每秒讀完幾筆；虛線（寫入 →）= topic 每秒寫入幾筆。每個點都是那個時間點往前「比較區間」的平均，"
+            "所以會比 Lag 圖慢半拍；跟上方表格用同一段區間。",
+            "實線貼著同 topic 的虛線。",
+            "實線長期低於虛線 → lag 會一直漲", "實線掉到 0 → 程式停了或卡住（看成員數、有 lag 的 Partition）",
+            "實線斷掉 → 那段期間 offset 被往回重設，速度算不出來"),
        [tgt(CONS_RATE, "{{consumergroup}} → {{topic}}"),
         tgt(f'sum by(topic)(rate(kafka_topic_partition_current_offset{{{CT},topic!~"__.*"}}[{RW}]))', "寫入 → {{topic}}", ref="B")],
        gp(12, y, 12, 8),
@@ -355,9 +374,11 @@ panels += [
 ]
 y += 8
 panels += [
-    ts("還落後多久的資料",
-       desc("Lag ÷ 寫入速度 ≈ 正在處理多久以前寫進來的資料。", "幾秒內。",
-            "持續上升 → 越落越多，跟業務要求（例如 1 分鐘內處理完）比較", "寫入很少時數字會偏大 → 改看 Lag",
+    ts(f"還落後多久的資料（估算：Lag ÷ 近 {WT} 平均寫入速度）",
+       desc("Lag ÷ 平均寫入速度 ≈ 正在處理多久以前寫進來的資料。Kafka 指標沒有訊息時間，只能用平均速度換算：寫入忽快忽慢時只是概略值，"
+            "要精準請在應用程式記錄訊息時間。",
+            "幾秒內。",
+            "持續上升 → 越落越多，跟業務要求（例如 1 分鐘內處理完）比較", "寫入很少或忽快忽慢時數字會偏大 → 改看 Lag",
             "線斷掉 → 那段時間沒有新寫入，算不出來"),
        [tgt(BEHIND,
             "{{consumergroup}} → {{topic}}")],
@@ -382,13 +403,15 @@ panels += [
 y += 8
 stuck_t = [
     tgt(f'max by(consumergroup,topic,partition)({LAG}) > 0', ref="A", instant=True, fmt="table"),
-    tgt(f'max by(consumergroup,topic,partition)(increase(kafka_consumergroup_current_offset{{{CG}}}[10m]))',
+    # 直接相減:offset 是 gauge,increase() 遇到往回重設會當成 counter reset 算錯
+    tgt(f'max by(consumergroup,topic,partition)({COMMITTED} - {COMMITTED} offset 10m)',
         ref="B", instant=True, fmt="table"),
 ]
 panels.append(table(
     "有 lag 的 Partition（10 分鐘內有沒有前進）",
-    desc("有 lag 的 partition，以及 10 分鐘內 consumer 在上面前進了幾筆。", "前進 > 0（綠色）。",
+    desc("有 lag 的 partition，以及 10 分鐘內 consumer 在上面前進了幾筆（現在的 commit 位置 − 10 分鐘前）。", "前進 > 0（綠色）。",
          "Lag > 0 但前進 0（紅色）→ 這個 partition 卡住：某筆訊息一直處理失敗，或沒有 consumer 分到",
+         "前進是負數 → offset 被往回重設（重讀）",
          "只有一兩個 partition lag 特別大 → key 集中（熱點）"),
     stuck_t, gp(0, y, 12, 8),
     rename={"consumergroup": "Consumer Group", "topic": "Topic", "partition": "Partition",
@@ -402,7 +425,7 @@ panels[-1]["transformations"].insert(1, {"id": "filterByValue", "options": {
     "filters": [{"fieldName": "Value #A", "config": {"id": "greater", "options": {"value": 0}}}],
     "type": "include", "match": "all"}})
 panels.append(ts(
-    "熱點 Partition：每個 partition 的寫入（筆/秒，前 10）",
+    f"熱點 Partition：每個 partition 的寫入（筆/秒，近 {WT} 平均，前 10）",
     desc("寫入最多的 10 個 partition。", "同一 topic 的 partition 差不多。",
          "某個遠高於同 topic 其他 → key 集中（固定 key、同一個 tenant），這個 partition 的 consumer 會特別慢；"
          "加 consumer 沒用，要換 key 或打散"),
@@ -426,8 +449,8 @@ topic_t = [
     tgt(f'sum by(topic)(kafka_topic_partition_under_replicated_partition{{{CT},topic!~"__.*"}})', ref="I", instant=True, fmt="table"),
 ]
 panels.append(table(
-    "Topic 總表（現在）",
-    desc("每個 topic 的規模與流量（速度取樣區間平均）。", "不均度接近 1、副本不足 0。",
+    f"Topic 總表（現在；流量 = 近 {WT} 平均）",
+    desc("每個 topic 的規模與流量（比較區間平均）。", "不均度接近 1、副本不足 0。",
          "不均度 > 2 → 熱點 partition（看上方熱點圖）",
          "每個 partition 寫入長期超過幾 MB/s → consumer 容易跟不上，考慮加 partition",
          "讀取遠大於寫入 → 很多 group 讀同一份，或有程式一直從頭重讀",
@@ -452,16 +475,16 @@ panels.append(table(
 y += 9
 
 panels += [
-    ts("Topic 寫入（筆/秒）",
+    ts(f"Topic 寫入（筆/秒，近 {WT} 平均）",
        desc("每個 topic 每秒寫入幾筆。", "跟業務量同步。",
             "突然暴增 → producer 重送或迴圈", "掉到 0 → producer 停了或寫入失敗（看 ④）"),
-       [tgt(f'sum by(topic)(rate(kafka_server_brokertopicmetrics_messagesin_total{{{BT}}}[{RI}]))', "{{topic}}")],
+       [tgt(f'sum by(topic)(rate(kafka_server_brokertopicmetrics_messagesin_total{{{BT}}}[{RW}]))', "{{topic}}")],
        gp(0, y, 8, 8)),
-    ts("Topic 寫入 / 讀取流量（bytes/s）",
+    ts(f"Topic 寫入 / 讀取流量（bytes/s，近 {WT} 平均）",
        desc("每個 topic 每秒寫入 / 讀取多少 bytes（讀取不含副本同步）。", "讀取 ≈ 寫入 × 讀它的 group 數。",
             "筆數不多但 bytes 很高 → 單筆訊息很大，留意 max.request.size / fetch.max.bytes"),
-       [tgt(f'sum by(topic)(rate(kafka_server_brokertopicmetrics_bytesin_total{{{BT}}}[{RI}]))', "寫入 {{topic}}"),
-        tgt(f'sum by(topic)(rate(kafka_server_brokertopicmetrics_bytesout_total{{{BT}}}[{RI}]))', "讀取 {{topic}}", ref="B")],
+       [tgt(f'sum by(topic)(rate(kafka_server_brokertopicmetrics_bytesin_total{{{BT}}}[{RW}]))', "寫入 {{topic}}"),
+        tgt(f'sum by(topic)(rate(kafka_server_brokertopicmetrics_bytesout_total{{{BT}}}[{RW}]))', "讀取 {{topic}}", ref="B")],
        gp(8, y, 8, 8), unit="Bps"),
     ts("Topic 磁碟大小（單份）",
        desc("每個 topic 在磁碟上的大小（不含副本）。", "到達 retention 後持平。",
@@ -738,10 +761,12 @@ dash = {
         var_query("consumergroup", "Consumer Group",
                   'label_values(kafka_consumergroup_members{cluster="$cluster"}, consumergroup)',
                   multi=True, include_all=True, refresh=2, all_value=".*"),
-        {"name": "rate_window", "label": "速度取樣", "type": "custom", "query": "5m,15m,1h",
-         "description": "② 的消費 / 寫入速度用多長時間平均：短 = 反應快但跳動大，長 = 穩但慢半拍",
-         "current": {"text": "15m", "value": "15m"}, "hide": 0, "multi": False, "includeAll": False,
-         "options": [{"text": v, "value": v, "selected": v == "15m"} for v in ("5m", "15m", "1h")]},
+        # 值用秒數:查詢裡要拿來除 (追上需要),顯示文字才是 5m / 15m / 1h
+        {"name": "rate_window", "label": "比較區間", "type": "custom", "query": "5m : 300,15m : 900,1h : 3600",
+         "description": "② 的速度、寫入 / 消費筆數、Lag 變化、追上需要都用這一段算：短 = 反應快，長 = 看得到較長的走勢、但慢半拍",
+         "current": {"text": "5m", "value": "300"}, "hide": 0, "multi": False, "includeAll": False,
+         "options": [{"text": t, "value": v, "selected": v == "300"}
+                     for t, v in (("5m", "300"), ("15m", "900"), ("1h", "3600"))]},
     ]},
     "panels": panels,
 }
