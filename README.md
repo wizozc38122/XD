@@ -26,7 +26,8 @@ OCP 沒有特別設定時，不會限制 Pod 的網路頻寬與磁碟讀寫速�
 |---|---|
 | `ocp-cluster-risk-overview-dashboard.json` | 叢集風險總覽 |
 | `ocp-loadtest-impact-dashboard.json` | 單一 Workload 細節 |
-| `gen_overview_dashboard.py`、`gen_dashboard.py` | 產生上面兩個 JSON 的腳本。要改面板就改腳本，再執行 `python <腳本>` 重新產生 |
+| `kong-router-ocp.json` | Kong → Router → AP 延遲鏈路分析 |
+| `gen_overview_dashboard.py`、`gen_dashboard.py`、`gen_kong_chain_dashboard.py` | 產生上面 JSON 的腳本。要改面板就改腳本，再執行 `python <腳本>` 重新產生 |
 
 ## 百分比一定要看分母
 
@@ -72,6 +73,39 @@ OCP 沒有特別設定時，不會限制 Pod 的網路頻寬與磁碟讀寫速�
 - **預設排除系統 namespace**：`openshift.*|kube-.*`，可在上方「排除的 Namespace」修改或清空。
 - **點擊跳轉只支援 Deployment**：細節 Dashboard 以 Pod 名稱規則對應 Deployment，StatefulSet、DaemonSet 點進去會沒有資料。
 - **使用 hostNetwork 的 Pod**：網路指標會是整台 Node 的流量，排名可能偏高。
+
+## Kong → Router → AP 延遲鏈路分析
+
+把一個請求的時間拆成每一段，找出慢在哪段、錯在哪段。不需要 Graylog。
+
+```
+Client →（A10/F5?）→ Kong →（A10/F5? 網路）→ OCP Router → AP Pod
+         └ Kong 自己 ┘└────────── Kong 等上游（upstream latency）──────────┘
+                      └ 中間沒有指標 ┘└ Router 排隊 + 連線 + 等 Pod 回應 ┘
+                                                     └ App 自己處理（需 Micrometer）
+```
+
+| 區塊 | 內容 |
+|---|---|
+| ① 鏈路總覽 | 每段平均花多久（長條 + 疊起來的走勢）、每段收到的請求數、5xx 是誰產生的 |
+| ② Kong | p95 / p99（總耗時、等上游、Kong 自己）、狀態碼與 source、各 Kong 節點、nginx 連線 |
+| ③ OCP Router | 排隊 / 連線 / 等 Pod 回應、各 Router Pod 的回應時間與流量、錯誤與重試、新連線比例、Router Pod CPU |
+| ④ AP Pod | Router 看到每個 Pod 的回應時間與 5xx、App 自己量的處理時間、CPU throttling、可用 / Ready / 重啟 |
+| ⑤ 中間沒有指標的段 | Kong ↔ Router 之間多花的時間、請求數對不上的部分、Kong 自己回的 502 / 503 / 504 |
+
+怎麼推算中間那段：
+
+- **Kong ↔ Router 之間** = Kong 等上游的平均 − Router 量到的（排隊 + 連線 + 等 Pod 回應）。包含 A10 / F5、網路、TLS 握手、Router 前端。平常有一個固定的量，突然變大而 Router 各段沒變，問題就在中間。
+- **Kong 送了、Router 沒收到** = Kong 送往上游 − Router 收到：請求在中間被擋或逾時。**Router 收到、不是 Kong 來的** = 反過來：有其他來源直接打這條 route。
+- 「Kong 送往上游」= 上游回的（source=service）+ Kong 因為沒拿到回應而自己回的 502 / 503 / 504；被 Kong plugin 擋下的 401 / 403 / 429 不算。
+
+注意事項：
+
+- **兩邊要選同一條路徑**：上方先選 Kong 的 Service / Route，再選對應的 OCP Namespace / Route / Deployment。選的不是同一條路徑時，差值沒有意義。
+- **時間都是平均**：Router 只提供平均（每個 Router Pod 最近 1024 筆請求），所以 Kong 也用直方圖的 sum ÷ count 算平均來比。長尾看 ② Kong 的 p99；要追單筆請求用 X-Request-ID 串 Kong、Router、App 的 log。
+- **Kong 和 OCP 可以是兩個不同的 Prometheus**：跨資料來源的相減用 Grafana 的運算式（Expression），面板的資料來源會顯示為 Mixed。
+- **需要的指標**：Kong 3.x prometheus plugin（`kong_http_requests_total` 有 `source` label、`kong_*_latency_ms` 直方圖）、OCP Router 的 `haproxy_*` 指標、kube-state-metrics、cAdvisor；App 自己處理時間需要 Micrometer（`http_server_requests_seconds`），沒有的話那幾條線沒資料，其他照常。
+- **逾時**：Kong 等上游 p99 卡在 30s 附近通常是 Router 的 `timeout server`（預設 30s，route annotation `haproxy.router.openshift.io/timeout` 可改），卡在 60s 是 Kong 的 `read_timeout`（預設 60s）。
 
 ## 匯入
 
