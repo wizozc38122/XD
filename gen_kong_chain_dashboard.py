@@ -53,6 +53,11 @@ def app_avg(w):
             f' / sum(rate(http_server_requests_seconds_count{{{APP}}}[{w}]))')
 
 
+def app_pct(q, w, by=""):
+    """App percentile in ms; needs the Micrometer histogram (percentiles-histogram) to be enabled."""
+    return f'1000 * histogram_quantile({q}, sum by (le{by}) (rate(http_server_requests_seconds_bucket{{{APP}}}[{w}])))'
+
+
 def kong_sent(w):
     """Requests Kong sent upstream: answered by the upstream, plus the ones Kong had to answer itself
     because the upstream did not (502/503/504). Without a source label (Kong < 3) every request counts."""
@@ -151,6 +156,27 @@ def bar(title, d, targets, overrides=(), unit="ms"):
                      "namePlacement": "left", "sizing": "auto",
                      "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": False}}}
     return p
+
+
+def table(title, d, keys, cols, sort):
+    """One row per keys; cols: (name, query target, field properties). Every target is an instant query."""
+    targets, rename, over = [], {k: n for k, n in keys}, []
+    for t, (name, target, props) in zip("ABCDEFGH", cols):
+        target = dict(target, refId=t, instant=True, range=False, format="table")
+        targets.append(target)
+        rename[f"Value #{t}"] = name
+        if props:
+            over.append({"matcher": {"id": "byName", "options": name}, "properties": props})
+    order = [k for k, _ in keys] + [f"Value #{t}" for t in "ABCDEFGH"[:len(cols)]]
+    return {"id": nid(), "type": "table", "title": title, "description": d, "datasource": ds_of(targets),
+            "targets": targets,
+            "transformations": [{"id": "merge", "options": {}},
+                                {"id": "organize", "options": {"excludeByName": {"Time": True}, "renameByName": rename,
+                                                               "indexByName": {k: i for i, k in enumerate(order)}}},
+                                {"id": "sortBy", "options": {"sort": [{"field": sort, "desc": True}]}}],
+            "fieldConfig": {"defaults": {"unit": "ms", "decimals": 0, "custom": {"align": "auto", "minWidth": 90}},
+                            "overrides": over},
+            "options": {"showHeader": True}}
 
 
 def text(content):
@@ -259,6 +285,64 @@ B.line(
         O(f'sum(rate(http_server_requests_seconds_count{{{APP}, status=~"5.."}}[{RI}]))', "App 回的", "D")],
        unit="reqps"))
 
+# ---- ①b 長尾
+B.row("①b 長尾（p95 / p99）：平均看不出來的慢")
+NO_APP_HIST = "沒資料：App 沒開 Micrometer histogram（management.metrics.distribution.percentiles-histogram.http.server.requests=true）"
+TAIL_GAP = name_ref("H", "App 以外的長尾（Kong 等上游 p99 − App p99，估算）",
+                    [{"id": "color", "value": {"mode": "fixed", "fixedColor": "red"}}, {"id": "custom.lineWidth", "value": 3}])
+B.line(
+    bar("最近 5 分鐘：各段 p95 / p99",
+        desc("有直方圖的段才算得出百分位數：Kong（總耗時、等上游、Kong 自己）和 App（需開 Micrometer histogram）。"
+             "Router 只提供平均，沒有 p95 / p99。**App 以外的長尾** = Kong 等上游 p99 − App p99，是 A10 / F5、網路、Router、"
+             "Pod 內排隊這些 App 以外的部分造成的長尾（百分位數不能真的相減，只當方向參考）。",
+             "Kong 等上游 p99 很高、App p99 不高 → 長尾在 App 以外；兩個都高 → App 自己有慢請求。"),
+        [K(k_pct(0.95, K_SELF, W5), "Kong 自己 p95", "A", instant=True),
+         K(k_pct(0.99, K_SELF, W5), "Kong 自己 p99", "B", instant=True),
+         K(k_pct(0.95, K_UP, W5), "Kong 等上游 p95", "C", instant=True),
+         K(k_pct(0.99, K_UP, W5), "Kong 等上游 p99", "D", instant=True),
+         O(app_pct(0.95, W5), "App 自己處理 p95", "E", instant=True),
+         O(app_pct(0.99, W5), "App 自己處理 p99", "F", instant=True),
+         K(k_pct(0.99, K_TOTAL, W5), "Kong 總耗時 p99", "G", instant=True),
+         M(pos("$D - $F"), "H")],
+        overrides=[name_ref("H", "App 以外的長尾（估算）")]),
+    ts("各段 p99 走勢（紅線 = App 以外的長尾）",
+       desc("Kong 等上游、App、Kong 自己的 p99，以及兩者的差（紅線）。",
+            "紅線往上飆、App p99 沒變 → 長尾發生在 App 以外（A10 / F5、網路、Router、Pod 內排隊），對照 ⑤ 和 ③；"
+            "App p99 跟著飆 → App 自己變慢，看 ④。"),
+       [K(k_pct(0.99, K_TOTAL, RI), "Kong 總耗時 p99", "A"), K(k_pct(0.99, K_UP, RI), "Kong 等上游 p99", "D"),
+        O(app_pct(0.99, RI), "App 自己處理 p99", "F"), K(k_pct(0.99, K_SELF, RI), "Kong 自己 p99", "G"),
+        M(pos("$D - $F"), "H")],
+       overrides=[TAIL_GAP], no_value=NO_APP_HIST),
+    h=10, widths=[9, 15])
+B.line(
+    ts("長尾倍數：p99 ÷ 平均（哪段的長尾比較嚴重）",
+       desc("每段的 p99 是平均的幾倍。1～3 倍算正常；倍數大代表大部分請求很快、但有一小部分特別慢。",
+            "Kong 等上游的倍數比 App 的大很多 → 長尾是 App 以外造成的（網路、LB、Router 排隊、Pod 內排隊）；"
+            "App 的倍數大 → App 有特定慢請求（看下面依 URI、依 Pod）。"),
+       [K(f"({k_pct(0.99, K_UP, RI)}) / ({k_avg(K_UP, RI)})", "Kong 等上游", "A"),
+        O(f"({app_pct(0.99, RI)}) / ({app_avg(RI)})", "App 自己處理", "B"),
+        K(f"({k_pct(0.99, K_SELF, RI)}) / ({k_avg(K_SELF, RI)})", "Kong 自己", "C")],
+       unit="none"),
+    table("時間範圍內最差的 p99（依 Kong API）",
+          desc("每個 Kong Service / Route 在整個時間範圍內 p99 最高的那一刻（每分鐘看一次），以及平均。",
+               "等上游 p99 最高很大、平均不大 → 那個 API 有偶發的慢請求；Kong 自己 p99 高 → 那個 API 的 plugin 慢。"),
+          [("service", "Service"), ("route", "Route")],
+          [("等上游 p99（最高）", K(f"max_over_time(({k_pct(0.99, K_UP, '1m', ', service, route')})[$__range:1m])"), None),
+           ("總耗時 p99（最高）", K(f"max_over_time(({k_pct(0.99, K_TOTAL, '1m', ', service, route')})[$__range:1m])"), None),
+           ("Kong 自己 p99（最高）", K(f"max_over_time(({k_pct(0.99, K_SELF, '1m', ', service, route')})[$__range:1m])"), None),
+           ("等上游平均", K(f'sum by (service, route) (rate({K_UP}_sum{{{KS}}}[$__range])) '
+                          f'/ sum by (service, route) (rate({K_UP}_count{{{KS}}}[$__range]))'), None),
+           ("請求數（/秒）", K(f'sum by (service, route) (rate(kong_http_requests_total{{{KS}}}[$__range]))'),
+            [{"id": "unit", "value": "reqps"}, {"id": "decimals", "value": 1}])],
+          sort="等上游 p99（最高）"))
+B.line(
+    ts("App p99 依 URI（前 10，找哪個 API 慢）",
+       desc("App 自己記錄的 p99，依 URI 分開。", "某個 URI 特別高 → 那支 API 本身慢（DB、下游服務）；全部一起高 → App 整體或 Pod 資源問題。"),
+       [O(f'topk(10, {app_pct(0.99, RI, ", uri")})', "{{uri}}", "A")], no_value=NO_APP_HIST),
+    ts("App p99 依 Pod（找哪個 Pod 有長尾）",
+       desc("App 自己記錄的 p99，依 Pod 分開。", "只有一個 Pod 特別高 → 那個 Pod 的 Node、GC 或分到的資料有問題。"),
+       [O(app_pct(0.99, RI, ", pod"), "{{pod}}", "A")], no_value=NO_APP_HIST))
+
 # ---- ② Kong
 B.row("② Kong：Kong 自己、各節點、長尾")
 B.line(
@@ -331,14 +415,17 @@ B.line(
 
 # ---- ④ AP Pod
 B.row("④ AP Pod：哪個 Pod 慢、App 自己慢不慢")
+NO_SERVER = ("沒資料：Router 沒有輸出 Pod 層級指標。Router 後面的 Pod 總數超過 ROUTER_METRICS_HAPROXY_SERVER_THRESHOLD"
+             "（預設 500）時只輸出 route 層級；TCP passthrough 的 route 也沒有。改看下方 App 自己量的每個 Pod 時間")
 B.line(
     ts("Router 看到的每個 Pod：等回應平均（找哪個 Pod 慢）",
        desc("Router 等每個 AP Pod 回應的平均時間（取各 Router Pod 中最高的）。", "只有一個 Pod 特別高 → 那個 Pod 的 Node、GC 或分到的資料有問題；全部都高 → App 整體慢。"),
-       [O(f'max by (exported_pod) (haproxy_server_http_average_response_latency_milliseconds{{{RS}}})', "{{exported_pod}}", "A")]),
+       [O(f'max by (exported_pod) (haproxy_server_http_average_response_latency_milliseconds{{{RS}}})', "{{exported_pod}}", "A")],
+       no_value=NO_SERVER),
     ts("Router 看到的每個 Pod：5xx（req/s）",
        desc("Router 從每個 AP Pod 收到的 5xx。", "集中在某個 Pod → 那個 Pod 有問題（設定、資料、資源）；平均分散 → App 整體或下游的問題。"),
        [O(f'sum by (exported_pod) (rate(haproxy_server_http_responses_total{{{RS}, code=~"5.*"}}[{RI}])) > 0', "{{exported_pod}}", "A")],
-       unit="reqps", no_value="0"))
+       unit="reqps", no_value=NO_SERVER))
 B.line(
     ts("App 自己量的處理時間：每個 Pod 平均（需 Micrometer）",
        desc("App 自己記錄的處理時間（http_server_requests_seconds，不含 /actuator）。這是請求進到 App 之後的時間。",
@@ -353,7 +440,7 @@ B.line(
        unit="percentunit"))
 B.line(
     ts("Pod 狀態：Router 判定可用、Ready、重啟",
-       desc("Router 判定可以送流量的 Pod 數（haproxy_server_up）、Ready 的 Pod 數，以及每 5 分鐘重啟次數。",
+       desc("Router 判定可以送流量的 Pod 數（haproxy_server_up，Router 沒輸出 Pod 層級指標時沒有這條）、Ready 的 Pod 數，以及每 5 分鐘重啟次數。",
             "Router 可用數掉下來 → 流量集中到剩下的 Pod，排隊和回應時間會上升；有重啟 → 看 OCP 壓測影響評估 Dashboard 的 2B 重啟原因。"),
        [O(f'count(max by (exported_pod) (haproxy_server_up{{{RS}}}) == 1)', "Router 判定可用", "A"),
         O(f'sum(kube_pod_status_ready{{{POD}, condition="true"}})', "Ready", "B"),
@@ -376,7 +463,9 @@ B.line(
                                                        {"id": "color", "value": {"mode": "fixed", "fixedColor": "red"}}])]),
     ts("請求數對不上的部分（req/s）",
        desc("**Kong 送了、Router 沒收到** = Kong 送往上游 − Router 收到；**Router 收到、不是 Kong 來的** = Router 收到 − Kong 送往上游。",
-            "前者 > 0 → 請求在中間被擋、逾時或被導到別處（同時看 ① Kong 自己回的 502/504）；"
+            "**先排除假警報**：Kong 選的 Service / Route 和 OCP Route 不是同一條路徑（Kong 一個 Service 可能對到好幾條 OCP route）；"
+            "OCP route 是 TLS passthrough（Router 不記 HTTP 回應數，Router 收到 = 0）。看右邊的表確認。"
+            "排除後：前者 > 0 → 請求在中間被擋、逾時或被導到別處（同時看 ① Kong 自己回的 502/504）；"
             "後者 > 0 → 有其他來源直接打這條 route（內部呼叫、繞過 Kong、LB health check）。"),
        [K(kong_sent(RI), "", "A", hide=True), O(router_recv(RI), "", "B", hide=True),
         M(pos("$A - $B"), "C"), M(pos("$B - $A"), "D")],
@@ -384,6 +473,21 @@ B.line(
        overrides=[name_ref("C", "Kong 送了、Router 沒收到", [{"id": "color", "value": {"mode": "fixed", "fixedColor": "red"}}]),
                   name_ref("D", "Router 收到、不是 Kong 來的", [{"id": "color", "value": {"mode": "fixed", "fixedColor": "orange"}}])]))
 B.line(
+    table("這個 Namespace 每條 route 在 Router 上的流量（找 passthrough、選錯 route）",
+          desc("Namespace 裡每條 route 在 Router 上的 backend、HTTP 回應數、收到 / 送出的流量。"
+               "backend 開頭是 be_http（HTTP）、be_edge_http（edge TLS）、be_secure（reencrypt）、be_tcp（**TLS passthrough**）。",
+               "**有 bytes、但 HTTP 回應數是 0 或沒有** → passthrough，Router 只看得到 TCP，請求數、回應時間都沒有，"
+               "只能看 Kong 的等上游和 App 自己的時間；**Kong 的流量跟某條沒選到的 route 對得上** → 上方 OCP Route 選錯了。"),
+          [("route", "Route"), ("backend", "Backend")],
+          [("HTTP 回應（/秒）", O(f'sum by (route, backend) (rate(haproxy_backend_http_responses_total{{exported_namespace="$namespace"}}[5m]))'),
+            [{"id": "unit", "value": "reqps"}, {"id": "decimals", "value": 1}]),
+           ("收到（bytes/s）", O(f'sum by (route, backend) (rate(haproxy_backend_bytes_in_total{{exported_namespace="$namespace"}}[5m]))'),
+            [{"id": "unit", "value": "Bps"}]),
+           ("送出（bytes/s）", O(f'sum by (route, backend) (rate(haproxy_backend_bytes_out_total{{exported_namespace="$namespace"}}[5m]))'),
+            [{"id": "unit", "value": "Bps"}]),
+           ("新連線（/秒）", O(f'sum by (route, backend) (rate(haproxy_backend_connections_total{{exported_namespace="$namespace"}}[5m]))'),
+            [{"id": "unit", "value": "cps"}, {"id": "decimals", "value": 1}])],
+          sort="收到（bytes/s）"),
     ts("Kong 自己回的 502 / 503 / 504（連不上 / 逾時）",
        desc("Kong 沒拿到上游回應而自己回的錯誤，依狀態碼。502 = 連線失敗或上游回了不完整的回應；503 = 沒有可用的上游；504 = 等上游逾時。",
             "跟「Kong ↔ Router 之間」同時上升 → 中間設備或網路問題；Router 那邊沒看到同樣數量的錯誤 → 請求根本沒到 Router。"),
@@ -414,8 +518,9 @@ dash = {
          "current": {}, "hide": 0, "refresh": 1},
         {"type": "datasource", "name": "ocp_ds", "label": "OCP 資料來源", "query": "prometheus",
          "regex": "/^Prometheus.*OCP$/", "current": {}, "hide": 0, "refresh": 1},
-        var("kong_service", "Kong Service", DSK, "label_values(kong_http_requests_total, service)", True, True),
-        var("kong_route", "Kong Route", DSK, 'label_values(kong_http_requests_total{service=~"$kong_service"}, route)', True, True),
+        # 不給 All:All 會拿全部 Kong 流量跟一條 OCP route 比,請求數和時間都對不上
+        var("kong_service", "Kong Service", DSK, "label_values(kong_http_requests_total, service)", True, False),
+        var("kong_route", "Kong Route", DSK, 'label_values(kong_http_requests_total{service=~"$kong_service"}, route)', True, False),
         var("namespace", "OCP Namespace", DSO, "label_values(haproxy_backend_http_responses_total, exported_namespace)"),
         var("router_route", "OCP Route", DSO,
             'label_values(haproxy_backend_http_responses_total{exported_namespace="$namespace"}, route)', True, True),

@@ -88,10 +88,11 @@ Client →（A10/F5?）→ Kong →（A10/F5? 網路）→ OCP Router → AP Pod
 | 區塊 | 內容 |
 |---|---|
 | ① 鏈路總覽 | 每段平均花多久（長條 + 疊起來的走勢）、每段收到的請求數、5xx 是誰產生的 |
+| ①b 長尾 | 各段 p95 / p99、App 以外的長尾（Kong 等上游 p99 − App p99）、長尾倍數（p99 ÷ 平均）、時間範圍內最差的 p99（依 Kong API）、App p99 依 URI / Pod |
 | ② Kong | p95 / p99（總耗時、等上游、Kong 自己）、狀態碼與 source、各 Kong 節點、nginx 連線 |
 | ③ OCP Router | 排隊 / 連線 / 等 Pod 回應、各 Router Pod 的回應時間與流量、錯誤與重試、新連線比例、Router Pod CPU |
 | ④ AP Pod | Router 看到每個 Pod 的回應時間與 5xx、App 自己量的處理時間、CPU throttling、可用 / Ready / 重啟 |
-| ⑤ 中間沒有指標的段 | Kong ↔ Router 之間多花的時間、請求數對不上的部分、Kong 自己回的 502 / 503 / 504 |
+| ⑤ 中間沒有指標的段 | Kong ↔ Router 之間多花的時間、請求數對不上的部分、這個 Namespace 每條 route 在 Router 上的流量（找 passthrough、選錯 route）、Kong 自己回的 502 / 503 / 504 |
 
 怎麼推算中間那段：
 
@@ -102,7 +103,10 @@ Client →（A10/F5?）→ Kong →（A10/F5? 網路）→ OCP Router → AP Pod
 注意事項：
 
 - **兩邊要選同一條路徑**：上方先選 Kong 的 Service / Route，再選對應的 OCP Namespace / Route / Deployment。選的不是同一條路徑時，差值沒有意義。
-- **時間都是平均**：Router 只提供平均（每個 Router Pod 最近 1024 筆請求），所以 Kong 也用直方圖的 sum ÷ count 算平均來比。長尾看 ② Kong 的 p99；要追單筆請求用 X-Request-ID 串 Kong、Router、App 的 log。
+- **平均和長尾**：Router 只提供平均（每個 Router Pod 最近 1024 筆請求），所以 ① 各段拆解用平均（Kong 用直方圖的 sum ÷ count）。p95 / p99 只有 Kong 和 App（需開 Micrometer histogram）算得出來，在 ①b：Kong 等上游 p99 高、App p99 不高 → 長尾在 App 以外；長尾倍數（p99 ÷ 平均）哪段特別大，長尾就是那段造成的。百分位數不能真的相減，「App 以外的長尾」只當方向參考。要追單筆請求用 X-Request-ID 串 Kong、Router、App 的 log。
+- **Kong 的 Service / Route 不能選 All**：All 會拿全部 Kong 流量跟一條 OCP route 比，請求數和時間都對不上。
+- **「Kong 送了、Router 沒收到」很多時先排除假警報**：Kong 選的和 OCP Route 不是同一條路徑（Kong 一個 Service 可能對到好幾條 OCP route），或 OCP route 是 TLS passthrough（Router 是 TCP 模式，不記 HTTP 回應數、也沒有回應時間）。⑤ 的「每條 route 在 Router 上的流量」表可以確認：有 bytes 但沒有 HTTP 回應數 = passthrough。
+- **④ Router 看到的每個 Pod 沒資料**：Router 後面的 Pod 總數超過 `ROUTER_METRICS_HAPROXY_SERVER_THRESHOLD`（預設 500）時，Router 只輸出 route 層級的指標；passthrough 也沒有。改看 App 自己量的每個 Pod 時間。
 - **Kong 和 OCP 可以是兩個不同的 Prometheus**：跨資料來源的相減用 Grafana 的運算式（Expression），面板的資料來源會顯示為 Mixed。
 - **需要的指標**：Kong 3.x prometheus plugin（`kong_http_requests_total` 有 `source` label、`kong_*_latency_ms` 直方圖）、OCP Router 的 `haproxy_*` 指標、kube-state-metrics、cAdvisor；App 自己處理時間需要 Micrometer（`http_server_requests_seconds`），沒有的話那幾條線沒資料，其他照常。
 - **逾時**：Kong 等上游 p99 卡在 30s 附近通常是 Router 的 `timeout server`（預設 30s，route annotation `haproxy.router.openshift.io/timeout` 可改），卡在 60s 是 Kong 的 `read_timeout`（預設 60s）。

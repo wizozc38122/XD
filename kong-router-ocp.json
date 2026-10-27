@@ -67,8 +67,8 @@
         "refresh": 2,
         "sort": 1,
         "multi": true,
-        "includeAll": true,
-        "allValue": ".*",
+        "includeAll": false,
+        "allValue": null,
         "current": {},
         "hide": 0,
         "options": []
@@ -90,8 +90,8 @@
         "refresh": 2,
         "sort": 1,
         "multi": true,
-        "includeAll": true,
-        "allValue": ".*",
+        "includeAll": false,
+        "allValue": null,
         "current": {},
         "hide": 0,
         "options": []
@@ -885,7 +885,7 @@
     {
       "id": 9,
       "type": "row",
-      "title": "② Kong：Kong 自己、各節點、長尾",
+      "title": "①b 長尾（p95 / p99）：平均看不出來的慢",
       "collapsed": false,
       "gridPos": {
         "x": 0,
@@ -897,6 +897,730 @@
     },
     {
       "id": 10,
+      "type": "bargauge",
+      "title": "最近 5 分鐘：各段 p95 / p99",
+      "description": "有直方圖的段才算得出百分位數：Kong（總耗時、等上游、Kong 自己）和 App（需開 Micrometer histogram）。Router 只提供平均，沒有 p95 / p99。**App 以外的長尾** = Kong 等上游 p99 − App p99，是 A10 / F5、網路、Router、Pod 內排隊這些 App 以外的部分造成的長尾（百分位數不能真的相減，只當方向參考）。\n\n**怎麼看**：Kong 等上游 p99 很高、App p99 不高 → 長尾在 App 以外；兩個都高 → App 自己有慢請求。",
+      "datasource": {
+        "type": "datasource",
+        "uid": "-- Mixed --"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${kong_ds}"
+          },
+          "expr": "histogram_quantile(0.95, sum by (le) (rate(kong_kong_latency_ms_bucket{service=~\"$kong_service\", route=~\"$kong_route\"}[5m])))",
+          "legendFormat": "Kong 自己 p95",
+          "range": false,
+          "instant": true,
+          "editorMode": "code",
+          "hide": false
+        },
+        {
+          "refId": "B",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${kong_ds}"
+          },
+          "expr": "histogram_quantile(0.99, sum by (le) (rate(kong_kong_latency_ms_bucket{service=~\"$kong_service\", route=~\"$kong_route\"}[5m])))",
+          "legendFormat": "Kong 自己 p99",
+          "range": false,
+          "instant": true,
+          "editorMode": "code",
+          "hide": false
+        },
+        {
+          "refId": "C",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${kong_ds}"
+          },
+          "expr": "histogram_quantile(0.95, sum by (le) (rate(kong_upstream_latency_ms_bucket{service=~\"$kong_service\", route=~\"$kong_route\"}[5m])))",
+          "legendFormat": "Kong 等上游 p95",
+          "range": false,
+          "instant": true,
+          "editorMode": "code",
+          "hide": false
+        },
+        {
+          "refId": "D",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${kong_ds}"
+          },
+          "expr": "histogram_quantile(0.99, sum by (le) (rate(kong_upstream_latency_ms_bucket{service=~\"$kong_service\", route=~\"$kong_route\"}[5m])))",
+          "legendFormat": "Kong 等上游 p99",
+          "range": false,
+          "instant": true,
+          "editorMode": "code",
+          "hide": false
+        },
+        {
+          "refId": "E",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${ocp_ds}"
+          },
+          "expr": "1000 * histogram_quantile(0.95, sum by (le) (rate(http_server_requests_seconds_bucket{namespace=\"$namespace\", pod=~\"$deployment-[a-z0-9]+-[a-z0-9]+\", uri!~\"/actuator.*\"}[5m])))",
+          "legendFormat": "App 自己處理 p95",
+          "range": false,
+          "instant": true,
+          "editorMode": "code",
+          "hide": false
+        },
+        {
+          "refId": "F",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${ocp_ds}"
+          },
+          "expr": "1000 * histogram_quantile(0.99, sum by (le) (rate(http_server_requests_seconds_bucket{namespace=\"$namespace\", pod=~\"$deployment-[a-z0-9]+-[a-z0-9]+\", uri!~\"/actuator.*\"}[5m])))",
+          "legendFormat": "App 自己處理 p99",
+          "range": false,
+          "instant": true,
+          "editorMode": "code",
+          "hide": false
+        },
+        {
+          "refId": "G",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${kong_ds}"
+          },
+          "expr": "histogram_quantile(0.99, sum by (le) (rate(kong_request_latency_ms_bucket{service=~\"$kong_service\", route=~\"$kong_route\"}[5m])))",
+          "legendFormat": "Kong 總耗時 p99",
+          "range": false,
+          "instant": true,
+          "editorMode": "code",
+          "hide": false
+        },
+        {
+          "refId": "H",
+          "datasource": {
+            "type": "__expr__",
+            "uid": "__expr__",
+            "name": "Expression"
+          },
+          "type": "math",
+          "expression": "($D - $F) * (($D - $F) > 0)",
+          "hide": false
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ms",
+          "min": 0,
+          "decimals": 0,
+          "color": {
+            "mode": "palette-classic"
+          },
+          "noValue": "—"
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byFrameRefID",
+              "options": "H"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "App 以外的長尾（估算）"
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "orientation": "horizontal",
+        "displayMode": "basic",
+        "showUnfilled": true,
+        "valueMode": "text",
+        "namePlacement": "left",
+        "sizing": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        }
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 26,
+        "w": 9,
+        "h": 10
+      }
+    },
+    {
+      "id": 11,
+      "type": "timeseries",
+      "title": "各段 p99 走勢（紅線 = App 以外的長尾）",
+      "description": "Kong 等上游、App、Kong 自己的 p99，以及兩者的差（紅線）。\n\n**怎麼看**：紅線往上飆、App p99 沒變 → 長尾發生在 App 以外（A10 / F5、網路、Router、Pod 內排隊），對照 ⑤ 和 ③；App p99 跟著飆 → App 自己變慢，看 ④。",
+      "datasource": {
+        "type": "datasource",
+        "uid": "-- Mixed --"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${kong_ds}"
+          },
+          "expr": "histogram_quantile(0.99, sum by (le) (rate(kong_request_latency_ms_bucket{service=~\"$kong_service\", route=~\"$kong_route\"}[$__rate_interval])))",
+          "legendFormat": "Kong 總耗時 p99",
+          "range": true,
+          "instant": false,
+          "editorMode": "code",
+          "hide": false
+        },
+        {
+          "refId": "D",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${kong_ds}"
+          },
+          "expr": "histogram_quantile(0.99, sum by (le) (rate(kong_upstream_latency_ms_bucket{service=~\"$kong_service\", route=~\"$kong_route\"}[$__rate_interval])))",
+          "legendFormat": "Kong 等上游 p99",
+          "range": true,
+          "instant": false,
+          "editorMode": "code",
+          "hide": false
+        },
+        {
+          "refId": "F",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${ocp_ds}"
+          },
+          "expr": "1000 * histogram_quantile(0.99, sum by (le) (rate(http_server_requests_seconds_bucket{namespace=\"$namespace\", pod=~\"$deployment-[a-z0-9]+-[a-z0-9]+\", uri!~\"/actuator.*\"}[$__rate_interval])))",
+          "legendFormat": "App 自己處理 p99",
+          "range": true,
+          "instant": false,
+          "editorMode": "code",
+          "hide": false
+        },
+        {
+          "refId": "G",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${kong_ds}"
+          },
+          "expr": "histogram_quantile(0.99, sum by (le) (rate(kong_kong_latency_ms_bucket{service=~\"$kong_service\", route=~\"$kong_route\"}[$__rate_interval])))",
+          "legendFormat": "Kong 自己 p99",
+          "range": true,
+          "instant": false,
+          "editorMode": "code",
+          "hide": false
+        },
+        {
+          "refId": "H",
+          "datasource": {
+            "type": "__expr__",
+            "uid": "__expr__",
+            "name": "Expression"
+          },
+          "type": "math",
+          "expression": "($D - $F) * (($D - $F) > 0)",
+          "hide": false
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ms",
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 1,
+            "fillOpacity": 10,
+            "showPoints": "never",
+            "spanNulls": true,
+            "axisSoftMin": 0,
+            "stacking": {
+              "mode": "none",
+              "group": "A"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "color": {
+            "mode": "palette-classic"
+          },
+          "noValue": "沒資料：App 沒開 Micrometer histogram（management.metrics.distribution.percentiles-histogram.http.server.requests=true）"
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byFrameRefID",
+              "options": "H"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "App 以外的長尾（Kong 等上游 p99 − App p99，估算）"
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "red"
+                }
+              },
+              {
+                "id": "custom.lineWidth",
+                "value": 3
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "calcs": [
+            "mean",
+            "max",
+            "lastNotNull"
+          ],
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "interval": "1m",
+      "gridPos": {
+        "x": 9,
+        "y": 26,
+        "w": 15,
+        "h": 10
+      }
+    },
+    {
+      "id": 12,
+      "type": "timeseries",
+      "title": "長尾倍數：p99 ÷ 平均（哪段的長尾比較嚴重）",
+      "description": "每段的 p99 是平均的幾倍。1～3 倍算正常；倍數大代表大部分請求很快、但有一小部分特別慢。\n\n**怎麼看**：Kong 等上游的倍數比 App 的大很多 → 長尾是 App 以外造成的（網路、LB、Router 排隊、Pod 內排隊）；App 的倍數大 → App 有特定慢請求（看下面依 URI、依 Pod）。",
+      "datasource": {
+        "type": "datasource",
+        "uid": "-- Mixed --"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${kong_ds}"
+          },
+          "expr": "(histogram_quantile(0.99, sum by (le) (rate(kong_upstream_latency_ms_bucket{service=~\"$kong_service\", route=~\"$kong_route\"}[$__rate_interval])))) / (sum(rate(kong_upstream_latency_ms_sum{service=~\"$kong_service\", route=~\"$kong_route\"}[$__rate_interval])) / sum(rate(kong_upstream_latency_ms_count{service=~\"$kong_service\", route=~\"$kong_route\"}[$__rate_interval])))",
+          "legendFormat": "Kong 等上游",
+          "range": true,
+          "instant": false,
+          "editorMode": "code",
+          "hide": false
+        },
+        {
+          "refId": "B",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${ocp_ds}"
+          },
+          "expr": "(1000 * histogram_quantile(0.99, sum by (le) (rate(http_server_requests_seconds_bucket{namespace=\"$namespace\", pod=~\"$deployment-[a-z0-9]+-[a-z0-9]+\", uri!~\"/actuator.*\"}[$__rate_interval])))) / (1000 * sum(rate(http_server_requests_seconds_sum{namespace=\"$namespace\", pod=~\"$deployment-[a-z0-9]+-[a-z0-9]+\", uri!~\"/actuator.*\"}[$__rate_interval])) / sum(rate(http_server_requests_seconds_count{namespace=\"$namespace\", pod=~\"$deployment-[a-z0-9]+-[a-z0-9]+\", uri!~\"/actuator.*\"}[$__rate_interval])))",
+          "legendFormat": "App 自己處理",
+          "range": true,
+          "instant": false,
+          "editorMode": "code",
+          "hide": false
+        },
+        {
+          "refId": "C",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${kong_ds}"
+          },
+          "expr": "(histogram_quantile(0.99, sum by (le) (rate(kong_kong_latency_ms_bucket{service=~\"$kong_service\", route=~\"$kong_route\"}[$__rate_interval])))) / (sum(rate(kong_kong_latency_ms_sum{service=~\"$kong_service\", route=~\"$kong_route\"}[$__rate_interval])) / sum(rate(kong_kong_latency_ms_count{service=~\"$kong_service\", route=~\"$kong_route\"}[$__rate_interval])))",
+          "legendFormat": "Kong 自己",
+          "range": true,
+          "instant": false,
+          "editorMode": "code",
+          "hide": false
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 1,
+            "fillOpacity": 10,
+            "showPoints": "never",
+            "spanNulls": true,
+            "axisSoftMin": 0,
+            "stacking": {
+              "mode": "none",
+              "group": "A"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "color": {
+            "mode": "palette-classic"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "calcs": [
+            "mean",
+            "max",
+            "lastNotNull"
+          ],
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "interval": "1m",
+      "gridPos": {
+        "x": 0,
+        "y": 36,
+        "w": 12,
+        "h": 9
+      }
+    },
+    {
+      "id": 13,
+      "type": "table",
+      "title": "時間範圍內最差的 p99（依 Kong API）",
+      "description": "每個 Kong Service / Route 在整個時間範圍內 p99 最高的那一刻（每分鐘看一次），以及平均。\n\n**怎麼看**：等上游 p99 最高很大、平均不大 → 那個 API 有偶發的慢請求；Kong 自己 p99 高 → 那個 API 的 plugin 慢。",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${kong_ds}"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${kong_ds}"
+          },
+          "expr": "max_over_time((histogram_quantile(0.99, sum by (le, service, route) (rate(kong_upstream_latency_ms_bucket{service=~\"$kong_service\", route=~\"$kong_route\"}[1m]))))[$__range:1m])",
+          "legendFormat": "",
+          "range": false,
+          "instant": true,
+          "editorMode": "code",
+          "hide": false,
+          "format": "table"
+        },
+        {
+          "refId": "B",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${kong_ds}"
+          },
+          "expr": "max_over_time((histogram_quantile(0.99, sum by (le, service, route) (rate(kong_request_latency_ms_bucket{service=~\"$kong_service\", route=~\"$kong_route\"}[1m]))))[$__range:1m])",
+          "legendFormat": "",
+          "range": false,
+          "instant": true,
+          "editorMode": "code",
+          "hide": false,
+          "format": "table"
+        },
+        {
+          "refId": "C",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${kong_ds}"
+          },
+          "expr": "max_over_time((histogram_quantile(0.99, sum by (le, service, route) (rate(kong_kong_latency_ms_bucket{service=~\"$kong_service\", route=~\"$kong_route\"}[1m]))))[$__range:1m])",
+          "legendFormat": "",
+          "range": false,
+          "instant": true,
+          "editorMode": "code",
+          "hide": false,
+          "format": "table"
+        },
+        {
+          "refId": "D",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${kong_ds}"
+          },
+          "expr": "sum by (service, route) (rate(kong_upstream_latency_ms_sum{service=~\"$kong_service\", route=~\"$kong_route\"}[$__range])) / sum by (service, route) (rate(kong_upstream_latency_ms_count{service=~\"$kong_service\", route=~\"$kong_route\"}[$__range]))",
+          "legendFormat": "",
+          "range": false,
+          "instant": true,
+          "editorMode": "code",
+          "hide": false,
+          "format": "table"
+        },
+        {
+          "refId": "E",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${kong_ds}"
+          },
+          "expr": "sum by (service, route) (rate(kong_http_requests_total{service=~\"$kong_service\", route=~\"$kong_route\"}[$__range]))",
+          "legendFormat": "",
+          "range": false,
+          "instant": true,
+          "editorMode": "code",
+          "hide": false,
+          "format": "table"
+        }
+      ],
+      "transformations": [
+        {
+          "id": "merge",
+          "options": {}
+        },
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": {
+              "Time": true
+            },
+            "renameByName": {
+              "service": "Service",
+              "route": "Route",
+              "Value #A": "等上游 p99（最高）",
+              "Value #B": "總耗時 p99（最高）",
+              "Value #C": "Kong 自己 p99（最高）",
+              "Value #D": "等上游平均",
+              "Value #E": "請求數（/秒）"
+            },
+            "indexByName": {
+              "service": 0,
+              "route": 1,
+              "Value #A": 2,
+              "Value #B": 3,
+              "Value #C": 4,
+              "Value #D": 5,
+              "Value #E": 6
+            }
+          }
+        },
+        {
+          "id": "sortBy",
+          "options": {
+            "sort": [
+              {
+                "field": "等上游 p99（最高）",
+                "desc": true
+              }
+            ]
+          }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ms",
+          "decimals": 0,
+          "custom": {
+            "align": "auto",
+            "minWidth": 90
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "請求數（/秒）"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "reqps"
+              },
+              {
+                "id": "decimals",
+                "value": 1
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "showHeader": true
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 36,
+        "w": 12,
+        "h": 9
+      }
+    },
+    {
+      "id": 14,
+      "type": "timeseries",
+      "title": "App p99 依 URI（前 10，找哪個 API 慢）",
+      "description": "App 自己記錄的 p99，依 URI 分開。\n\n**怎麼看**：某個 URI 特別高 → 那支 API 本身慢（DB、下游服務）；全部一起高 → App 整體或 Pod 資源問題。",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${ocp_ds}"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${ocp_ds}"
+          },
+          "expr": "topk(10, 1000 * histogram_quantile(0.99, sum by (le, uri) (rate(http_server_requests_seconds_bucket{namespace=\"$namespace\", pod=~\"$deployment-[a-z0-9]+-[a-z0-9]+\", uri!~\"/actuator.*\"}[$__rate_interval]))))",
+          "legendFormat": "{{uri}}",
+          "range": true,
+          "instant": false,
+          "editorMode": "code",
+          "hide": false
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ms",
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 1,
+            "fillOpacity": 10,
+            "showPoints": "never",
+            "spanNulls": true,
+            "axisSoftMin": 0,
+            "stacking": {
+              "mode": "none",
+              "group": "A"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "color": {
+            "mode": "palette-classic"
+          },
+          "noValue": "沒資料：App 沒開 Micrometer histogram（management.metrics.distribution.percentiles-histogram.http.server.requests=true）"
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "calcs": [
+            "mean",
+            "max",
+            "lastNotNull"
+          ],
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 45,
+        "w": 12,
+        "h": 9
+      }
+    },
+    {
+      "id": 15,
+      "type": "timeseries",
+      "title": "App p99 依 Pod（找哪個 Pod 有長尾）",
+      "description": "App 自己記錄的 p99，依 Pod 分開。\n\n**怎麼看**：只有一個 Pod 特別高 → 那個 Pod 的 Node、GC 或分到的資料有問題。",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${ocp_ds}"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${ocp_ds}"
+          },
+          "expr": "1000 * histogram_quantile(0.99, sum by (le, pod) (rate(http_server_requests_seconds_bucket{namespace=\"$namespace\", pod=~\"$deployment-[a-z0-9]+-[a-z0-9]+\", uri!~\"/actuator.*\"}[$__rate_interval])))",
+          "legendFormat": "{{pod}}",
+          "range": true,
+          "instant": false,
+          "editorMode": "code",
+          "hide": false
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ms",
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 1,
+            "fillOpacity": 10,
+            "showPoints": "never",
+            "spanNulls": true,
+            "axisSoftMin": 0,
+            "stacking": {
+              "mode": "none",
+              "group": "A"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "color": {
+            "mode": "palette-classic"
+          },
+          "noValue": "沒資料：App 沒開 Micrometer histogram（management.metrics.distribution.percentiles-histogram.http.server.requests=true）"
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "calcs": [
+            "mean",
+            "max",
+            "lastNotNull"
+          ],
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 45,
+        "w": 12,
+        "h": 9
+      }
+    },
+    {
+      "id": 16,
+      "type": "row",
+      "title": "② Kong：Kong 自己、各節點、長尾",
+      "collapsed": false,
+      "gridPos": {
+        "x": 0,
+        "y": 54,
+        "w": 24,
+        "h": 1
+      },
+      "panels": []
+    },
+    {
+      "id": 17,
       "type": "timeseries",
       "title": "Kong 延遲 p95 / p99（總耗時 / 等上游 / Kong 自己）",
       "description": "Kong 的百分位數。**等上游** = Kong 送出到收到上游回應的時間（包含 A10/F5、Router、App）；**Kong 自己** = plugin 等 Kong 本身的處理時間。虛線是常見的逾時：Router 預設 30s、Kong read_timeout 預設 60s。\n\n**怎麼看**：等上游 p99 高、Kong 自己低 → Kong 只是在等後端；Kong 自己高 → Kong 本身慢。p99 卡在虛線附近 → 碰到逾時。",
@@ -1020,13 +1744,13 @@
       },
       "gridPos": {
         "x": 0,
-        "y": 26,
+        "y": 55,
         "w": 12,
         "h": 9
       }
     },
     {
-      "id": 11,
+      "id": 18,
       "type": "timeseries",
       "title": "Kong 回應數（依狀態碼、誰產生）",
       "description": "Kong 每秒回了多少，依狀態碼和 source（kong = Kong 自己回的、service = 上游回的、exit = plugin 直接回的）。\n\n**怎麼看**：502 / 504（kong）= 連不上或等不到上游；401 / 403 / 429（kong 或 exit）= 被 Kong plugin 擋下，沒有送到上游。",
@@ -1091,13 +1815,13 @@
       },
       "gridPos": {
         "x": 12,
-        "y": 26,
+        "y": 55,
         "w": 12,
         "h": 9
       }
     },
     {
-      "id": 12,
+      "id": 19,
       "type": "timeseries",
       "title": "各 Kong 節點：等上游 p99（找哪台 Kong 異常）",
       "description": "每台 Kong 節點自己的等上游 p99。\n\n**怎麼看**：只有一台特別高 → 那台 Kong 到上游的路徑（所在網段、LB）有問題；全部一起高 → 問題在後面。",
@@ -1165,13 +1889,13 @@
       },
       "gridPos": {
         "x": 0,
-        "y": 35,
+        "y": 64,
         "w": 12,
         "h": 9
       }
     },
     {
-      "id": 13,
+      "id": 20,
       "type": "timeseries",
       "title": "各 Kong 節點：每秒請求數",
       "description": "每台 Kong 節點處理多少請求。\n\n**怎麼看**：差很多 → 前面的 LB（A10 / F5）分配不平均。",
@@ -1236,13 +1960,13 @@
       },
       "gridPos": {
         "x": 12,
-        "y": 35,
+        "y": 64,
         "w": 12,
         "h": 9
       }
     },
     {
-      "id": 14,
+      "id": 21,
       "type": "timeseries",
       "title": "Kong 連線狀態（nginx）",
       "description": "每台 Kong 節點的 nginx 連線：active 全部、reading 讀請求中、writing 處理 / 回應中、waiting keep-alive 閒置。\n\n**怎麼看**：writing 持續升高 → 很多請求卡著在等上游；active 突然暴增 → 前面湧入大量連線或連線沒有重用。",
@@ -1307,26 +2031,26 @@
       },
       "gridPos": {
         "x": 0,
-        "y": 44,
+        "y": 73,
         "w": 24,
         "h": 9
       }
     },
     {
-      "id": 15,
+      "id": 22,
       "type": "row",
       "title": "③ OCP Router（HAProxy）：排隊、連線、各 Router Pod",
       "collapsed": false,
       "gridPos": {
         "x": 0,
-        "y": 53,
+        "y": 82,
         "w": 24,
         "h": 1
       },
       "panels": []
     },
     {
-      "id": 16,
+      "id": 23,
       "type": "timeseries",
       "title": "Router 平均耗時：排隊 / 連到 Pod / 等 Pod 回應",
       "description": "Router 量到的三段平均（各 Router Pod 依流量加權）。排隊 = 等可用的 Pod 連線；連到 Pod = 建立 TCP 連線；等 Pod 回應 = 送出到收到回應標頭。\n\n**怎麼看**：排隊高 → Pod 不夠或 maxconn 太小；連線高 → Pod 網路或 Pod 忙到 accept 不了；等 Pod 回應高 → 看 ④ 是哪個 Pod、App 自己慢不慢。",
@@ -1417,13 +2141,13 @@
       },
       "gridPos": {
         "x": 0,
-        "y": 54,
+        "y": 83,
         "w": 12,
         "h": 9
       }
     },
     {
-      "id": 17,
+      "id": 24,
       "type": "timeseries",
       "title": "各 Router Pod：等 Pod 回應平均（找哪台 Router 異常）",
       "description": "每個 Router Pod 自己量到的等 Pod 回應平均。\n\n**怎麼看**：只有一台特別高 → 那台 Router 所在的 Node 有問題（CPU、網路）。",
@@ -1488,13 +2212,13 @@
       },
       "gridPos": {
         "x": 12,
-        "y": 54,
+        "y": 83,
         "w": 12,
         "h": 9
       }
     },
     {
-      "id": 18,
+      "id": 25,
       "type": "timeseries",
       "title": "各 Router Pod：每秒回應數（LB 分配是否平均）",
       "description": "每個 Router Pod 處理多少這條 route 的請求。\n\n**怎麼看**：差很多 → 前面的 LB（A10 / F5）只往部分 Router 送，或某台 Router 被 LB 判定不健康。",
@@ -1559,13 +2283,13 @@
       },
       "gridPos": {
         "x": 0,
-        "y": 63,
+        "y": 92,
         "w": 12,
         "h": 9
       }
     },
     {
-      "id": 19,
+      "id": 26,
       "type": "timeseries",
       "title": "Router 錯誤：連不上 Pod / 回應錯誤 / 重試 / 排隊中",
       "description": "Router 連 Pod 失敗、讀 Pod 回應失敗、重試的次數（每秒），以及目前在排隊的請求數。\n\n**怎麼看**：連不上 Pod 上升 → Pod 掛了或網路斷；回應錯誤上升 → Pod 回到一半斷線；排隊中 > 0 → Pod 處理不及。",
@@ -1669,13 +2393,13 @@
       },
       "gridPos": {
         "x": 12,
-        "y": 63,
+        "y": 92,
         "w": 12,
         "h": 9
       }
     },
     {
-      "id": 20,
+      "id": 27,
       "type": "timeseries",
       "title": "Router 對 Pod 開新連線的比例（新連線 ÷ 請求數）",
       "description": "Router 每處理一個請求，平均要對 Pod 開幾條新連線。接近 0 = 連線有重用（keep-alive）；接近 1 = 每個請求都重新連線。\n\n**怎麼看**：比例突然升高、Router 連到 Pod 的時間也上升 → 連線一直被關掉重開（Pod 或中間設備沒保持連線）。",
@@ -1741,13 +2465,13 @@
       },
       "gridPos": {
         "x": 0,
-        "y": 72,
+        "y": 101,
         "w": 12,
         "h": 9
       }
     },
     {
-      "id": 21,
+      "id": 28,
       "type": "timeseries",
       "title": "Router Pod：CPU 用量（核）與目前連線數",
       "description": "Router Pod（openshift-ingress）的 CPU，以及每台 Router 目前的連線數（右軸）。Router 是全叢集共用，別的服務流量也會算進來。\n\n**怎麼看**：某台 Router CPU 特別高或接近上限 → 那台 Router 本身變慢，所有走它的 route 都會受影響。",
@@ -1848,26 +2572,26 @@
       },
       "gridPos": {
         "x": 12,
-        "y": 72,
+        "y": 101,
         "w": 12,
         "h": 9
       }
     },
     {
-      "id": 22,
+      "id": 29,
       "type": "row",
       "title": "④ AP Pod：哪個 Pod 慢、App 自己慢不慢",
       "collapsed": false,
       "gridPos": {
         "x": 0,
-        "y": 81,
+        "y": 110,
         "w": 24,
         "h": 1
       },
       "panels": []
     },
     {
-      "id": 23,
+      "id": 30,
       "type": "timeseries",
       "title": "Router 看到的每個 Pod：等回應平均（找哪個 Pod 慢）",
       "description": "Router 等每個 AP Pod 回應的平均時間（取各 Router Pod 中最高的）。\n\n**怎麼看**：只有一個 Pod 特別高 → 那個 Pod 的 Node、GC 或分到的資料有問題；全部都高 → App 整體慢。",
@@ -1910,7 +2634,8 @@
           },
           "color": {
             "mode": "palette-classic"
-          }
+          },
+          "noValue": "沒資料：Router 沒有輸出 Pod 層級指標。Router 後面的 Pod 總數超過 ROUTER_METRICS_HAPROXY_SERVER_THRESHOLD（預設 500）時只輸出 route 層級；TCP passthrough 的 route 也沒有。改看下方 App 自己量的每個 Pod 時間"
         },
         "overrides": []
       },
@@ -1932,13 +2657,13 @@
       },
       "gridPos": {
         "x": 0,
-        "y": 82,
+        "y": 111,
         "w": 12,
         "h": 9
       }
     },
     {
-      "id": 24,
+      "id": 31,
       "type": "timeseries",
       "title": "Router 看到的每個 Pod：5xx（req/s）",
       "description": "Router 從每個 AP Pod 收到的 5xx。\n\n**怎麼看**：集中在某個 Pod → 那個 Pod 有問題（設定、資料、資源）；平均分散 → App 整體或下游的問題。",
@@ -1982,7 +2707,7 @@
           "color": {
             "mode": "palette-classic"
           },
-          "noValue": "0"
+          "noValue": "沒資料：Router 沒有輸出 Pod 層級指標。Router 後面的 Pod 總數超過 ROUTER_METRICS_HAPROXY_SERVER_THRESHOLD（預設 500）時只輸出 route 層級；TCP passthrough 的 route 也沒有。改看下方 App 自己量的每個 Pod 時間"
         },
         "overrides": []
       },
@@ -2004,13 +2729,13 @@
       },
       "gridPos": {
         "x": 12,
-        "y": 82,
+        "y": 111,
         "w": 12,
         "h": 9
       }
     },
     {
-      "id": 25,
+      "id": 32,
       "type": "timeseries",
       "title": "App 自己量的處理時間：每個 Pod 平均（需 Micrometer）",
       "description": "App 自己記錄的處理時間（http_server_requests_seconds，不含 /actuator）。這是請求進到 App 之後的時間。\n\n**怎麼看**：跟上面 Router 看到的比：Router 的比 App 的高很多 → 請求在 Pod 裡排隊（thread pool 滿）或 Pod 網路慢。沒資料 = App 沒有 Micrometer 指標。",
@@ -2076,13 +2801,13 @@
       },
       "gridPos": {
         "x": 0,
-        "y": 91,
+        "y": 120,
         "w": 12,
         "h": 9
       }
     },
     {
-      "id": 26,
+      "id": 33,
       "type": "timeseries",
       "title": "Pod CPU throttling（各 Pod）",
       "description": "CPU 想用但被 limit 擋下的時間比例。\n\n**怎麼看**：超過 25% → App 被 CPU limit 卡住，處理時間會變長；調高 CPU limit 或加 Pod。",
@@ -2148,16 +2873,16 @@
       },
       "gridPos": {
         "x": 12,
-        "y": 91,
+        "y": 120,
         "w": 12,
         "h": 9
       }
     },
     {
-      "id": 27,
+      "id": 34,
       "type": "timeseries",
       "title": "Pod 狀態：Router 判定可用、Ready、重啟",
-      "description": "Router 判定可以送流量的 Pod 數（haproxy_server_up）、Ready 的 Pod 數，以及每 5 分鐘重啟次數。\n\n**怎麼看**：Router 可用數掉下來 → 流量集中到剩下的 Pod，排隊和回應時間會上升；有重啟 → 看 OCP 壓測影響評估 Dashboard 的 2B 重啟原因。",
+      "description": "Router 判定可以送流量的 Pod 數（haproxy_server_up，Router 沒輸出 Pod 層級指標時沒有這條）、Ready 的 Pod 數，以及每 5 分鐘重啟次數。\n\n**怎麼看**：Router 可用數掉下來 → 流量集中到剩下的 Pod，排隊和回應時間會上升；有重啟 → 看 OCP 壓測影響評估 Dashboard 的 2B 重啟原因。",
       "datasource": {
         "type": "prometheus",
         "uid": "${ocp_ds}"
@@ -2245,26 +2970,26 @@
       },
       "gridPos": {
         "x": 0,
-        "y": 100,
+        "y": 129,
         "w": 24,
         "h": 9
       }
     },
     {
-      "id": 28,
+      "id": 35,
       "type": "row",
       "title": "⑤ 中間沒有指標的段：A10 / F5、網路（用差值推算）",
       "collapsed": false,
       "gridPos": {
         "x": 0,
-        "y": 109,
+        "y": 138,
         "w": 24,
         "h": 1
       },
       "panels": []
     },
     {
-      "id": 29,
+      "id": 36,
       "type": "timeseries",
       "title": "Kong ↔ Router 之間多花的時間（= Kong 等上游 − Router 量到的）",
       "description": "Kong 等上游的平均，扣掉 Router 量到的排隊、連線、等 Pod 回應。剩下的就是 Kong 和 Router 之間：A10 / F5、網路、TLS 握手、Router 前端。\n\n**怎麼看**：平常有一個固定的量（網路來回）；突然變大而 Router 各段沒變 → 問題在中間設備或網路。兩邊選的不是同一條路徑時這個數字沒有意義。",
@@ -2427,16 +3152,16 @@
       "interval": "1m",
       "gridPos": {
         "x": 0,
-        "y": 110,
+        "y": 139,
         "w": 12,
         "h": 9
       }
     },
     {
-      "id": 30,
+      "id": 37,
       "type": "timeseries",
       "title": "請求數對不上的部分（req/s）",
-      "description": "**Kong 送了、Router 沒收到** = Kong 送往上游 − Router 收到；**Router 收到、不是 Kong 來的** = Router 收到 − Kong 送往上游。\n\n**怎麼看**：前者 > 0 → 請求在中間被擋、逾時或被導到別處（同時看 ① Kong 自己回的 502/504）；後者 > 0 → 有其他來源直接打這條 route（內部呼叫、繞過 Kong、LB health check）。",
+      "description": "**Kong 送了、Router 沒收到** = Kong 送往上游 − Router 收到；**Router 收到、不是 Kong 來的** = Router 收到 − Kong 送往上游。\n\n**怎麼看**：**先排除假警報**：Kong 選的 Service / Route 和 OCP Route 不是同一條路徑（Kong 一個 Service 可能對到好幾條 OCP route）；OCP route 是 TLS passthrough（Router 不記 HTTP 回應數，Router 收到 = 0）。看右邊的表確認。排除後：前者 > 0 → 請求在中間被擋、逾時或被導到別處（同時看 ① Kong 自己回的 502/504）；後者 > 0 → 有其他來源直接打這條 route（內部呼叫、繞過 Kong、LB health check）。",
       "datasource": {
         "type": "datasource",
         "uid": "-- Mixed --"
@@ -2573,13 +3298,199 @@
       "interval": "1m",
       "gridPos": {
         "x": 12,
-        "y": 110,
+        "y": 139,
         "w": 12,
         "h": 9
       }
     },
     {
-      "id": 31,
+      "id": 38,
+      "type": "table",
+      "title": "這個 Namespace 每條 route 在 Router 上的流量（找 passthrough、選錯 route）",
+      "description": "Namespace 裡每條 route 在 Router 上的 backend、HTTP 回應數、收到 / 送出的流量。backend 開頭是 be_http（HTTP）、be_edge_http（edge TLS）、be_secure（reencrypt）、be_tcp（**TLS passthrough**）。\n\n**怎麼看**：**有 bytes、但 HTTP 回應數是 0 或沒有** → passthrough，Router 只看得到 TCP，請求數、回應時間都沒有，只能看 Kong 的等上游和 App 自己的時間；**Kong 的流量跟某條沒選到的 route 對得上** → 上方 OCP Route 選錯了。",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${ocp_ds}"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${ocp_ds}"
+          },
+          "expr": "sum by (route, backend) (rate(haproxy_backend_http_responses_total{exported_namespace=\"$namespace\"}[5m]))",
+          "legendFormat": "",
+          "range": false,
+          "instant": true,
+          "editorMode": "code",
+          "hide": false,
+          "format": "table"
+        },
+        {
+          "refId": "B",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${ocp_ds}"
+          },
+          "expr": "sum by (route, backend) (rate(haproxy_backend_bytes_in_total{exported_namespace=\"$namespace\"}[5m]))",
+          "legendFormat": "",
+          "range": false,
+          "instant": true,
+          "editorMode": "code",
+          "hide": false,
+          "format": "table"
+        },
+        {
+          "refId": "C",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${ocp_ds}"
+          },
+          "expr": "sum by (route, backend) (rate(haproxy_backend_bytes_out_total{exported_namespace=\"$namespace\"}[5m]))",
+          "legendFormat": "",
+          "range": false,
+          "instant": true,
+          "editorMode": "code",
+          "hide": false,
+          "format": "table"
+        },
+        {
+          "refId": "D",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${ocp_ds}"
+          },
+          "expr": "sum by (route, backend) (rate(haproxy_backend_connections_total{exported_namespace=\"$namespace\"}[5m]))",
+          "legendFormat": "",
+          "range": false,
+          "instant": true,
+          "editorMode": "code",
+          "hide": false,
+          "format": "table"
+        }
+      ],
+      "transformations": [
+        {
+          "id": "merge",
+          "options": {}
+        },
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": {
+              "Time": true
+            },
+            "renameByName": {
+              "route": "Route",
+              "backend": "Backend",
+              "Value #A": "HTTP 回應（/秒）",
+              "Value #B": "收到（bytes/s）",
+              "Value #C": "送出（bytes/s）",
+              "Value #D": "新連線（/秒）"
+            },
+            "indexByName": {
+              "route": 0,
+              "backend": 1,
+              "Value #A": 2,
+              "Value #B": 3,
+              "Value #C": 4,
+              "Value #D": 5
+            }
+          }
+        },
+        {
+          "id": "sortBy",
+          "options": {
+            "sort": [
+              {
+                "field": "收到（bytes/s）",
+                "desc": true
+              }
+            ]
+          }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ms",
+          "decimals": 0,
+          "custom": {
+            "align": "auto",
+            "minWidth": 90
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "HTTP 回應（/秒）"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "reqps"
+              },
+              {
+                "id": "decimals",
+                "value": 1
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "收到（bytes/s）"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "Bps"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "送出（bytes/s）"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "Bps"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "新連線（/秒）"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "cps"
+              },
+              {
+                "id": "decimals",
+                "value": 1
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "showHeader": true
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 148,
+        "w": 12,
+        "h": 9
+      }
+    },
+    {
+      "id": 39,
       "type": "timeseries",
       "title": "Kong 自己回的 502 / 503 / 504（連不上 / 逾時）",
       "description": "Kong 沒拿到上游回應而自己回的錯誤，依狀態碼。502 = 連線失敗或上游回了不完整的回應；503 = 沒有可用的上游；504 = 等上游逾時。\n\n**怎麼看**：跟「Kong ↔ Router 之間」同時上升 → 中間設備或網路問題；Router 那邊沒看到同樣數量的錯誤 → 請求根本沒到 Router。",
@@ -2644,9 +3555,9 @@
         }
       },
       "gridPos": {
-        "x": 0,
-        "y": 119,
-        "w": 24,
+        "x": 12,
+        "y": 148,
+        "w": 12,
         "h": 9
       }
     }
