@@ -194,6 +194,22 @@ def n_mem():
     return 'max by (instance) (1 - node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes)'
 
 
+N_CORES = 'count by (instance) (node_cpu_seconds_total{mode="idle"})'
+N_MEM_TOTAL = 'max by (instance) (node_memory_MemTotal_bytes)'
+# Pod -> 所在 Node (instance = node 名稱,跟 node-exporter 一致)
+POD_NODE = (f'label_replace(max by (namespace, pod, node) (kube_pod_info{{node!="", {NSF}}}),'
+            ' "instance", "$1", "node", "(.*)")')
+
+
+def node_share(per_pod, node_total):
+    """Share of a node's total taken by the workload: its pods on the same node are added up, then
+    divided by that node's total; the node where it takes the most is shown."""
+    on_node = (f'sum by (namespace, workload, workload_type, instance) (({per_pod})'
+               f' * on (namespace, pod) group_left (workload, workload_type) {WL}'
+               f' * on (namespace, pod) group_left (instance) {POD_NODE})')
+    return f'max by (namespace, workload, workload_type) ({on_node} / on (instance) group_left () ({node_total}))'
+
+
 def n_conntrack():
     return 'max by (instance) (node_nf_conntrack_entries / node_nf_conntrack_entries_limit)'
 
@@ -435,6 +451,7 @@ L = Line()
 table(L, "【Workload】CPU：用量 → Request → Limit（時間範圍結束前 5 分鐘）", WL_KEYS, [
     POD_COUNT,
     ("用量（核）", by_wl(cpu(W5)), "none", None, 2, None),
+    ("佔 Node", node_share(cpu(W5), N_CORES), "percentunit", steps((Y, 0.3), (RD, 0.5)), 0, None),
     ("Request（核）", by_wl(total("requests", "cpu")), "none", None, 2, None, NOT_SET),
     ("用量 ÷ Request", over_request(cpu_ct(W5), "cpu"), "percentunit", OVER_REQ, 0, None, NOT_SET),
     ("Limit（核）", by_wl(total("limits", "cpu")), "none", None, 2, None, NOT_SET),
@@ -443,6 +460,8 @@ table(L, "【Workload】CPU：用量 → Request → Limit（時間範圍結束�
     ("throttling", by_wl(throttle(W5), "max"), "percentunit", steps((Y, 0.25), (RD, 0.5)), 0, None),
 ], desc(V_CLUSTER_WL,
         "每個 Deployment / StatefulSet / DaemonSet 的 CPU。用量、Request、Limit 是所有 Pod 加總；"
+        "**佔 Node** = 他在某台 Node 上的用量（同一台的 Pod 加總）÷ 那台 Node 的總核數，取佔最多的那台，"
+        "用來判斷他是不是那台 Node 的大戶，那台 Node 還剩多少看第 1 區；"
         "**用量 ÷ Request** = 有設 Request 的容器的用量 ÷ 它們的 Request（全部 Pod 加總）；"
         "**用量 ÷ Limit** = 最接近 Limit 的那個容器（Limit 是每個容器各自的上限，加總會把快爆的平均掉）；"
         "**Limit 設定**：都有設 / 部分容器沒設（Limit 欄只加總有設的容器）/ 全部沒設，沒設的是哪個容器看下方「沒設 Limit 的容器」；"
@@ -454,6 +473,7 @@ L = Line()
 table(L, "【Workload】記憶體：用量 → Request → Limit（時間範圍結束前 5 分鐘）", WL_KEYS, [
     POD_COUNT,
     ("用量", by_wl(mem()), "bytes", None, 1, None),
+    ("佔 Node", node_share(mem(), N_MEM_TOTAL), "percentunit", steps((Y, 0.3), (RD, 0.5)), 0, None),
     ("Request", by_wl(total("requests", "memory")), "bytes", None, 1, None, NOT_SET),
     ("用量 ÷ Request", over_request(mem_ct(), "memory"), "percentunit", OVER_REQ, 0, None, NOT_SET),
     ("Limit", by_wl(total("limits", "memory")), "bytes", None, 1, None, NOT_SET),
@@ -461,6 +481,7 @@ table(L, "【Workload】記憶體：用量 → Request → Limit（時間範圍�
     ("用量 ÷ Limit", by_wl(mem_limit(), "max"), "percentunit", steps((Y, 0.8), (RD, 0.9)), 0, None, NOT_SET),
 ], desc(V_CLUSTER_WL,
         "每個 Workload 的記憶體（working set）。欄位算法同上方 CPU 表：用量、Request、Limit 是所有 Pod 加總；"
+        "**佔 Node** = 他在某台 Node 上的用量 ÷ 那台 Node 的總記憶體，取佔最多的那台；"
         "**用量 ÷ Limit** = 最接近 Limit 的那個容器。",
         REQ_LIMIT_HOW.format(limit_hit="會被 OOMKilled")),
     sort_by="用量", h=10, key_links={"workload": DETAIL_LINK}, key_rename=WL_RENAME, base=WL_ROWS)
