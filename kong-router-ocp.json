@@ -1,0 +1,5269 @@
+{
+  "annotations": {
+    "list": [
+      {
+        "builtIn": 1,
+        "datasource": {
+          "type": "grafana",
+          "uid": "-- Grafana --"
+        },
+        "enable": true,
+        "hide": true,
+        "iconColor": "rgba(0, 211, 255, 1)",
+        "name": "Annotations & Alerts",
+        "type": "dashboard"
+      }
+    ]
+  },
+  "description": "Kong -> OCP Router/Ingress -> Pod timeout 瓶頸分析儀錶板。v9 新增選取區間最差 p99 Top API，並修正 Router true p95/p99 candidate 的 duplicate labelset 問題。",
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 1,
+  "id": 180,
+  "links": [],
+  "panels": [
+    {
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 0
+      },
+      "id": 2,
+      "panels": [],
+      "title": "0. 瓶頸總覽：先判斷問題落在哪一層",
+      "type": "row"
+    },
+    {
+      "description": "",
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 9,
+        "w": 24,
+        "x": 0,
+        "y": 1
+      },
+      "id": 3,
+      "options": {
+        "code": {
+          "language": "plaintext",
+          "showLineNumbers": false,
+          "showMiniMap": false
+        },
+        "content": "### 這版 v9 的重點\n\n1. **Kong p99 分成兩種 Top API**\n   - `Current p99 Top API`：看 dashboard 最後時間點的 p99。\n   - `Worst-in-range p99 Top API`：看整個選取時間範圍內曾經最高的 p99。\n   - 例如 Current 是 1.66s，但明細 Max 是 4.70s，代表最後時間點 p99 是 1.66s，但選取區間內曾有一段 1 分鐘窗口 p99 到 4.70s。\n\n2. **Router p95/p99 candidate 修正 duplicate labelset**\n   - Router bucket 查詢改用 `{__name__=~\"${router_bucket_metric:regex}\"}`。\n   - 聚合時保留 `__name__`，避免多個 bucket metric 或 label 碰撞時出現 `vector cannot contain metrics with the same labelset`。\n\n3. **Router p95/p99 是否能顯示仍取決於 bucket metric**\n   - 有 bucket metric 才能算真正 p95/p99。\n   - 沒有 bucket 時只能看 Router average / peak-average，不能排除少量長尾。\n\n4. **對齊方式**\n   - Kong avg 對 Router avg。\n   - Kong p95/p99 對 Router true p95/p99。\n   - Kong HTTP RPS 對 Router HTTP RPS，不要拿 Router connection rate 當 HTTP RPS。\n\n### 判讀口訣\n\n- Kong Request p99 高、Upstream p99 高、Kong Self 低：Kong 多半只是在等後端。\n- Kong Request p99 高、Upstream 不高、Kong Self 高：才比較像 Kong 自己慢。\n- Kong Upstream 高、Router average 低：先看 Router peak-average、bucket discovery、App metrics。\n- Router 沒有 bucket：不能算真正 Router p99，請補 App metrics 或用 request-id/access log 追單筆。",
+        "mode": "markdown"
+      },
+      "pluginVersion": "12.3.4",
+      "title": "Dashboard 判讀說明",
+      "type": "text"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${kong_ds}"
+      },
+      "description": "Kong 收到的 HTTP request/sec。這才是 Kong 端請求頻率。",
+      "fieldConfig": {
+        "defaults": {
+          "decimals": 2,
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": 0
+              }
+            ]
+          },
+          "unit": "reqps"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 4,
+        "x": 0,
+        "y": 10
+      },
+      "id": 4,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area",
+        "justifyMode": "center",
+        "orientation": "auto",
+        "percentChangeColorMode": "standard",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "showPercentChange": false,
+        "textMode": "auto",
+        "wideLayout": true
+      },
+      "pluginVersion": "12.3.4",
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${kong_ds}"
+          },
+          "editorMode": "code",
+          "expr": "sum(rate(kong_http_requests_total{service=~\"$kong_service\", route=~\"$kong_route\", instance=~\"$kong_instance\"}[1m])) or vector(0)",
+          "instant": false,
+          "legendFormat": "Kong RPS（HTTP 請求量）",
+          "range": true,
+          "refId": "A"
+        }
+      ],
+      "title": "Kong RPS（HTTP 請求量）",
+      "type": "stat"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${kong_ds}"
+      },
+      "description": "最後 1 分鐘 5xx 速率。沒有錯誤會顯示 0。",
+      "fieldConfig": {
+        "defaults": {
+          "decimals": 2,
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": 0
+              },
+              {
+                "color": "red",
+                "value": 1
+              }
+            ]
+          },
+          "unit": "reqps"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 4,
+        "x": 4,
+        "y": 10
+      },
+      "id": 5,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area",
+        "justifyMode": "center",
+        "orientation": "auto",
+        "percentChangeColorMode": "standard",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "showPercentChange": false,
+        "textMode": "auto",
+        "wideLayout": true
+      },
+      "pluginVersion": "12.3.4",
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${kong_ds}"
+          },
+          "editorMode": "code",
+          "expr": "sum(rate(kong_http_requests_total{code=~\"5..\", service=~\"$kong_service\", route=~\"$kong_route\", instance=~\"$kong_instance\"}[1m])) or vector(0)",
+          "instant": false,
+          "legendFormat": "Kong 5xx RPS（最後 1 分鐘）",
+          "range": true,
+          "refId": "A"
+        }
+      ],
+      "title": "Kong 5xx RPS（最後 1 分鐘）",
+      "type": "stat"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${kong_ds}"
+      },
+      "description": "最後 1 分鐘 504 timeout 速率。沒有 timeout 會顯示 0。",
+      "fieldConfig": {
+        "defaults": {
+          "decimals": 2,
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": 0
+              },
+              {
+                "color": "red",
+                "value": 0.1
+              }
+            ]
+          },
+          "unit": "reqps"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 4,
+        "x": 8,
+        "y": 10
+      },
+      "id": 6,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area",
+        "justifyMode": "center",
+        "orientation": "auto",
+        "percentChangeColorMode": "standard",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "showPercentChange": false,
+        "textMode": "auto",
+        "wideLayout": true
+      },
+      "pluginVersion": "12.3.4",
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${kong_ds}"
+          },
+          "editorMode": "code",
+          "expr": "sum(rate(kong_http_requests_total{code=\"504\", service=~\"$kong_service\", route=~\"$kong_route\", instance=~\"$kong_instance\"}[1m])) or vector(0)",
+          "instant": false,
+          "legendFormat": "Kong 504 RPS（最後 1 分鐘）",
+          "range": true,
+          "refId": "A"
+        }
+      ],
+      "title": "Kong 504 RPS（最後 1 分鐘）",
+      "type": "stat"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${kong_ds}"
+      },
+      "description": "顯示目前選取 Kong service/route 中，最慢的一條 service/route 的 request p99。這版不再把所有 route 合併後算 p99，避免被高流量快 API 稀釋。 顯示為目前最後時間點的最慢 API p99。",
+      "fieldConfig": {
+        "defaults": {
+          "decimals": 2,
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": 0
+              },
+              {
+                "color": "yellow",
+                "value": 1000
+              },
+              {
+                "color": "red",
+                "value": 10000
+              }
+            ]
+          },
+          "unit": "ms"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 4,
+        "x": 12,
+        "y": 10
+      },
+      "id": 7,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area",
+        "justifyMode": "center",
+        "orientation": "auto",
+        "percentChangeColorMode": "standard",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "showPercentChange": false,
+        "textMode": "auto",
+        "wideLayout": true
+      },
+      "pluginVersion": "12.3.4",
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${kong_ds}"
+          },
+          "editorMode": "code",
+          "expr": "max(histogram_quantile(0.99, sum(rate(kong_request_latency_ms_bucket{service=~\"$kong_service\", route=~\"$kong_route\", instance=~\"$kong_instance\"}[1m])) by (le, service, route)))",
+          "instant": false,
+          "legendFormat": "Kong Request p99（整段）",
+          "range": true,
+          "refId": "A"
+        }
+      ],
+      "title": "Kong 最慢 API Request p99",
+      "type": "stat"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${kong_ds}"
+      },
+      "description": "顯示目前選取 Kong service/route 中，最慢的一條 service/route 的 upstream p99。若這裡高、Kong Self 低，代表最慢 API 的等待時間主要在 Kong 後方。 顯示為目前最後時間點的最慢 API p99。",
+      "fieldConfig": {
+        "defaults": {
+          "decimals": 2,
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": 0
+              },
+              {
+                "color": "yellow",
+                "value": 1000
+              },
+              {
+                "color": "red",
+                "value": 10000
+              }
+            ]
+          },
+          "unit": "ms"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 4,
+        "x": 16,
+        "y": 10
+      },
+      "id": 8,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area",
+        "justifyMode": "center",
+        "orientation": "auto",
+        "percentChangeColorMode": "standard",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "showPercentChange": false,
+        "textMode": "auto",
+        "wideLayout": true
+      },
+      "pluginVersion": "12.3.4",
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${kong_ds}"
+          },
+          "editorMode": "code",
+          "expr": "max(histogram_quantile(0.99, sum(rate(kong_upstream_latency_ms_bucket{service=~\"$kong_service\", route=~\"$kong_route\", instance=~\"$kong_instance\"}[1m])) by (le, service, route)))",
+          "instant": false,
+          "legendFormat": "Kong Upstream p99（等後端）",
+          "range": true,
+          "refId": "A"
+        }
+      ],
+      "title": "Kong 最慢 API Upstream p99",
+      "type": "stat"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${ocp_ds}"
+      },
+      "description": "目標 Deployment 在選取區間的 Pod 重啟數。",
+      "fieldConfig": {
+        "defaults": {
+          "decimals": 0,
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": 0
+              },
+              {
+                "color": "red",
+                "value": 1
+              }
+            ]
+          },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 4,
+        "x": 20,
+        "y": 10
+      },
+      "id": 9,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area",
+        "justifyMode": "center",
+        "orientation": "auto",
+        "percentChangeColorMode": "standard",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "showPercentChange": false,
+        "textMode": "auto",
+        "wideLayout": true
+      },
+      "pluginVersion": "12.3.4",
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${ocp_ds}"
+          },
+          "editorMode": "code",
+          "expr": "sum(increase(kube_pod_container_status_restarts_total{namespace=~\"$namespace\"}[$__range]) * on(namespace,pod) group_left(workload, workload_type) namespace_workload_pod:kube_pod_owner:relabel{namespace=~\"$namespace\", workload=~\"$deployment\", workload_type=\"deployment\"}) or vector(0)",
+          "instant": false,
+          "legendFormat": "Pod Restarts（選取區間）",
+          "range": true,
+          "refId": "A"
+        }
+      ],
+      "title": "Pod Restarts（選取區間）",
+      "type": "stat"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${kong_ds}"
+      },
+      "description": "整個選取區間內的 5xx 總數，不只看最後 1 分鐘。",
+      "fieldConfig": {
+        "defaults": {
+          "decimals": 0,
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": 0
+              },
+              {
+                "color": "red",
+                "value": 1
+              }
+            ]
+          },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 6,
+        "x": 0,
+        "y": 14
+      },
+      "id": 10,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area",
+        "justifyMode": "center",
+        "orientation": "auto",
+        "percentChangeColorMode": "standard",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "showPercentChange": false,
+        "textMode": "auto",
+        "wideLayout": true
+      },
+      "pluginVersion": "12.3.4",
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${kong_ds}"
+          },
+          "editorMode": "code",
+          "expr": "ceil(sum(increase(kong_http_requests_total{code=~\"5..\", service=~\"$kong_service\", route=~\"$kong_route\", instance=~\"$kong_instance\"}[$__range]))) or vector(0)",
+          "instant": false,
+          "legendFormat": "Kong 5xx Count（選取區間）",
+          "range": true,
+          "refId": "A"
+        }
+      ],
+      "title": "Kong 5xx Count（選取區間）",
+      "type": "stat"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${kong_ds}"
+      },
+      "description": "整個選取區間內的 504 總數。",
+      "fieldConfig": {
+        "defaults": {
+          "decimals": 0,
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": 0
+              },
+              {
+                "color": "red",
+                "value": 1
+              }
+            ]
+          },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 6,
+        "x": 6,
+        "y": 14
+      },
+      "id": 11,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area",
+        "justifyMode": "center",
+        "orientation": "auto",
+        "percentChangeColorMode": "standard",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "showPercentChange": false,
+        "textMode": "auto",
+        "wideLayout": true
+      },
+      "pluginVersion": "12.3.4",
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${kong_ds}"
+          },
+          "editorMode": "code",
+          "expr": "ceil(sum(increase(kong_http_requests_total{code=\"504\", service=~\"$kong_service\", route=~\"$kong_route\", instance=~\"$kong_instance\"}[$__range]))) or vector(0)",
+          "instant": false,
+          "legendFormat": "Kong 504 Count（選取區間）",
+          "range": true,
+          "refId": "A"
+        }
+      ],
+      "title": "Kong 504 Count（選取區間）",
+      "type": "stat"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${kong_ds}"
+      },
+      "description": "5xx / 全部 request。",
+      "fieldConfig": {
+        "defaults": {
+          "decimals": 4,
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": 0
+              },
+              {
+                "color": "yellow",
+                "value": 0.1
+              },
+              {
+                "color": "red",
+                "value": 1
+              }
+            ]
+          },
+          "unit": "percent"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 6,
+        "x": 12,
+        "y": 14
+      },
+      "id": 12,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area",
+        "justifyMode": "center",
+        "orientation": "auto",
+        "percentChangeColorMode": "standard",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "showPercentChange": false,
+        "textMode": "auto",
+        "wideLayout": true
+      },
+      "pluginVersion": "12.3.4",
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${kong_ds}"
+          },
+          "editorMode": "code",
+          "expr": "100 * (sum(increase(kong_http_requests_total{code=~\"5..\", service=~\"$kong_service\", route=~\"$kong_route\", instance=~\"$kong_instance\"}[$__range])) or vector(0)) / clamp_min(sum(increase(kong_http_requests_total{service=~\"$kong_service\", route=~\"$kong_route\", instance=~\"$kong_instance\"}[$__range])), 1)",
+          "instant": false,
+          "legendFormat": "Kong 5xx Ratio（選取區間）",
+          "range": true,
+          "refId": "A"
+        }
+      ],
+      "title": "Kong 5xx Ratio（選取區間）",
+      "type": "stat"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${kong_ds}"
+      },
+      "description": "Total Avg - Upstream Avg。若很低，Kong 通常不是主要耗時點。",
+      "fieldConfig": {
+        "defaults": {
+          "decimals": 2,
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": 0
+              },
+              {
+                "color": "yellow",
+                "value": 100
+              },
+              {
+                "color": "red",
+                "value": 1000
+              }
+            ]
+          },
+          "unit": "ms"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 6,
+        "x": 18,
+        "y": 14
+      },
+      "id": 13,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area",
+        "justifyMode": "center",
+        "orientation": "auto",
+        "percentChangeColorMode": "standard",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "showPercentChange": false,
+        "textMode": "auto",
+        "wideLayout": true
+      },
+      "pluginVersion": "12.3.4",
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${kong_ds}"
+          },
+          "editorMode": "code",
+          "expr": "clamp_min((sum(rate(kong_request_latency_ms_sum{service=~\"$kong_service\", route=~\"$kong_route\", instance=~\"$kong_instance\"}[1m])) / clamp_min(sum(rate(kong_request_latency_ms_count{service=~\"$kong_service\", route=~\"$kong_route\", instance=~\"$kong_instance\"}[1m])), 1)) - (sum(rate(kong_upstream_latency_ms_sum{service=~\"$kong_service\", route=~\"$kong_route\", instance=~\"$kong_instance\"}[1m])) / clamp_min(sum(rate(kong_upstream_latency_ms_count{service=~\"$kong_service\", route=~\"$kong_route\", instance=~\"$kong_instance\"}[1m])), 1)), 0)",
+          "instant": false,
+          "legendFormat": "Kong Self Avg Est",
+          "range": true,
+          "refId": "A"
+        }
+      ],
+      "title": "Kong Self Avg Est",
+      "type": "stat"
+    },
+    {
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 18
+      },
+      "id": 14,
+      "panels": [],
+      "title": "1. Kong：HTTP 錯誤、延遲與流量",
+      "type": "row"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${kong_ds}"
+      },
+      "description": "依 service/route/status code 看 HTTP RPS。",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "axisBorderShow": false,
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "barWidthFactor": 0.6,
+            "drawStyle": "line",
+            "fillOpacity": 10,
+            "gradientMode": "none",
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            },
+            "insertNulls": false,
+            "lineInterpolation": "linear",
+            "lineWidth": 1,
+            "pointSize": 5,
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "showPoints": "never",
+            "showValues": false,
+            "spanNulls": true,
+            "stacking": {
+              "group": "A",
+              "mode": "none"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": 0
+              }
+            ]
+          },
+          "unit": "reqps"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 19
+      },
+      "id": 15,
+      "options": {
+        "legend": {
+          "calcs": [
+            "lastNotNull",
+            "max"
+          ],
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "hideZeros": false,
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "pluginVersion": "12.3.4",
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${kong_ds}"
+          },
+          "editorMode": "code",
+          "expr": "sum(rate(kong_http_requests_total{service=~\"$kong_service\", route=~\"$kong_route\", instance=~\"$kong_instance\"}[1m])) by (service, route, code)",
+          "legendFormat": "{{service}} {{route}} {{code}}",
+          "range": true,
+          "refId": "A"
+        }
+      ],
+      "title": "Kong RPS by Status Code（依狀態碼分流量）",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${kong_ds}"
+      },
+      "description": "選取時間範圍內各 Kong service/route/code 的 5xx 總量，只顯示大於 0 的項目。若顯示 No data，代表目前篩選條件下沒有 5xx。",
+      "fieldConfig": {
+        "defaults": {
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": 0
+              },
+              {
+                "color": "red",
+                "value": 1
+              }
+            ]
+          },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 19
+      },
+      "id": 16,
+      "options": {
+        "displayMode": "gradient",
+        "legend": {
+          "calcs": [
+            "lastNotNull",
+            "max"
+          ],
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "maxVizHeight": 300,
+        "minVizHeight": 16,
+        "minVizWidth": 8,
+        "namePlacement": "auto",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "showUnfilled": true,
+        "sizing": "auto",
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        },
+        "valueMode": "color"
+      },
+      "pluginVersion": "12.3.4",
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${kong_ds}"
+          },
+          "editorMode": "code",
+          "expr": "ceil(sum(increase(kong_http_requests_total{code=~\"5..\", service=~\"$kong_service\", route=~\"$kong_route\", instance=~\"$kong_instance\"}[$__range])) by (service, route, code)) > 0",
+          "instant": true,
+          "legendFormat": "{{service}} {{route}} {{code}}",
+          "range": false,
+          "refId": "A"
+        }
+      ],
+      "title": "Kong 5xx Count 明細（只顯示 > 0；No data = 無錯誤）",
+      "type": "bargauge"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${kong_ds}"
+      },
+      "description": "目前最後時間點的 Request p99 Top API。這張是 instant query，只代表 dashboard 結束時間點，不代表整段時間最差值。",
+      "fieldConfig": {
+        "defaults": {
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": 0
+              },
+              {
+                "color": "yellow",
+                "value": 1000
+              },
+              {
+                "color": "red",
+                "value": 5000
+              }
+            ]
+          },
+          "unit": "ms"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 27
+      },
+      "id": 110,
+      "options": {
+        "displayMode": "gradient",
+        "legend": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "maxVizHeight": 300,
+        "minVizHeight": 16,
+        "minVizWidth": 8,
+        "namePlacement": "auto",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "showUnfilled": true,
+        "sizing": "auto",
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        },
+        "valueMode": "color"
+      },
+      "pluginVersion": "12.3.4",
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${kong_ds}"
+          },
+          "editorMode": "code",
+          "expr": "topk(10, histogram_quantile(0.99, sum(rate(kong_request_latency_ms_bucket{service=~\"$kong_service\", route=~\"$kong_route\", instance=~\"$kong_instance\"}[1m])) by (le, service, route)))",
+          "instant": true,
+          "legendFormat": "{{service}} {{route}}",
+          "range": false,
+          "refId": "A"
+        }
+      ],
+      "title": "Kong Current Request p99 Top API（最後時間點）",
+      "type": "bargauge"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${kong_ds}"
+      },
+      "description": "目前最後時間點的 Upstream p99 Top API。這張是 instant query，只代表 dashboard 結束時間點，不代表整段時間最差值。",
+      "fieldConfig": {
+        "defaults": {
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": 0
+              },
+              {
+                "color": "yellow",
+                "value": 1000
+              },
+              {
+                "color": "red",
+                "value": 5000
+              }
+            ]
+          },
+          "unit": "ms"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 27
+      },
+      "id": 111,
+      "options": {
+        "displayMode": "gradient",
+        "legend": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "maxVizHeight": 300,
+        "minVizHeight": 16,
+        "minVizWidth": 8,
+        "namePlacement": "auto",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "showUnfilled": true,
+        "sizing": "auto",
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        },
+        "valueMode": "color"
+      },
+      "pluginVersion": "12.3.4",
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${kong_ds}"
+          },
+          "editorMode": "code",
+          "expr": "topk(10, histogram_quantile(0.99, sum(rate(kong_upstream_latency_ms_bucket{service=~\"$kong_service\", route=~\"$kong_route\", instance=~\"$kong_instance\"}[1m])) by (le, service, route)))",
+          "instant": true,
+          "legendFormat": "{{service}} {{route}}",
+          "range": false,
+          "refId": "A"
+        }
+      ],
+      "title": "Kong Current Upstream p99 Top API（最後時間點）",
+      "type": "bargauge"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${kong_ds}"
+      },
+      "description": "整個選取時間範圍內，每條 API 的 Request p99 曾經出現過的最高值，再取 Top 10。這張會對應到時間序列 legend 的 Max。",
+      "fieldConfig": {
+        "defaults": {
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": 0
+              },
+              {
+                "color": "yellow",
+                "value": 1000
+              },
+              {
+                "color": "red",
+                "value": 5000
+              }
+            ]
+          },
+          "unit": "ms"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 35
+      },
+      "id": 810,
+      "options": {
+        "displayMode": "gradient",
+        "legend": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "maxVizHeight": 300,
+        "minVizHeight": 16,
+        "minVizWidth": 8,
+        "namePlacement": "auto",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "showUnfilled": true,
+        "sizing": "auto",
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        },
+        "valueMode": "color"
+      },
+      "pluginVersion": "12.3.4",
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${kong_ds}"
+          },
+          "editorMode": "code",
+          "expr": "topk(10, max_over_time((histogram_quantile(0.99, sum(rate(kong_request_latency_ms_bucket{service=~\"$kong_service\", route=~\"$kong_route\", instance=~\"$kong_instance\"}[1m])) by (le, service, route)))[$__range:1m]))",
+          "instant": true,
+          "legendFormat": "{{service}} {{route}}",
+          "range": false,
+          "refId": "A"
+        }
+      ],
+      "title": "Kong Worst-in-Range Request p99 Top API（選取區間最差）",
+      "type": "bargauge"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${kong_ds}"
+      },
+      "description": "整個選取時間範圍內，每條 API 的 Upstream p99 曾經出現過的最高值，再取 Top 10。用來找曾經最慢的後端等待 API。",
+      "fieldConfig": {
+        "defaults": {
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": 0
+              },
+              {
+                "color": "yellow",
+                "value": 1000
+              },
+              {
+                "color": "red",
+                "value": 5000
+              }
+            ]
+          },
+          "unit": "ms"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 35
+      },
+      "id": 811,
+      "options": {
+        "displayMode": "gradient",
+        "legend": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "maxVizHeight": 300,
+        "minVizHeight": 16,
+        "minVizWidth": 8,
+        "namePlacement": "auto",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "showUnfilled": true,
+        "sizing": "auto",
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        },
+        "valueMode": "color"
+      },
+      "pluginVersion": "12.3.4",
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${kong_ds}"
+          },
+          "editorMode": "code",
+          "expr": "topk(10, max_over_time((histogram_quantile(0.99, sum(rate(kong_upstream_latency_ms_bucket{service=~\"$kong_service\", route=~\"$kong_route\", instance=~\"$kong_instance\"}[1m])) by (le, service, route)))[$__range:1m]))",
+          "instant": true,
+          "legendFormat": "{{service}} {{route}}",
+          "range": false,
+          "refId": "A"
+        }
+      ],
+      "title": "Kong Worst-in-Range Upstream p99 Top API（選取區間最差）",
+      "type": "bargauge"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${kong_ds}"
+      },
+      "description": "依 service/route 顯示 Kong request p95/p99。請優先用這張找出哪一支 API 慢，而不是只看總覽聚合。",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "axisBorderShow": false,
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "barWidthFactor": 0.6,
+            "drawStyle": "line",
+            "fillOpacity": 10,
+            "gradientMode": "none",
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            },
+            "insertNulls": false,
+            "lineInterpolation": "linear",
+            "lineWidth": 1,
+            "pointSize": 5,
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "showPoints": "never",
+            "showValues": false,
+            "spanNulls": true,
+            "stacking": {
+              "group": "A",
+              "mode": "none"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": 0
+              }
+            ]
+          },
+          "unit": "ms"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 43
+      },
+      "id": 17,
+      "options": {
+        "legend": {
+          "calcs": [
+            "lastNotNull",
+            "max"
+          ],
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "hideZeros": false,
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "pluginVersion": "12.3.4",
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${kong_ds}"
+          },
+          "editorMode": "code",
+          "expr": "histogram_quantile(0.95, sum(rate(kong_request_latency_ms_bucket{service=~\"$kong_service\", route=~\"$kong_route\", instance=~\"$kong_instance\"}[1m])) by (le, service, route))",
+          "legendFormat": "request p95 {{service}} {{route}}",
+          "range": true,
+          "refId": "A"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${kong_ds}"
+          },
+          "editorMode": "code",
+          "expr": "histogram_quantile(0.99, sum(rate(kong_request_latency_ms_bucket{service=~\"$kong_service\", route=~\"$kong_route\", instance=~\"$kong_instance\"}[1m])) by (le, service, route))",
+          "legendFormat": "request p99 {{service}} {{route}}",
+          "range": true,
+          "refId": "B"
+        }
+      ],
+      "title": "Kong Request Latency p95/p99（依 API 明細）",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${kong_ds}"
+      },
+      "description": "依 service/route 顯示 Kong upstream p95/p99。若某 API upstream 高、kong_latency 低，代表 Kong 在等該 API 的後端。",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "axisBorderShow": false,
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "barWidthFactor": 0.6,
+            "drawStyle": "line",
+            "fillOpacity": 10,
+            "gradientMode": "none",
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            },
+            "insertNulls": false,
+            "lineInterpolation": "linear",
+            "lineWidth": 1,
+            "pointSize": 5,
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "showPoints": "never",
+            "showValues": false,
+            "spanNulls": true,
+            "stacking": {
+              "group": "A",
+              "mode": "none"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": 0
+              }
+            ]
+          },
+          "unit": "ms"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 43
+      },
+      "id": 18,
+      "options": {
+        "legend": {
+          "calcs": [
+            "lastNotNull",
+            "max"
+          ],
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "hideZeros": false,
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "pluginVersion": "12.3.4",
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${kong_ds}"
+          },
+          "editorMode": "code",
+          "expr": "histogram_quantile(0.95, sum(rate(kong_upstream_latency_ms_bucket{service=~\"$kong_service\", route=~\"$kong_route\", instance=~\"$kong_instance\"}[1m])) by (le, service, route))",
+          "legendFormat": "upstream p95 {{service}} {{route}}",
+          "range": true,
+          "refId": "A"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${kong_ds}"
+          },
+          "editorMode": "code",
+          "expr": "histogram_quantile(0.99, sum(rate(kong_upstream_latency_ms_bucket{service=~\"$kong_service\", route=~\"$kong_route\", instance=~\"$kong_instance\"}[1m])) by (le, service, route))",
+          "legendFormat": "upstream p99 {{service}} {{route}}",
+          "range": true,
+          "refId": "B"
+        }
+      ],
+      "title": "Kong Upstream Latency p95/p99（依 API 明細）",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${kong_ds}"
+      },
+      "description": "Kong 收/送流量。這不是 RPS。",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "axisBorderShow": false,
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "barWidthFactor": 0.6,
+            "drawStyle": "line",
+            "fillOpacity": 10,
+            "gradientMode": "none",
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            },
+            "insertNulls": false,
+            "lineInterpolation": "linear",
+            "lineWidth": 1,
+            "pointSize": 5,
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "showPoints": "never",
+            "showValues": false,
+            "spanNulls": true,
+            "stacking": {
+              "group": "A",
+              "mode": "none"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": 0
+              }
+            ]
+          },
+          "unit": "Bps"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 7,
+        "w": 24,
+        "x": 0,
+        "y": 51
+      },
+      "id": 19,
+      "options": {
+        "legend": {
+          "calcs": [
+            "lastNotNull",
+            "max"
+          ],
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "hideZeros": false,
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "pluginVersion": "12.3.4",
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${kong_ds}"
+          },
+          "editorMode": "code",
+          "expr": "sum(rate(kong_bandwidth_bytes{direction=\"ingress\", service=~\"$kong_service\", route=~\"$kong_route\", instance=~\"$kong_instance\"}[1m])) by (service, route, instance)",
+          "legendFormat": "ingress {{instance}} {{service}} {{route}}",
+          "range": true,
+          "refId": "A"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${kong_ds}"
+          },
+          "editorMode": "code",
+          "expr": "sum(rate(kong_bandwidth_bytes{direction=\"egress\", service=~\"$kong_service\", route=~\"$kong_route\", instance=~\"$kong_instance\"}[1m])) by (service, route, instance)",
+          "legendFormat": "egress {{instance}} {{service}} {{route}}",
+          "range": true,
+          "refId": "B"
+        }
+      ],
+      "title": "Kong Bandwidth Ingress / Egress",
+      "type": "timeseries"
+    },
+    {
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 58
+      },
+      "id": 20,
+      "panels": [],
+      "title": "1.5 Kong Internal：Kong 自身處理時間與連線壓力",
+      "type": "row"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${kong_ds}"
+      },
+      "description": "Kong 自己處理 request 的時間，不包含 upstream。若它低，Kong 通常不是瓶頸。",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "axisBorderShow": false,
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "barWidthFactor": 0.6,
+            "drawStyle": "line",
+            "fillOpacity": 10,
+            "gradientMode": "none",
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            },
+            "insertNulls": false,
+            "lineInterpolation": "linear",
+            "lineWidth": 1,
+            "pointSize": 5,
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "showPoints": "never",
+            "showValues": false,
+            "spanNulls": true,
+            "stacking": {
+              "group": "A",
+              "mode": "none"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": 0
+              },
+              {
+                "color": "yellow",
+                "value": 100
+              },
+              {
+                "color": "red",
+                "value": 1000
+              }
+            ]
+          },
+          "unit": "ms"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 59
+      },
+      "id": 21,
+      "options": {
+        "legend": {
+          "calcs": [
+            "lastNotNull",
+            "max"
+          ],
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "hideZeros": false,
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "pluginVersion": "12.3.4",
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${kong_ds}"
+          },
+          "editorMode": "code",
+          "expr": "histogram_quantile(0.95, sum(rate(kong_kong_latency_ms_bucket{service=~\"$kong_service\", route=~\"$kong_route\", instance=~\"$kong_instance\"}[1m])) by (le, service, route, instance))",
+          "legendFormat": "kong p95 {{instance}} {{service}} {{route}}",
+          "range": true,
+          "refId": "A"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${kong_ds}"
+          },
+          "editorMode": "code",
+          "expr": "histogram_quantile(0.99, sum(rate(kong_kong_latency_ms_bucket{service=~\"$kong_service\", route=~\"$kong_route\", instance=~\"$kong_instance\"}[1m])) by (le, service, route, instance))",
+          "legendFormat": "kong p99 {{instance}} {{service}} {{route}}",
+          "range": true,
+          "refId": "B"
+        }
+      ],
+      "title": "Kong 自身處理時間 p95/p99（kong_latency）",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${kong_ds}"
+      },
+      "description": "平均值估算，不是 p99。用來看 Kong 是否額外消耗時間。",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "axisBorderShow": false,
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "barWidthFactor": 0.6,
+            "drawStyle": "line",
+            "fillOpacity": 10,
+            "gradientMode": "none",
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            },
+            "insertNulls": false,
+            "lineInterpolation": "linear",
+            "lineWidth": 1,
+            "pointSize": 5,
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "showPoints": "never",
+            "showValues": false,
+            "spanNulls": true,
+            "stacking": {
+              "group": "A",
+              "mode": "none"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": 0
+              }
+            ]
+          },
+          "unit": "ms"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 59
+      },
+      "id": 22,
+      "options": {
+        "legend": {
+          "calcs": [
+            "lastNotNull",
+            "max"
+          ],
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "hideZeros": false,
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "pluginVersion": "12.3.4",
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${kong_ds}"
+          },
+          "editorMode": "code",
+          "expr": "sum(rate(kong_request_latency_ms_sum{service=~\"$kong_service\", route=~\"$kong_route\", instance=~\"$kong_instance\"}[1m])) by (service, route, instance) / clamp_min(sum(rate(kong_request_latency_ms_count{service=~\"$kong_service\", route=~\"$kong_route\", instance=~\"$kong_instance\"}[1m])) by (service, route, instance), 1)",
+          "legendFormat": "total_avg {{instance}} {{service}} {{route}}",
+          "range": true,
+          "refId": "A"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${kong_ds}"
+          },
+          "editorMode": "code",
+          "expr": "sum(rate(kong_upstream_latency_ms_sum{service=~\"$kong_service\", route=~\"$kong_route\", instance=~\"$kong_instance\"}[1m])) by (service, route, instance) / clamp_min(sum(rate(kong_upstream_latency_ms_count{service=~\"$kong_service\", route=~\"$kong_route\", instance=~\"$kong_instance\"}[1m])) by (service, route, instance), 1)",
+          "legendFormat": "upstream_avg {{instance}} {{service}} {{route}}",
+          "range": true,
+          "refId": "B"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${kong_ds}"
+          },
+          "editorMode": "code",
+          "expr": "clamp_min((sum(rate(kong_request_latency_ms_sum{service=~\"$kong_service\", route=~\"$kong_route\", instance=~\"$kong_instance\"}[1m])) by (service, route, instance) / clamp_min(sum(rate(kong_request_latency_ms_count{service=~\"$kong_service\", route=~\"$kong_route\", instance=~\"$kong_instance\"}[1m])) by (service, route, instance), 1)) - (sum(rate(kong_upstream_latency_ms_sum{service=~\"$kong_service\", route=~\"$kong_route\", instance=~\"$kong_instance\"}[1m])) by (service, route, instance) / clamp_min(sum(rate(kong_upstream_latency_ms_count{service=~\"$kong_service\", route=~\"$kong_route\", instance=~\"$kong_instance\"}[1m])) by (service, route, instance), 1)), 0)",
+          "legendFormat": "kong_self_avg_est {{instance}} {{service}} {{route}}",
+          "range": true,
+          "refId": "C"
+        }
+      ],
+      "title": "Kong 平均耗時拆解：Total / Upstream / Kong Self",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${kong_ds}"
+      },
+      "description": "active/writing 高可能代表連線堆積、client 慢收或 upstream 慢回。waiting 多通常只是 keepalive。",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "axisBorderShow": false,
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "barWidthFactor": 0.6,
+            "drawStyle": "line",
+            "fillOpacity": 10,
+            "gradientMode": "none",
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            },
+            "insertNulls": false,
+            "lineInterpolation": "linear",
+            "lineWidth": 1,
+            "pointSize": 5,
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "showPoints": "never",
+            "showValues": false,
+            "spanNulls": true,
+            "stacking": {
+              "group": "A",
+              "mode": "none"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": 0
+              }
+            ]
+          },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 7,
+        "w": 12,
+        "x": 0,
+        "y": 67
+      },
+      "id": 23,
+      "options": {
+        "legend": {
+          "calcs": [
+            "lastNotNull",
+            "max"
+          ],
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "hideZeros": false,
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "pluginVersion": "12.3.4",
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${kong_ds}"
+          },
+          "editorMode": "code",
+          "expr": "sum(kong_nginx_connections_total{state=~\"active|reading|writing|waiting\", instance=~\"$kong_instance\"}) by (instance, state)",
+          "legendFormat": "{{instance}} {{state}}",
+          "range": true,
+          "refId": "A"
+        }
+      ],
+      "title": "Kong Nginx Connection State",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${kong_ds}"
+      },
+      "description": "這是 TCP/Nginx connection rate，不是 HTTP RPS。正常 accepted-handled 應接近 0。",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "axisBorderShow": false,
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "barWidthFactor": 0.6,
+            "drawStyle": "line",
+            "fillOpacity": 10,
+            "gradientMode": "none",
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            },
+            "insertNulls": false,
+            "lineInterpolation": "linear",
+            "lineWidth": 1,
+            "pointSize": 5,
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "showPoints": "never",
+            "showValues": false,
+            "spanNulls": true,
+            "stacking": {
+              "group": "A",
+              "mode": "none"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": 0
+              }
+            ]
+          },
+          "unit": "cps"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 7,
+        "w": 12,
+        "x": 12,
+        "y": 67
+      },
+      "id": 24,
+      "options": {
+        "legend": {
+          "calcs": [
+            "lastNotNull",
+            "max"
+          ],
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "hideZeros": false,
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "pluginVersion": "12.3.4",
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${kong_ds}"
+          },
+          "editorMode": "code",
+          "expr": "sum(rate(kong_nginx_connections_total{state=\"accepted\", instance=~\"$kong_instance\"}[1m])) by (instance)",
+          "legendFormat": "accepted {{instance}}",
+          "range": true,
+          "refId": "A"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${kong_ds}"
+          },
+          "editorMode": "code",
+          "expr": "sum(rate(kong_nginx_connections_total{state=\"handled\", instance=~\"$kong_instance\"}[1m])) by (instance)",
+          "legendFormat": "handled {{instance}}",
+          "range": true,
+          "refId": "B"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${kong_ds}"
+          },
+          "editorMode": "code",
+          "expr": "sum(rate(kong_nginx_connections_total{state=\"accepted\", instance=~\"$kong_instance\"}[1m])) by (instance) - sum(rate(kong_nginx_connections_total{state=\"handled\", instance=~\"$kong_instance\"}[1m])) by (instance)",
+          "legendFormat": "accepted_minus_handled {{instance}}",
+          "range": true,
+          "refId": "C"
+        }
+      ],
+      "title": "Kong Nginx Accepted vs Handled Connections（連線層）",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${kong_ds}"
+      },
+      "description": "真正的 Kong HTTP request/sec，用來和 Router HTTP RPS 候選指標對照。",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "axisBorderShow": false,
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "barWidthFactor": 0.6,
+            "drawStyle": "line",
+            "fillOpacity": 10,
+            "gradientMode": "none",
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            },
+            "insertNulls": false,
+            "lineInterpolation": "linear",
+            "lineWidth": 1,
+            "pointSize": 5,
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "showPoints": "never",
+            "showValues": false,
+            "spanNulls": true,
+            "stacking": {
+              "group": "A",
+              "mode": "none"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": 0
+              }
+            ]
+          },
+          "unit": "reqps"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 7,
+        "w": 24,
+        "x": 0,
+        "y": 74
+      },
+      "id": 25,
+      "options": {
+        "legend": {
+          "calcs": [
+            "lastNotNull",
+            "max"
+          ],
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "hideZeros": false,
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "pluginVersion": "12.3.4",
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${kong_ds}"
+          },
+          "editorMode": "code",
+          "expr": "sum(rate(kong_http_requests_total{service=~\"$kong_service\", route=~\"$kong_route\", instance=~\"$kong_instance\"}[1m])) by (instance)",
+          "legendFormat": "http_rps {{instance}}",
+          "range": true,
+          "refId": "A"
+        }
+      ],
+      "title": "Kong HTTP Request RPS by Instance（真正 HTTP RPS）",
+      "type": "timeseries"
+    },
+    {
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 81
+      },
+      "id": 26,
+      "panels": [],
+      "title": "2. OCP Router / HAProxy：HTTP RPS、連線、Queue 與 Response",
+      "type": "row"
+    },
+    {
+      "description": "",
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 5,
+        "w": 24,
+        "x": 0,
+        "y": 82
+      },
+      "id": 27,
+      "options": {
+        "code": {
+          "language": "plaintext",
+          "showLineNumbers": false,
+          "showMiniMap": false
+        },
+        "content": "### Router 指標判讀提醒\n\n#### 1. Router HTTP RPS 與 Connection Rate 是不同東西\n\n- `haproxy_backend_http_responses_total`：較接近 HTTP response/request rate，可拿來和 Kong HTTP RPS 對照。\n- `haproxy_backend_connections_total`：backend connection rate，不等於 HTTP RPS。\n- HTTP keepalive 時，一條 connection 可承載多個 request，因此 connection rate 不適合拿來判斷 Kong request 是否等量進 Router。\n\n#### 2. Router Latency 目前多半是 average\n\n- `haproxy_backend_http_average_response_latency_milliseconds` 是平均值。\n- Kong latency panel 多數是 p95/p99。\n- 所以不能直接用「Kong p99 高、Router average 低」判定 Kong -> Router 中間慢。\n\n#### 3. 建議判讀順序\n\n1. 先看 Kong vs Router HTTP RPS 是否大致接近。\n2. 再看 Router connect / queue 是否高。\n3. 再看 Router response average 是否高。\n4. 若 Kong 某 API p99 高，但 Router average 低，要往「Router route 粒度太粗」或「App per API 指標缺失」方向查。\n",
+        "mode": "markdown"
+      },
+      "pluginVersion": "12.3.4",
+      "title": "Router 指標判讀提醒",
+      "type": "text"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${kong_ds}"
+      },
+      "description": "用 HTTP request/response rate 對照 Kong 與 OCP Router 是否大致同量。Kong 來源是 kong_http_requests_total；Router 來源是 haproxy_backend_http_responses_total。若 Router metric 不存在，Router 線會是 0，請看 discovery panel 找實際 metric。",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "axisBorderShow": false,
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "barWidthFactor": 0.6,
+            "drawStyle": "line",
+            "fillOpacity": 10,
+            "gradientMode": "none",
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            },
+            "insertNulls": false,
+            "lineInterpolation": "linear",
+            "lineWidth": 1,
+            "pointSize": 5,
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "showPoints": "never",
+            "showValues": false,
+            "spanNulls": true,
+            "stacking": {
+              "group": "A",
+              "mode": "none"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": 0
+              }
+            ]
+          },
+          "unit": "reqps"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 87
+      },
+      "id": 114,
+      "options": {
+        "legend": {
+          "calcs": [
+            "lastNotNull",
+            "max"
+          ],
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "hideZeros": false,
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "pluginVersion": "12.3.4",
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${kong_ds}"
+          },
+          "editorMode": "code",
+          "expr": "sum(rate(kong_http_requests_total{service=~\"$kong_service\", route=~\"$kong_route\", instance=~\"$kong_instance\"}[1m])) or vector(0)",
+          "instant": false,
+          "legendFormat": "kong_http_rps",
+          "range": true,
+          "refId": "A"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${ocp_ds}"
+          },
+          "editorMode": "code",
+          "expr": "sum(rate(haproxy_backend_http_responses_total{route=~\"$router_route\"}[1m])) or vector(0)",
+          "instant": false,
+          "legendFormat": "router_http_rps_candidate",
+          "range": true,
+          "refId": "B"
+        }
+      ],
+      "title": "Kong vs Router HTTP RPS 對照",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${kong_ds}"
+      },
+      "description": "Grafana 不能在單一 PromQL 內跨 datasource 相減，因此這張顯示 Kong HTTP RPS；請和左圖 Router HTTP RPS 線人工對照。",
+      "fieldConfig": {
+        "defaults": {
+          "decimals": 2,
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": 0
+              },
+              {
+                "color": "yellow",
+                "value": 100
+              },
+              {
+                "color": "red",
+                "value": 500
+              }
+            ]
+          },
+          "unit": "reqps"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 6,
+        "x": 12,
+        "y": 87
+      },
+      "id": 115,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area",
+        "justifyMode": "center",
+        "orientation": "auto",
+        "percentChangeColorMode": "standard",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "showPercentChange": false,
+        "textMode": "auto",
+        "wideLayout": true
+      },
+      "pluginVersion": "12.3.4",
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${kong_ds}"
+          },
+          "editorMode": "code",
+          "expr": "sum(rate(kong_http_requests_total{service=~\"$kong_service\", route=~\"$kong_route\", instance=~\"$kong_instance\"}[1m])) or vector(0)",
+          "instant": false,
+          "legendFormat": "Kong - Router HTTP RPS 差值",
+          "range": true,
+          "refId": "A"
+        }
+      ],
+      "title": "Kong HTTP RPS（供人工對照）",
+      "type": "stat"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${ocp_ds}"
+      },
+      "description": "OCP Router 端 HTTP response rate 候選值，來源 haproxy_backend_http_responses_total。若此值和 Kong RPS 大致接近，表示請求大致有進 Router。若 No data/0，請先看 metric discovery。",
+      "fieldConfig": {
+        "defaults": {
+          "decimals": 2,
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": 0
+              }
+            ]
+          },
+          "unit": "reqps"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 6,
+        "x": 18,
+        "y": 87
+      },
+      "id": 116,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area",
+        "justifyMode": "center",
+        "orientation": "auto",
+        "percentChangeColorMode": "standard",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "showPercentChange": false,
+        "textMode": "auto",
+        "wideLayout": true
+      },
+      "pluginVersion": "12.3.4",
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${ocp_ds}"
+          },
+          "editorMode": "code",
+          "expr": "sum(rate(haproxy_backend_http_responses_total{route=~\"$router_route\"}[1m])) or vector(0)",
+          "instant": false,
+          "legendFormat": "Router HTTP RPS 候選總量",
+          "range": true,
+          "refId": "A"
+        }
+      ],
+      "title": "Router HTTP RPS 候選總量",
+      "type": "stat"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${ocp_ds}"
+      },
+      "description": "Router 端 5xx response rate 候選值。若 Kong 5xx 高但 Router 5xx 不高，需要確認錯誤是否發生在 Kong 到 Router 之前，或 metric label 是否未對齊。",
+      "fieldConfig": {
+        "defaults": {
+          "decimals": 2,
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": 0
+              },
+              {
+                "color": "red",
+                "value": 1
+              }
+            ]
+          },
+          "unit": "reqps"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 6,
+        "x": 12,
+        "y": 91
+      },
+      "id": 113,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area",
+        "justifyMode": "center",
+        "orientation": "auto",
+        "percentChangeColorMode": "standard",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "showPercentChange": false,
+        "textMode": "auto",
+        "wideLayout": true
+      },
+      "pluginVersion": "12.3.4",
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${ocp_ds}"
+          },
+          "editorMode": "code",
+          "expr": "sum(rate(haproxy_backend_http_responses_total{route=~\"$router_route\", code=~\"5..|5xx\"}[1m])) or vector(0)",
+          "instant": false,
+          "legendFormat": "Router 5xx RPS 候選",
+          "range": true,
+          "refId": "A"
+        }
+      ],
+      "title": "Router 5xx RPS 候選",
+      "type": "stat"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${ocp_ds}"
+      },
+      "description": "Router 端 2xx response rate 候選值，用來確認 Router 是否有大量正常 HTTP response。",
+      "fieldConfig": {
+        "defaults": {
+          "decimals": 2,
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": 0
+              }
+            ]
+          },
+          "unit": "reqps"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 6,
+        "x": 18,
+        "y": 91
+      },
+      "id": 112,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area",
+        "justifyMode": "center",
+        "orientation": "auto",
+        "percentChangeColorMode": "standard",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "showPercentChange": false,
+        "textMode": "auto",
+        "wideLayout": true
+      },
+      "pluginVersion": "12.3.4",
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${ocp_ds}"
+          },
+          "editorMode": "code",
+          "expr": "sum(rate(haproxy_backend_http_responses_total{route=~\"$router_route\", code=~\"2..|2xx\"}[1m])) or vector(0)",
+          "instant": false,
+          "legendFormat": "Router 2xx RPS 候選",
+          "range": true,
+          "refId": "A"
+        }
+      ],
+      "title": "Router 2xx RPS 候選",
+      "type": "stat"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${ocp_ds}"
+      },
+      "description": "Router 端 HTTP response rate 候選，來源 haproxy_backend_http_responses_total，只顯示 > 0 的 code。這比 backend connection rate 更適合拿來和 Kong HTTP RPS 對照。",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "axisBorderShow": false,
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "barWidthFactor": 0.6,
+            "drawStyle": "line",
+            "fillOpacity": 10,
+            "gradientMode": "none",
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            },
+            "insertNulls": false,
+            "lineInterpolation": "linear",
+            "lineWidth": 1,
+            "pointSize": 5,
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "showPoints": "never",
+            "showValues": false,
+            "spanNulls": true,
+            "stacking": {
+              "group": "A",
+              "mode": "none"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": 0
+              }
+            ]
+          },
+          "unit": "reqps"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 95
+      },
+      "id": 28,
+      "options": {
+        "legend": {
+          "calcs": [
+            "lastNotNull",
+            "max"
+          ],
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "hideZeros": false,
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "pluginVersion": "12.3.4",
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${ocp_ds}"
+          },
+          "editorMode": "code",
+          "expr": "sum by (instance, route, code) (rate(haproxy_backend_http_responses_total{route=~\"$router_route\"}[1m])) > 0",
+          "legendFormat": "http_rps {{instance}} {{route}} {{code}}",
+          "range": true,
+          "refId": "A"
+        }
+      ],
+      "title": "Router HTTP RPS by Code（只顯示 > 0）",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${ocp_ds}"
+      },
+      "description": "這是 HAProxy backend connection rate，不是 HTTP request RPS。HTTP RPS 請看 Router HTTP RPS by Code 或 Kong vs Router HTTP RPS 對照。",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "axisBorderShow": false,
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "barWidthFactor": 0.6,
+            "drawStyle": "line",
+            "fillOpacity": 10,
+            "gradientMode": "none",
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            },
+            "insertNulls": false,
+            "lineInterpolation": "linear",
+            "lineWidth": 1,
+            "pointSize": 5,
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "showPoints": "never",
+            "showValues": false,
+            "spanNulls": true,
+            "stacking": {
+              "group": "A",
+              "mode": "none"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": 0
+              }
+            ]
+          },
+          "unit": "cps"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 95
+      },
+      "id": 29,
+      "options": {
+        "legend": {
+          "calcs": [
+            "lastNotNull",
+            "max"
+          ],
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "hideZeros": false,
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "pluginVersion": "12.3.4",
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${ocp_ds}"
+          },
+          "editorMode": "code",
+          "expr": "sum by (instance, route) (rate(haproxy_backend_connections_total{route=~\"$router_route\"}[1m]))",
+          "legendFormat": "conn_rate {{instance}} {{route}}",
+          "range": true,
+          "refId": "A"
+        }
+      ],
+      "title": "Router Backend Connection Rate（連線速率，不等於 HTTP RPS）",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${ocp_ds}"
+      },
+      "description": "Router 到 backend 的 connect / queue 平均時間。這是 average，不是 p95/p99。若它很低，只能代表平均連線與排隊沒有明顯問題，不能排除少數長尾。",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "axisBorderShow": false,
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "barWidthFactor": 0.6,
+            "drawStyle": "line",
+            "fillOpacity": 10,
+            "gradientMode": "none",
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            },
+            "insertNulls": false,
+            "lineInterpolation": "linear",
+            "lineWidth": 1,
+            "pointSize": 5,
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "showPoints": "never",
+            "showValues": false,
+            "spanNulls": true,
+            "stacking": {
+              "group": "A",
+              "mode": "none"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": 0
+              }
+            ]
+          },
+          "unit": "s"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 103
+      },
+      "id": 30,
+      "options": {
+        "legend": {
+          "calcs": [
+            "lastNotNull",
+            "max"
+          ],
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "hideZeros": false,
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "pluginVersion": "12.3.4",
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${ocp_ds}"
+          },
+          "editorMode": "code",
+          "expr": "avg by (instance, route) (haproxy_backend_http_average_connect_latency_milliseconds{route=~\"$router_route\"}) / 1000",
+          "legendFormat": "connect {{instance}} {{route}}",
+          "range": true,
+          "refId": "A"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${ocp_ds}"
+          },
+          "editorMode": "code",
+          "expr": "avg by (instance, route) (haproxy_backend_http_average_queue_latency_milliseconds{route=~\"$router_route\"}) / 1000",
+          "legendFormat": "queue {{instance}} {{route}}",
+          "range": true,
+          "refId": "B"
+        }
+      ],
+      "title": "Router Backend Connect / Queue Latency（average）",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${ocp_ds}"
+      },
+      "description": "Router 等 backend response 的平均時間。這是 average，不是 p95/p99。若 Kong p99 高但這張低，可能是 Router route 粒度太粗、平均被快請求稀釋，或需要 Router/App 的 histogram 指標。",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "axisBorderShow": false,
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "barWidthFactor": 0.6,
+            "drawStyle": "line",
+            "fillOpacity": 10,
+            "gradientMode": "none",
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            },
+            "insertNulls": false,
+            "lineInterpolation": "linear",
+            "lineWidth": 1,
+            "pointSize": 5,
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "showPoints": "never",
+            "showValues": false,
+            "spanNulls": true,
+            "stacking": {
+              "group": "A",
+              "mode": "none"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": 0
+              }
+            ]
+          },
+          "unit": "s"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 103
+      },
+      "id": 31,
+      "options": {
+        "legend": {
+          "calcs": [
+            "lastNotNull",
+            "max"
+          ],
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "hideZeros": false,
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "pluginVersion": "12.3.4",
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${ocp_ds}"
+          },
+          "editorMode": "code",
+          "expr": "avg by (instance, route) (haproxy_backend_http_average_response_latency_milliseconds{route=~\"$router_route\"}) / 1000",
+          "legendFormat": "response {{instance}} {{route}}",
+          "range": true,
+          "refId": "A"
+        }
+      ],
+      "title": "Router Backend Response Latency（average）",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${ocp_ds}"
+      },
+      "description": "HAProxy backend response error。若高，查 App 斷線、timeout、server abort。",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "axisBorderShow": false,
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "barWidthFactor": 0.6,
+            "drawStyle": "line",
+            "fillOpacity": 10,
+            "gradientMode": "none",
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            },
+            "insertNulls": false,
+            "lineInterpolation": "linear",
+            "lineWidth": 1,
+            "pointSize": 5,
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "showPoints": "never",
+            "showValues": false,
+            "spanNulls": true,
+            "stacking": {
+              "group": "A",
+              "mode": "none"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": 0
+              }
+            ]
+          },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 7,
+        "w": 12,
+        "x": 0,
+        "y": 111
+      },
+      "id": 32,
+      "options": {
+        "legend": {
+          "calcs": [
+            "lastNotNull",
+            "max"
+          ],
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "hideZeros": false,
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "pluginVersion": "12.3.4",
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${ocp_ds}"
+          },
+          "editorMode": "code",
+          "expr": "sum by (instance, route) (increase(haproxy_backend_response_errors_total{route=~\"$router_route\"}[5m]))",
+          "legendFormat": "{{instance}} {{route}}",
+          "range": true,
+          "refId": "A"
+        }
+      ],
+      "title": "Router Backend Response Errors per 5m",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${ocp_ds}"
+      },
+      "description": "用這張找 OCP Prometheus 實際有哪些 Router/HAProxy HTTP request/response metric。",
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "align": "auto",
+            "cellOptions": {
+              "type": "auto"
+            },
+            "filterable": true,
+            "footer": {
+              "reducers": []
+            },
+            "inspect": false
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": 0
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 7,
+        "w": 12,
+        "x": 12,
+        "y": 111
+      },
+      "id": 33,
+      "options": {
+        "cellHeight": "sm",
+        "enablePagination": true,
+        "showHeader": true
+      },
+      "pluginVersion": "12.3.4",
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${ocp_ds}"
+          },
+          "editorMode": "code",
+          "expr": "count by (__name__) ({__name__=~\".*haproxy.*http.*\"})",
+          "format": "table",
+          "instant": true,
+          "legendFormat": "__auto",
+          "range": false,
+          "refId": "HTTP Metrics"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${ocp_ds}"
+          },
+          "editorMode": "code",
+          "expr": "count by (__name__) ({__name__=~\".*router.*request.*\"})",
+          "format": "table",
+          "instant": true,
+          "legendFormat": "__auto",
+          "range": false,
+          "refId": "Router Request Metrics"
+        }
+      ],
+      "title": "Router / HAProxy Metric Discovery（找可用 HTTP request/response 指標）",
+      "type": "table"
+    },
+    {
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 118
+      },
+      "id": 700,
+      "panels": [],
+      "title": "2.5 Router Latency 對齊：Average / Peak Average / p95-p99 候選",
+      "type": "row"
+    },
+    {
+      "description": "說明此區塊如何判讀。",
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 7,
+        "w": 24,
+        "x": 0,
+        "y": 119
+      },
+      "id": 701,
+      "options": {
+        "code": {
+          "language": "plaintext",
+          "showLineNumbers": false,
+          "showMiniMap": false
+        },
+        "content": "### Router p95/p99 是否能算？\n\nRouter 目前常見的 `haproxy_backend_http_average_*_latency_milliseconds` 是 **average metric**，不能直接還原真正 p95/p99。\n\n真正 p95/p99 需要 histogram bucket，例如：\n\n- `router_http_request_duration_seconds_bucket`\n- `haproxy_backend_http_response_duration_seconds_bucket`\n- 其他 `*bucket` 指標\n\n下方提供：\n\n1. **Peak Average**：最近 5 分鐘內 average latency 的最高值，不是真正 p99，但比只看 average 更容易看出波動。  \n2. **Bucket Discovery**：找 OCP Prometheus 目前是否有 Router/HAProxy bucket metric。  \n3. **True p95/p99 Candidate**：用 `Router Bucket Metric` 變數計算。如果沒有資料，代表沒有可用 bucket 或 label 不對。\n\n### 對齊原則\n\n- Kong avg 對 Router avg。  \n- Kong p95/p99 對 Router true p95/p99。  \n- Router 沒有 bucket 時，請不要說「Router 沒有長尾」，只能說「Router average / peak-average 沒看到明顯長尾」。",
+        "mode": "markdown"
+      },
+      "pluginVersion": "12.3.4",
+      "title": "Router p95/p99 判讀說明",
+      "type": "text"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${ocp_ds}"
+      },
+      "description": "最近 5 分鐘內，Router average connect / queue latency 的最大值。這是 peak average，不是真正 request p99。",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "axisBorderShow": false,
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "barWidthFactor": 0.6,
+            "drawStyle": "line",
+            "fillOpacity": 10,
+            "gradientMode": "none",
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            },
+            "insertNulls": false,
+            "lineInterpolation": "linear",
+            "lineWidth": 1,
+            "pointSize": 5,
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "showPoints": "never",
+            "showValues": false,
+            "spanNulls": true,
+            "stacking": {
+              "group": "A",
+              "mode": "none"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": 0
+              },
+              {
+                "color": "yellow",
+                "value": 1
+              },
+              {
+                "color": "red",
+                "value": 10
+              }
+            ]
+          },
+          "unit": "s"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 126
+      },
+      "id": 702,
+      "options": {
+        "legend": {
+          "calcs": [
+            "lastNotNull",
+            "max"
+          ],
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "hideZeros": false,
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "pluginVersion": "12.3.4",
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${ocp_ds}"
+          },
+          "editorMode": "code",
+          "expr": "max_over_time(haproxy_backend_http_average_connect_latency_milliseconds{route=~\"$router_route\"}[5m]) / 1000",
+          "instant": false,
+          "legendFormat": "connect_peak_avg_5m {{instance}} {{route}}",
+          "range": true,
+          "refId": "A"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${ocp_ds}"
+          },
+          "editorMode": "code",
+          "expr": "max_over_time(haproxy_backend_http_average_queue_latency_milliseconds{route=~\"$router_route\"}[5m]) / 1000",
+          "instant": false,
+          "legendFormat": "queue_peak_avg_5m {{instance}} {{route}}",
+          "range": true,
+          "refId": "B"
+        }
+      ],
+      "title": "Router Connect / Queue Peak Average（5m，非 p99）",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${ocp_ds}"
+      },
+      "description": "同時顯示 Router backend response average 與最近 5 分鐘 peak average。Peak average 不是 p99，但能看出 average metric 是否曾短暫升高。",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "axisBorderShow": false,
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "barWidthFactor": 0.6,
+            "drawStyle": "line",
+            "fillOpacity": 10,
+            "gradientMode": "none",
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            },
+            "insertNulls": false,
+            "lineInterpolation": "linear",
+            "lineWidth": 1,
+            "pointSize": 5,
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "showPoints": "never",
+            "showValues": false,
+            "spanNulls": true,
+            "stacking": {
+              "group": "A",
+              "mode": "none"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": 0
+              },
+              {
+                "color": "yellow",
+                "value": 1
+              },
+              {
+                "color": "red",
+                "value": 10
+              }
+            ]
+          },
+          "unit": "s"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 126
+      },
+      "id": 703,
+      "options": {
+        "legend": {
+          "calcs": [
+            "lastNotNull",
+            "max"
+          ],
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "hideZeros": false,
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "pluginVersion": "12.3.4",
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${ocp_ds}"
+          },
+          "editorMode": "code",
+          "expr": "avg by (instance, route) (haproxy_backend_http_average_response_latency_milliseconds{route=~\"$router_route\"}) / 1000",
+          "instant": false,
+          "legendFormat": "response_avg {{instance}} {{route}}",
+          "range": true,
+          "refId": "A"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${ocp_ds}"
+          },
+          "editorMode": "code",
+          "expr": "max_over_time(haproxy_backend_http_average_response_latency_milliseconds{route=~\"$router_route\"}[5m]) / 1000",
+          "instant": false,
+          "legendFormat": "response_peak_avg_5m {{instance}} {{route}}",
+          "range": true,
+          "refId": "B"
+        }
+      ],
+      "title": "Router Response Average vs Peak Average（5m）",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${ocp_ds}"
+      },
+      "description": "尋找可用的 Router/HAProxy histogram bucket metric。若這張沒有結果，代表目前無法在 Router 層計算真正 p95/p99。",
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "align": "auto",
+            "cellOptions": {
+              "type": "auto"
+            },
+            "filterable": true,
+            "footer": {
+              "reducers": []
+            },
+            "inspect": false
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": 0
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 7,
+        "w": 24,
+        "x": 0,
+        "y": 134
+      },
+      "id": 704,
+      "options": {
+        "cellHeight": "sm",
+        "enablePagination": true,
+        "showHeader": true
+      },
+      "pluginVersion": "12.3.4",
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${ocp_ds}"
+          },
+          "editorMode": "code",
+          "expr": "count by (__name__) ({__name__=~\".*(haproxy|router).*bucket.*\"})",
+          "format": "table",
+          "instant": true,
+          "legendFormat": "__auto",
+          "range": false,
+          "refId": "Bucket Metrics"
+        }
+      ],
+      "title": "Router / HAProxy Bucket Metric Discovery",
+      "type": "table"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${ocp_ds}"
+      },
+      "description": "使用 Router Bucket Metric 變數計算真正 p95/p99。查詢已保留 __name__ label，避免多個 bucket metric 或 label 碰撞時出現 duplicate labelset。若沒有資料，代表 bucket metric 不存在、metric 名稱不對，或沒有 route label。",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "axisBorderShow": false,
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "barWidthFactor": 0.6,
+            "drawStyle": "line",
+            "fillOpacity": 10,
+            "gradientMode": "none",
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            },
+            "insertNulls": false,
+            "lineInterpolation": "linear",
+            "lineWidth": 1,
+            "pointSize": 5,
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "showPoints": "never",
+            "showValues": false,
+            "spanNulls": true,
+            "stacking": {
+              "group": "A",
+              "mode": "none"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": 0
+              },
+              {
+                "color": "yellow",
+                "value": 1
+              },
+              {
+                "color": "red",
+                "value": 10
+              }
+            ]
+          },
+          "unit": "s"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 141
+      },
+      "id": 705,
+      "options": {
+        "legend": {
+          "calcs": [
+            "lastNotNull",
+            "max"
+          ],
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "hideZeros": false,
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "pluginVersion": "12.3.4",
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${ocp_ds}"
+          },
+          "editorMode": "code",
+          "expr": "histogram_quantile(0.95, sum by (__name__, le, route) (rate({__name__=~\"${router_bucket_metric:regex}\", route=~\"$router_route\"}[1m])))",
+          "instant": false,
+          "legendFormat": "router_true_p95_candidate {{route}}",
+          "range": true,
+          "refId": "A"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${ocp_ds}"
+          },
+          "editorMode": "code",
+          "expr": "histogram_quantile(0.99, sum by (__name__, le, route) (rate({__name__=~\"${router_bucket_metric:regex}\", route=~\"$router_route\"}[1m])))",
+          "instant": false,
+          "legendFormat": "router_true_p99_candidate {{route}}",
+          "range": true,
+          "refId": "B"
+        }
+      ],
+      "title": "Router True p95/p99 Candidate（需 bucket metric）",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${ocp_ds}"
+      },
+      "description": "備援候選：如果 bucket metric 沒有 route label，這張不套 route 過濾。查詢已保留 __name__ label，避免 duplicate labelset。它只能看整體，不適合直接和某一條 Kong service 對齊。",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "axisBorderShow": false,
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "barWidthFactor": 0.6,
+            "drawStyle": "line",
+            "fillOpacity": 10,
+            "gradientMode": "none",
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            },
+            "insertNulls": false,
+            "lineInterpolation": "linear",
+            "lineWidth": 1,
+            "pointSize": 5,
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "showPoints": "never",
+            "showValues": false,
+            "spanNulls": true,
+            "stacking": {
+              "group": "A",
+              "mode": "none"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": 0
+              },
+              {
+                "color": "yellow",
+                "value": 1
+              },
+              {
+                "color": "red",
+                "value": 10
+              }
+            ]
+          },
+          "unit": "s"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 141
+      },
+      "id": 706,
+      "options": {
+        "legend": {
+          "calcs": [
+            "lastNotNull",
+            "max"
+          ],
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "hideZeros": false,
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "pluginVersion": "12.3.4",
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${ocp_ds}"
+          },
+          "editorMode": "code",
+          "expr": "histogram_quantile(0.95, sum by (__name__, le) (rate({__name__=~\"${router_bucket_metric:regex}\"}[1m])))",
+          "instant": false,
+          "legendFormat": "router_true_p95_candidate_all",
+          "range": true,
+          "refId": "A"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${ocp_ds}"
+          },
+          "editorMode": "code",
+          "expr": "histogram_quantile(0.99, sum by (__name__, le) (rate({__name__=~\"${router_bucket_metric:regex}\"}[1m])))",
+          "instant": false,
+          "legendFormat": "router_true_p99_candidate_all",
+          "range": true,
+          "refId": "B"
+        }
+      ],
+      "title": "Router True p95/p99 Candidate（不套 route label）",
+      "type": "timeseries"
+    },
+    {
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 149
+      },
+      "id": 34,
+      "panels": [],
+      "title": "3. Pod / Deployment：資源、健康度與是否滿載",
+      "type": "row"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${ocp_ds}"
+      },
+      "description": "Ready=true 的 Pod 數量。",
+      "fieldConfig": {
+        "defaults": {
+          "decimals": 0,
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": 0
+              }
+            ]
+          },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 4,
+        "x": 0,
+        "y": 150
+      },
+      "id": 35,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area",
+        "justifyMode": "center",
+        "orientation": "auto",
+        "percentChangeColorMode": "standard",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "showPercentChange": false,
+        "textMode": "auto",
+        "wideLayout": true
+      },
+      "pluginVersion": "12.3.4",
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${ocp_ds}"
+          },
+          "editorMode": "code",
+          "expr": "sum(kube_pod_status_ready{namespace=~\"$namespace\", condition=\"true\"} * on(namespace,pod) group_left(workload, workload_type) namespace_workload_pod:kube_pod_owner:relabel{namespace=~\"$namespace\", workload=~\"$deployment\", workload_type=\"deployment\"}) or vector(0)",
+          "instant": false,
+          "legendFormat": "Ready Pod Count",
+          "range": true,
+          "refId": "A"
+        }
+      ],
+      "title": "Ready Pod Count",
+      "type": "stat"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${ocp_ds}"
+      },
+      "description": "選取區間 Pod 重啟。",
+      "fieldConfig": {
+        "defaults": {
+          "decimals": 0,
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": 0
+              },
+              {
+                "color": "red",
+                "value": 1
+              }
+            ]
+          },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 4,
+        "x": 4,
+        "y": 150
+      },
+      "id": 36,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area",
+        "justifyMode": "center",
+        "orientation": "auto",
+        "percentChangeColorMode": "standard",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "showPercentChange": false,
+        "textMode": "auto",
+        "wideLayout": true
+      },
+      "pluginVersion": "12.3.4",
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${ocp_ds}"
+          },
+          "editorMode": "code",
+          "expr": "sum(increase(kube_pod_container_status_restarts_total{namespace=~\"$namespace\"}[$__range]) * on(namespace,pod) group_left(workload, workload_type) namespace_workload_pod:kube_pod_owner:relabel{namespace=~\"$namespace\", workload=~\"$deployment\", workload_type=\"deployment\"}) or vector(0)",
+          "instant": false,
+          "legendFormat": "Restarts in Range",
+          "range": true,
+          "refId": "A"
+        }
+      ],
+      "title": "Restarts in Range",
+      "type": "stat"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${ocp_ds}"
+      },
+      "description": "CPU 被限流比例。",
+      "fieldConfig": {
+        "defaults": {
+          "decimals": 2,
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": 0
+              },
+              {
+                "color": "yellow",
+                "value": 20
+              },
+              {
+                "color": "red",
+                "value": 50
+              }
+            ]
+          },
+          "unit": "percent"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 4,
+        "x": 8,
+        "y": 150
+      },
+      "id": 37,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area",
+        "justifyMode": "center",
+        "orientation": "auto",
+        "percentChangeColorMode": "standard",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "showPercentChange": false,
+        "textMode": "auto",
+        "wideLayout": true
+      },
+      "pluginVersion": "12.3.4",
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${ocp_ds}"
+          },
+          "editorMode": "code",
+          "expr": "100 * sum(rate(container_cpu_cfs_throttled_periods_total{namespace=~\"$namespace\", container!=\"\", image!=\"\"}[5m]) * on(namespace,pod) group_left(workload, workload_type) namespace_workload_pod:kube_pod_owner:relabel{namespace=~\"$namespace\", workload=~\"$deployment\", workload_type=\"deployment\"}) / clamp_min(sum(rate(container_cpu_cfs_periods_total{namespace=~\"$namespace\", container!=\"\", image!=\"\"}[5m]) * on(namespace,pod) group_left(workload, workload_type) namespace_workload_pod:kube_pod_owner:relabel{namespace=~\"$namespace\", workload=~\"$deployment\", workload_type=\"deployment\"}), 1)",
+          "instant": false,
+          "legendFormat": "CPU Throttling %",
+          "range": true,
+          "refId": "A"
+        }
+      ],
+      "title": "CPU Throttling %",
+      "type": "stat"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${ocp_ds}"
+      },
+      "description": "Pod rx/tx drop。",
+      "fieldConfig": {
+        "defaults": {
+          "decimals": 2,
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": 0
+              },
+              {
+                "color": "red",
+                "value": 1
+              }
+            ]
+          },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 4,
+        "x": 12,
+        "y": 150
+      },
+      "id": 38,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area",
+        "justifyMode": "center",
+        "orientation": "auto",
+        "percentChangeColorMode": "standard",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "showPercentChange": false,
+        "textMode": "auto",
+        "wideLayout": true
+      },
+      "pluginVersion": "12.3.4",
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${ocp_ds}"
+          },
+          "editorMode": "code",
+          "expr": "(sum(rate(container_network_receive_packets_dropped_total{job=\"kubelet\", metrics_path=\"/metrics/cadvisor\", namespace=~\"$namespace\"}[5m]) * on(namespace,pod) group_left(workload, workload_type) namespace_workload_pod:kube_pod_owner:relabel{namespace=~\"$namespace\", workload=~\"$deployment\", workload_type=\"deployment\"}) + sum(rate(container_network_transmit_packets_dropped_total{job=\"kubelet\", metrics_path=\"/metrics/cadvisor\", namespace=~\"$namespace\"}[5m]) * on(namespace,pod) group_left(workload, workload_type) namespace_workload_pod:kube_pod_owner:relabel{namespace=~\"$namespace\", workload=~\"$deployment\", workload_type=\"deployment\"})) or vector(0)",
+          "instant": false,
+          "legendFormat": "Pod Network Drops / sec",
+          "range": true,
+          "refId": "A"
+        }
+      ],
+      "title": "Pod Network Drops / sec",
+      "type": "stat"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${ocp_ds}"
+      },
+      "description": "候選 App HTTP RPS，使用 http_server_requests_seconds_count。若顯示 0/No data，可能是 App 沒匯出 Micrometer 指標、label 不叫 namespace/pod，或 endpoint 沒被 Prometheus scrape。",
+      "fieldConfig": {
+        "defaults": {
+          "decimals": 2,
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": 0
+              }
+            ]
+          },
+          "unit": "reqps"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 4,
+        "x": 16,
+        "y": 150
+      },
+      "id": 39,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area",
+        "justifyMode": "center",
+        "orientation": "auto",
+        "percentChangeColorMode": "standard",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "showPercentChange": false,
+        "textMode": "auto",
+        "wideLayout": true
+      },
+      "pluginVersion": "12.3.4",
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${ocp_ds}"
+          },
+          "editorMode": "code",
+          "expr": "sum(rate(http_server_requests_seconds_count{namespace=~\"$namespace\"}[1m])) or vector(0)",
+          "instant": false,
+          "legendFormat": "App HTTP RPS 候選",
+          "range": true,
+          "refId": "A"
+        }
+      ],
+      "title": "App HTTP RPS 候選（若有 Micrometer）",
+      "type": "stat"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${ocp_ds}"
+      },
+      "description": "候選 App HTTP p99，使用 http_server_requests_seconds_bucket。若沒有資料，代表目前沒有可用 App histogram 指標；這時需要補 application metrics 或用 access log / request-id 追單筆慢請求。",
+      "fieldConfig": {
+        "defaults": {
+          "decimals": 2,
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": 0
+              },
+              {
+                "color": "yellow",
+                "value": 1
+              },
+              {
+                "color": "red",
+                "value": 5
+              }
+            ]
+          },
+          "unit": "s"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 4,
+        "x": 20,
+        "y": 150
+      },
+      "id": 40,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area",
+        "justifyMode": "center",
+        "orientation": "auto",
+        "percentChangeColorMode": "standard",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "showPercentChange": false,
+        "textMode": "auto",
+        "wideLayout": true
+      },
+      "pluginVersion": "12.3.4",
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${ocp_ds}"
+          },
+          "editorMode": "code",
+          "expr": "histogram_quantile(0.99, sum(rate(http_server_requests_seconds_bucket{namespace=~\"$namespace\"}[1m])) by (le))",
+          "instant": false,
+          "legendFormat": "App HTTP p99 候選",
+          "range": true,
+          "refId": "A"
+        }
+      ],
+      "title": "App HTTP p99 候選（若有 Micrometer）",
+      "type": "stat"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${ocp_ds}"
+      },
+      "description": "Pod CPU 使用/request/limit。",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "axisBorderShow": false,
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "barWidthFactor": 0.6,
+            "drawStyle": "line",
+            "fillOpacity": 10,
+            "gradientMode": "none",
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            },
+            "insertNulls": false,
+            "lineInterpolation": "linear",
+            "lineWidth": 1,
+            "pointSize": 5,
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "showPoints": "never",
+            "showValues": false,
+            "spanNulls": true,
+            "stacking": {
+              "group": "A",
+              "mode": "none"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": 0
+              }
+            ]
+          },
+          "unit": "core"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 154
+      },
+      "id": 41,
+      "options": {
+        "legend": {
+          "calcs": [
+            "lastNotNull",
+            "max"
+          ],
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "hideZeros": false,
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "pluginVersion": "12.3.4",
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${ocp_ds}"
+          },
+          "editorMode": "code",
+          "expr": "sum(rate(container_cpu_usage_seconds_total{namespace=~\"$namespace\", container!=\"\", image!=\"\"}[5m]) * on(namespace,pod) group_left(workload, workload_type) namespace_workload_pod:kube_pod_owner:relabel{namespace=~\"$namespace\", workload=~\"$deployment\", workload_type=\"deployment\"}) by (pod)",
+          "legendFormat": "usage {{pod}}",
+          "range": true,
+          "refId": "A"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${ocp_ds}"
+          },
+          "editorMode": "code",
+          "expr": "sum(kube_pod_container_resource_requests{job=\"kube-state-metrics\", namespace=~\"$namespace\", resource=\"cpu\"} * on(namespace,pod) group_left(workload, workload_type) namespace_workload_pod:kube_pod_owner:relabel{namespace=~\"$namespace\", workload=~\"$deployment\", workload_type=\"deployment\"}) by (pod)",
+          "legendFormat": "request {{pod}}",
+          "range": true,
+          "refId": "B"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${ocp_ds}"
+          },
+          "editorMode": "code",
+          "expr": "sum(kube_pod_container_resource_limits{job=\"kube-state-metrics\", namespace=~\"$namespace\", resource=\"cpu\"} * on(namespace,pod) group_left(workload, workload_type) namespace_workload_pod:kube_pod_owner:relabel{namespace=~\"$namespace\", workload=~\"$deployment\", workload_type=\"deployment\"}) by (pod)",
+          "legendFormat": "limit {{pod}}",
+          "range": true,
+          "refId": "C"
+        }
+      ],
+      "title": "Pod CPU Usage / Request / Limit",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${ocp_ds}"
+      },
+      "description": "Pod memory 使用/request/limit。",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "axisBorderShow": false,
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "barWidthFactor": 0.6,
+            "drawStyle": "line",
+            "fillOpacity": 10,
+            "gradientMode": "none",
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            },
+            "insertNulls": false,
+            "lineInterpolation": "linear",
+            "lineWidth": 1,
+            "pointSize": 5,
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "showPoints": "never",
+            "showValues": false,
+            "spanNulls": true,
+            "stacking": {
+              "group": "A",
+              "mode": "none"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": 0
+              }
+            ]
+          },
+          "unit": "bytes"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 154
+      },
+      "id": 42,
+      "options": {
+        "legend": {
+          "calcs": [
+            "lastNotNull",
+            "max"
+          ],
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "hideZeros": false,
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "pluginVersion": "12.3.4",
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${ocp_ds}"
+          },
+          "editorMode": "code",
+          "expr": "sum(container_memory_working_set_bytes{namespace=~\"$namespace\", container!=\"\", image!=\"\"} * on(namespace,pod) group_left(workload, workload_type) namespace_workload_pod:kube_pod_owner:relabel{namespace=~\"$namespace\", workload=~\"$deployment\", workload_type=\"deployment\"}) by (pod)",
+          "legendFormat": "usage {{pod}}",
+          "range": true,
+          "refId": "A"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${ocp_ds}"
+          },
+          "editorMode": "code",
+          "expr": "sum(kube_pod_container_resource_requests{job=\"kube-state-metrics\", namespace=~\"$namespace\", resource=\"memory\"} * on(namespace,pod) group_left(workload, workload_type) namespace_workload_pod:kube_pod_owner:relabel{namespace=~\"$namespace\", workload=~\"$deployment\", workload_type=\"deployment\"}) by (pod)",
+          "legendFormat": "request {{pod}}",
+          "range": true,
+          "refId": "B"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${ocp_ds}"
+          },
+          "editorMode": "code",
+          "expr": "sum(kube_pod_container_resource_limits{job=\"kube-state-metrics\", namespace=~\"$namespace\", resource=\"memory\"} * on(namespace,pod) group_left(workload, workload_type) namespace_workload_pod:kube_pod_owner:relabel{namespace=~\"$namespace\", workload=~\"$deployment\", workload_type=\"deployment\"}) by (pod)",
+          "legendFormat": "limit {{pod}}",
+          "range": true,
+          "refId": "C"
+        }
+      ],
+      "title": "Pod Memory Usage / Request / Limit",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${ocp_ds}"
+      },
+      "description": "逐 Pod CPU throttle。",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "axisBorderShow": false,
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "barWidthFactor": 0.6,
+            "drawStyle": "line",
+            "fillOpacity": 10,
+            "gradientMode": "none",
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            },
+            "insertNulls": false,
+            "lineInterpolation": "linear",
+            "lineWidth": 1,
+            "pointSize": 5,
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "showPoints": "never",
+            "showValues": false,
+            "spanNulls": true,
+            "stacking": {
+              "group": "A",
+              "mode": "none"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": 0
+              }
+            ]
+          },
+          "unit": "percent"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 7,
+        "w": 12,
+        "x": 0,
+        "y": 162
+      },
+      "id": 43,
+      "options": {
+        "legend": {
+          "calcs": [
+            "lastNotNull",
+            "max"
+          ],
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "hideZeros": false,
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "pluginVersion": "12.3.4",
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${ocp_ds}"
+          },
+          "editorMode": "code",
+          "expr": "100 * sum(rate(container_cpu_cfs_throttled_periods_total{namespace=~\"$namespace\", container!=\"\", image!=\"\"}[5m]) * on(namespace,pod) group_left(workload, workload_type) namespace_workload_pod:kube_pod_owner:relabel{namespace=~\"$namespace\", workload=~\"$deployment\", workload_type=\"deployment\"}) by (pod) / clamp_min(sum(rate(container_cpu_cfs_periods_total{namespace=~\"$namespace\", container!=\"\", image!=\"\"}[5m]) * on(namespace,pod) group_left(workload, workload_type) namespace_workload_pod:kube_pod_owner:relabel{namespace=~\"$namespace\", workload=~\"$deployment\", workload_type=\"deployment\"}) by (pod), 1)",
+          "legendFormat": "{{pod}}",
+          "range": true,
+          "refId": "A"
+        }
+      ],
+      "title": "CPU Throttling by Pod",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${ocp_ds}"
+      },
+      "description": "Pod 收/送流量。",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "axisBorderShow": false,
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "barWidthFactor": 0.6,
+            "drawStyle": "line",
+            "fillOpacity": 10,
+            "gradientMode": "none",
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            },
+            "insertNulls": false,
+            "lineInterpolation": "linear",
+            "lineWidth": 1,
+            "pointSize": 5,
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "showPoints": "never",
+            "showValues": false,
+            "spanNulls": true,
+            "stacking": {
+              "group": "A",
+              "mode": "none"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": 0
+              }
+            ]
+          },
+          "unit": "binBps"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 7,
+        "w": 12,
+        "x": 12,
+        "y": 162
+      },
+      "id": 44,
+      "options": {
+        "legend": {
+          "calcs": [
+            "lastNotNull",
+            "max"
+          ],
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "hideZeros": false,
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "pluginVersion": "12.3.4",
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${ocp_ds}"
+          },
+          "editorMode": "code",
+          "expr": "sum(rate(container_network_receive_bytes_total{job=\"kubelet\", metrics_path=\"/metrics/cadvisor\", namespace=~\"$namespace\"}[5m]) * on(namespace,pod) group_left(workload, workload_type) namespace_workload_pod:kube_pod_owner:relabel{namespace=~\"$namespace\", workload=~\"$deployment\", workload_type=\"deployment\"}) by (pod)",
+          "legendFormat": "rx {{pod}}",
+          "range": true,
+          "refId": "A"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${ocp_ds}"
+          },
+          "editorMode": "code",
+          "expr": "sum(rate(container_network_transmit_bytes_total{job=\"kubelet\", metrics_path=\"/metrics/cadvisor\", namespace=~\"$namespace\"}[5m]) * on(namespace,pod) group_left(workload, workload_type) namespace_workload_pod:kube_pod_owner:relabel{namespace=~\"$namespace\", workload=~\"$deployment\", workload_type=\"deployment\"}) by (pod)",
+          "legendFormat": "tx {{pod}}",
+          "range": true,
+          "refId": "B"
+        }
+      ],
+      "title": "Pod Network Receive / Transmit Bandwidth",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${ocp_ds}"
+      },
+      "description": "快速找異常 Pod。",
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "align": "auto",
+            "cellOptions": {
+              "type": "auto"
+            },
+            "filterable": true,
+            "footer": {
+              "reducers": []
+            },
+            "inspect": false
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": 0
+              }
+            ]
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Value #CPU Usage"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "CPU 使用量"
+              },
+              {
+                "id": "unit",
+                "value": "core"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Value #Memory Usage"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "記憶體使用量"
+              },
+              {
+                "id": "unit",
+                "value": "bytes"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Value #CPU Throttling"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "CPU 限流 %"
+              },
+              {
+                "id": "unit",
+                "value": "percent"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Value #Restarts"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "重啟次數"
+              },
+              {
+                "id": "unit",
+                "value": "short"
+              }
+            ]
+          }
+        ]
+      },
+      "gridPos": {
+        "h": 10,
+        "w": 24,
+        "x": 0,
+        "y": 169
+      },
+      "id": 45,
+      "options": {
+        "cellHeight": "sm",
+        "enablePagination": true,
+        "showHeader": true
+      },
+      "pluginVersion": "12.3.4",
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${ocp_ds}"
+          },
+          "editorMode": "code",
+          "expr": "sum(rate(container_cpu_usage_seconds_total{namespace=~\"$namespace\", container!=\"\", image!=\"\"}[5m]) * on(namespace,pod) group_left(workload, workload_type) namespace_workload_pod:kube_pod_owner:relabel{namespace=~\"$namespace\", workload=~\"$deployment\", workload_type=\"deployment\"}) by (pod)",
+          "format": "table",
+          "instant": true,
+          "legendFormat": "__auto",
+          "range": false,
+          "refId": "CPU Usage"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${ocp_ds}"
+          },
+          "editorMode": "code",
+          "expr": "sum(container_memory_working_set_bytes{namespace=~\"$namespace\", container!=\"\", image!=\"\"} * on(namespace,pod) group_left(workload, workload_type) namespace_workload_pod:kube_pod_owner:relabel{namespace=~\"$namespace\", workload=~\"$deployment\", workload_type=\"deployment\"}) by (pod)",
+          "format": "table",
+          "instant": true,
+          "legendFormat": "__auto",
+          "range": false,
+          "refId": "Memory Usage"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${ocp_ds}"
+          },
+          "editorMode": "code",
+          "expr": "100 * sum(rate(container_cpu_cfs_throttled_periods_total{namespace=~\"$namespace\", container!=\"\", image!=\"\"}[5m]) * on(namespace,pod) group_left(workload, workload_type) namespace_workload_pod:kube_pod_owner:relabel{namespace=~\"$namespace\", workload=~\"$deployment\", workload_type=\"deployment\"}) by (pod) / clamp_min(sum(rate(container_cpu_cfs_periods_total{namespace=~\"$namespace\", container!=\"\", image!=\"\"}[5m]) * on(namespace,pod) group_left(workload, workload_type) namespace_workload_pod:kube_pod_owner:relabel{namespace=~\"$namespace\", workload=~\"$deployment\", workload_type=\"deployment\"}) by (pod), 1)",
+          "format": "table",
+          "instant": true,
+          "legendFormat": "__auto",
+          "range": false,
+          "refId": "CPU Throttling"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${ocp_ds}"
+          },
+          "editorMode": "code",
+          "expr": "sum(increase(kube_pod_container_status_restarts_total{namespace=~\"$namespace\"}[$__range]) * on(namespace,pod) group_left(workload, workload_type) namespace_workload_pod:kube_pod_owner:relabel{namespace=~\"$namespace\", workload=~\"$deployment\", workload_type=\"deployment\"}) by (pod)",
+          "format": "table",
+          "instant": true,
+          "legendFormat": "__auto",
+          "range": false,
+          "refId": "Restarts"
+        }
+      ],
+      "title": "Pod Saturation Table（Pod 資源總表）",
+      "transformations": [
+        {
+          "id": "merge",
+          "options": {}
+        }
+      ],
+      "type": "table"
+    },
+    {
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 179
+      },
+      "id": 46,
+      "panels": [],
+      "title": "4. Logs：確認 App 是否有收到與是否產生日誌",
+      "type": "row"
+    },
+    {
+      "description": "",
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 24,
+        "x": 0,
+        "y": 180
+      },
+      "id": 47,
+      "options": {
+        "code": {
+          "language": "plaintext",
+          "showLineNumbers": false,
+          "showMiniMap": false
+        },
+        "content": "### Log Panel 若沒有資料，先不要直接判定 App 沒收到 request\n\n- Graylog/Lucene 對含有 `-` 的變數值容易解析錯誤，因此查詢使用雙引號：`paas:\"$log_env\" AND container_name:\"$deployment\"`。\n- 若仍無資料，確認欄位是否真的是 `paas`、`container_name`、`pod_name`。\n- 若 App log count 沒上升，但 Pod receive/transmit 有流量，代表容器網路有流量，不代表 handler 一定有打 log。\n- 若要確認單筆 timeout 是否進 App，建議用 X-Request-ID / Correlation-ID 串 Kong、Router、App log。\n",
+        "mode": "markdown"
+      },
+      "pluginVersion": "12.3.4",
+      "title": "Log 查詢注意事項",
+      "type": "text"
+    },
+    {
+      "datasource": {
+        "type": "elasticsearch",
+        "uid": "${graylog_ds}"
+      },
+      "description": "Graylog log count by pod。這不是錯誤率，只是 log 活動量。",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "axisBorderShow": false,
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "barWidthFactor": 0.6,
+            "drawStyle": "bars",
+            "fillOpacity": 80,
+            "gradientMode": "none",
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            },
+            "insertNulls": false,
+            "lineInterpolation": "linear",
+            "lineWidth": 1,
+            "pointSize": 5,
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "showPoints": "auto",
+            "showValues": false,
+            "spanNulls": false,
+            "stacking": {
+              "group": "A",
+              "mode": "none"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": 0
+              }
+            ]
+          },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 9,
+        "w": 24,
+        "x": 0,
+        "y": 184
+      },
+      "id": 48,
+      "interval": "1m",
+      "options": {
+        "legend": {
+          "calcs": [],
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "hideZeros": false,
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "pluginVersion": "12.3.4",
+      "targets": [
+        {
+          "alias": "",
+          "bucketAggs": [
+            {
+              "field": "pod_name",
+              "id": "3",
+              "settings": {
+                "min_doc_count": "1",
+                "order": "desc",
+                "orderBy": "_count",
+                "size": "10"
+              },
+              "type": "terms"
+            },
+            {
+              "field": "timestamp",
+              "id": "2",
+              "settings": {
+                "interval": "auto"
+              },
+              "type": "date_histogram"
+            }
+          ],
+          "datasource": {
+            "type": "elasticsearch",
+            "uid": "${graylog_ds}"
+          },
+          "metrics": [
+            {
+              "id": "1",
+              "type": "count"
+            }
+          ],
+          "query": "paas:\"$log_env\" AND container_name:\"$deployment\"",
+          "refId": "A",
+          "timeField": "timestamp"
+        }
+      ],
+      "title": "Application Log Count by Pod（每顆 Pod 的 App Log 數量）",
+      "type": "timeseries"
+    }
+  ],
+  "preload": false,
+  "refresh": "10s",
+  "schemaVersion": 42,
+  "tags": [
+    "kong",
+    "ocp",
+    "router",
+    "timeout",
+    "bottleneck",
+    "中文說明",
+    "v6"
+  ],
+  "templating": {
+    "list": [
+      {
+        "current": {
+          "text": "Prometheus-PROD-BQ",
+          "value": "cf75imc1zh2wwa"
+        },
+        "includeAll": false,
+        "label": "Kong Prometheus",
+        "name": "kong_ds",
+        "options": [],
+        "query": "prometheus",
+        "refresh": 1,
+        "regex": "Prometheus-(UAT|PROD-NH|PROD-BQ|PROD-BQ1)",
+        "type": "datasource"
+      },
+      {
+        "current": {
+          "text": "Prometheus-PROD-BQ_OCP",
+          "value": "cf5gk8fl9jojkf"
+        },
+        "includeAll": false,
+        "label": "OCP Prometheus",
+        "name": "ocp_ds",
+        "options": [],
+        "query": "prometheus",
+        "refresh": 1,
+        "regex": "Prometheus-.*_OCP",
+        "type": "datasource"
+      },
+      {
+        "current": {
+          "text": "Graylog-PROD-BQ",
+          "value": "ef4n4efhpi9z4b"
+        },
+        "includeAll": false,
+        "label": "Graylog",
+        "name": "graylog_ds",
+        "options": [],
+        "query": "elasticsearch",
+        "refresh": 1,
+        "regex": "Graylog-(UAT|PROD-BQ|PROD-NH|SIT)",
+        "type": "datasource"
+      },
+      {
+        "allValue": ".*",
+        "current": {
+          "text": "All",
+          "value": [
+            "$__all"
+          ]
+        },
+        "datasource": {
+          "type": "prometheus",
+          "uid": "${kong_ds}"
+        },
+        "definition": "label_values(kong_http_requests_total, service)",
+        "includeAll": true,
+        "label": "Kong Service",
+        "multi": true,
+        "name": "kong_service",
+        "options": [],
+        "query": {
+          "query": "label_values(kong_http_requests_total, service)",
+          "refId": "KongServiceVariable"
+        },
+        "refresh": 1,
+        "regex": "",
+        "sort": 1,
+        "type": "query"
+      },
+      {
+        "allValue": ".*",
+        "current": {
+          "text": "All",
+          "value": [
+            "$__all"
+          ]
+        },
+        "datasource": {
+          "type": "prometheus",
+          "uid": "${kong_ds}"
+        },
+        "definition": "label_values(kong_http_requests_total{service=~\"$kong_service\"}, route)",
+        "includeAll": true,
+        "label": "Kong Route",
+        "multi": true,
+        "name": "kong_route",
+        "options": [],
+        "query": {
+          "query": "label_values(kong_http_requests_total{service=~\"$kong_service\"}, route)",
+          "refId": "KongRouteVariable"
+        },
+        "refresh": 1,
+        "regex": "",
+        "sort": 1,
+        "type": "query"
+      },
+      {
+        "allValue": ".*",
+        "current": {
+          "text": "All",
+          "value": [
+            "$__all"
+          ]
+        },
+        "datasource": {
+          "type": "prometheus",
+          "uid": "${kong_ds}"
+        },
+        "definition": "label_values(kong_nginx_connections_total, instance)",
+        "includeAll": true,
+        "label": "Kong Instance",
+        "multi": true,
+        "name": "kong_instance",
+        "options": [],
+        "query": {
+          "query": "label_values(kong_nginx_connections_total, instance)",
+          "refId": "KongInstanceVariable"
+        },
+        "refresh": 1,
+        "regex": "",
+        "sort": 1,
+        "type": "query"
+      },
+      {
+        "current": {
+          "text": "stk",
+          "value": "stk"
+        },
+        "datasource": {
+          "type": "prometheus",
+          "uid": "${ocp_ds}"
+        },
+        "definition": "label_values(kube_pod_info, namespace)",
+        "includeAll": false,
+        "label": "Namespace",
+        "name": "namespace",
+        "options": [],
+        "query": {
+          "query": "label_values(kube_pod_info, namespace)",
+          "refId": "NamespaceVariable"
+        },
+        "refresh": 1,
+        "regex": "(stk|fgn|com|fut|push|eai|test|nft)",
+        "sort": 1,
+        "type": "query"
+      },
+      {
+        "current": {
+          "text": "stk-amd-binfo-rs",
+          "value": "stk-amd-binfo-rs"
+        },
+        "datasource": {
+          "type": "prometheus",
+          "uid": "${ocp_ds}"
+        },
+        "definition": "label_values(kube_deployment_spec_replicas{namespace=~\"$namespace\"}, deployment)",
+        "includeAll": false,
+        "label": "Deployment",
+        "name": "deployment",
+        "options": [],
+        "query": {
+          "query": "label_values(kube_deployment_spec_replicas{namespace=~\"$namespace\"}, deployment)",
+          "refId": "DeploymentVariable"
+        },
+        "refresh": 1,
+        "regex": "",
+        "sort": 1,
+        "type": "query"
+      },
+      {
+        "allValue": ".*",
+        "current": {
+          "text": [
+            "stk-amd-binfo-rs"
+          ],
+          "value": [
+            "stk-amd-binfo-rs"
+          ]
+        },
+        "datasource": {
+          "type": "prometheus",
+          "uid": "${ocp_ds}"
+        },
+        "definition": "label_values(haproxy_backend_connections_total{job=\"router-internal-default\"}, route)",
+        "includeAll": true,
+        "label": "Router Route",
+        "multi": true,
+        "name": "router_route",
+        "options": [],
+        "query": {
+          "query": "label_values(haproxy_backend_connections_total{job=\"router-internal-default\"}, route)",
+          "refId": "RouterRouteVariable"
+        },
+        "refresh": 1,
+        "regex": "",
+        "sort": 1,
+        "type": "query"
+      },
+      {
+        "current": {
+          "text": "prod-bq",
+          "value": "prod-bq"
+        },
+        "datasource": {
+          "type": "elasticsearch",
+          "uid": "${graylog_ds}"
+        },
+        "definition": "{\"find\": \"terms\", \"field\": \"paas\", \"size\": 1000}",
+        "includeAll": false,
+        "label": "Log Env",
+        "name": "log_env",
+        "options": [],
+        "query": "{\"find\": \"terms\", \"field\": \"paas\", \"size\": 1000}",
+        "refresh": 1,
+        "regex": "(sit|prod-bq|prod-bq1|prod-nh|uat-nh|uat-nh1|uat-nh01|uat-nh02)",
+        "sort": 1,
+        "type": "query"
+      },
+      {
+        "current": {
+          "text": "",
+          "value": ""
+        },
+        "datasource": {
+          "type": "prometheus",
+          "uid": "${ocp_ds}"
+        },
+        "definition": "query_result(count by (__name__) ({__name__=~\".*(haproxy|router).*bucket.*\"}))",
+        "description": "Router/HAProxy latency bucket metric。若選到多個 metric 或出現 duplicate labelset，v9 查詢已用 __name__ 保留來源避免碰撞。",
+        "includeAll": false,
+        "label": "Router Bucket Metric",
+        "name": "router_bucket_metric",
+        "options": [],
+        "query": {
+          "query": "query_result(count by (__name__) ({__name__=~\".*(haproxy|router).*bucket.*\"}))",
+          "refId": "RouterBucketMetricVariable"
+        },
+        "refresh": 1,
+        "regex": "/.*__name__=\"([^\"]+)\".*/",
+        "sort": 1,
+        "type": "query"
+      }
+    ]
+  },
+  "time": {
+    "from": "now-10m",
+    "to": "now"
+  },
+  "timepicker": {},
+  "timezone": "Asia/Taipei",
+  "title": "Kong OCP Router Pod Timeout Bottleneck（中文說明版 v9）",
+  "uid": "kong-ocp-bn-zh-v9",
+  "version": 3
+}
