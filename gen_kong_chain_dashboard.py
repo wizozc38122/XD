@@ -124,6 +124,13 @@ DASHED = [{"id": "custom.lineStyle", "value": {"fill": "dash", "dash": [10, 10]}
           {"id": "custom.stacking", "value": {"mode": "none", "group": "A"}}]
 
 
+# 百分位數碰到直方圖最大一格時,Prometheus 只能回那一格的上限 (Kong 60 秒、App / Micrometer 30 秒),
+# 實際比這更久、量不到;剛好等於上限就顯示「≥ 上限」,避免誤會成剛好量到 1 分鐘
+CAP_MAPPINGS = [{"type": "value", "options": {
+    "60000": {"text": "≥ 60 秒（上限）", "color": "red", "index": 10},
+    "30000": {"text": "≥ 30 秒（上限）", "color": "red", "index": 11}}}]
+
+
 def desc(what, how):
     return f"{what}\n\n**怎麼看**：{how}"
 
@@ -146,6 +153,8 @@ def ts(title, d, targets, unit="ms", overrides=(), stack=False, fill=10, thresho
     if unit == "percentunit":
         custom["axisSoftMax"] = 1
     defaults = {"unit": unit, "custom": custom, "color": {"mode": "palette-classic"}}
+    if unit == "ms":
+        defaults["mappings"] = CAP_MAPPINGS
     if thresholds:
         defaults["thresholds"] = {"mode": "absolute", "steps": thresholds}
     if no_value:
@@ -168,7 +177,7 @@ def bar(title, d, targets, overrides=(), unit="ms"):
     p = {"id": nid(), "type": "bargauge", "title": title, "description": d, "datasource": ds_of(targets),
          "targets": targets,
          "fieldConfig": {"defaults": {"unit": unit, "min": 0, "decimals": 0, "color": {"mode": "palette-classic"},
-                                      "noValue": "—"},
+                                      "noValue": "—", "mappings": CAP_MAPPINGS if unit == "ms" else []},
                          "overrides": list(overrides)},
          "options": {"orientation": "horizontal", "displayMode": "basic", "showUnfilled": True, "valueMode": "text",
                      "namePlacement": "top", "sizing": "auto", "text": {"titleSize": 13, "valueSize": 15},
@@ -192,7 +201,7 @@ def table(title, d, keys, cols, sort, key_width=140):
                                 {"id": "organize", "options": {"excludeByName": {"Time": True}, "renameByName": rename,
                                                                "indexByName": {k: i for i, k in enumerate(order)}}},
                                 {"id": "sortBy", "options": {"sort": [{"field": sort, "desc": True}]}}],
-            "fieldConfig": {"defaults": {"unit": "ms", "decimals": 0,
+            "fieldConfig": {"defaults": {"unit": "ms", "decimals": 0, "mappings": CAP_MAPPINGS,
                                          "custom": {"align": "auto", "minWidth": 90, "wrapHeaderText": True}},
                             "overrides": [{"matcher": {"id": "byName", "options": n}, "properties": [
                                 {"id": "custom.minWidth", "value": key_width}]} for _, n in keys] + over},
@@ -339,7 +348,7 @@ def topo_canvas(title, d, targets, fields, nodes):
     return {"id": nid(), "type": "canvas", "title": title, "description": d, "datasource": MIXED, "targets": targets,
             "interval": "1m",
             "fieldConfig": {"defaults": {"color": {"mode": "fixed", "fixedColor": "#e2e8f0"}, "noValue": "—",
-                                         "mappings": NO_DATA_MAPPINGS},
+                                         "mappings": NO_DATA_MAPPINGS + CAP_MAPPINGS},
                             "overrides": [t_override(r, *f) for r, f in fields.items()]},
             "options": {"inlineEditing": False, "showAdvancedTypes": True, "panZoom": False, "infinitePan": False,
                         "root": {"type": "frame", "name": "root", "elements": nodes,
@@ -644,6 +653,7 @@ def while_504(source):
 
 block("D. 逾時（p99 卡在同一個秒數）：是誰的逾時、卡在哪一段")
 TIMEOUT_GUIDE = """**認出逾時**（不用知道設定值）：p99 變成一條**平線** = 卡在逾時；「有 504 時等後端最長」≈ 逾時值；實際要多久看 **App 最慢的一筆**。
+顯示 **≥ 60 秒（上限）** = 超過 Kong 直方圖最大一格（60 秒），實際多久量不到，不是剛好 1 分鐘。
 
 | 看到 | 誰的逾時 / 卡在哪 |
 |---|---|

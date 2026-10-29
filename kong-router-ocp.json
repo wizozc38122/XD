@@ -631,6 +631,21 @@
                   "index": 1
                 }
               }
+            },
+            {
+              "type": "value",
+              "options": {
+                "60000": {
+                  "text": "≥ 60 秒（上限）",
+                  "color": "red",
+                  "index": 10
+                },
+                "30000": {
+                  "text": "≥ 30 秒（上限）",
+                  "color": "red",
+                  "index": 11
+                }
+              }
             }
           ]
         },
@@ -3665,7 +3680,24 @@
           "color": {
             "mode": "palette-classic"
           },
-          "noValue": "—"
+          "noValue": "—",
+          "mappings": [
+            {
+              "type": "value",
+              "options": {
+                "60000": {
+                  "text": "≥ 60 秒（上限）",
+                  "color": "red",
+                  "index": 10
+                },
+                "30000": {
+                  "text": "≥ 30 秒（上限）",
+                  "color": "red",
+                  "index": 11
+                }
+              }
+            }
+          ]
         },
         "overrides": [
           {
@@ -3853,7 +3885,24 @@
           "color": {
             "mode": "palette-classic"
           },
-          "noValue": "—"
+          "noValue": "—",
+          "mappings": [
+            {
+              "type": "value",
+              "options": {
+                "60000": {
+                  "text": "≥ 60 秒（上限）",
+                  "color": "red",
+                  "index": 10
+                },
+                "30000": {
+                  "text": "≥ 30 秒（上限）",
+                  "color": "red",
+                  "index": 11
+                }
+              }
+            }
+          ]
         },
         "overrides": [
           {
@@ -4240,6 +4289,21 @@
                   "text": "沒資料",
                   "color": "#64748b",
                   "index": 1
+                }
+              }
+            },
+            {
+              "type": "value",
+              "options": {
+                "60000": {
+                  "text": "≥ 60 秒（上限）",
+                  "color": "red",
+                  "index": 10
+                },
+                "30000": {
+                  "text": "≥ 30 秒（上限）",
+                  "color": "red",
+                  "index": 11
                 }
               }
             }
@@ -7288,7 +7352,24 @@
           },
           "color": {
             "mode": "palette-classic"
-          }
+          },
+          "mappings": [
+            {
+              "type": "value",
+              "options": {
+                "60000": {
+                  "text": "≥ 60 秒（上限）",
+                  "color": "red",
+                  "index": 10
+                },
+                "30000": {
+                  "text": "≥ 30 秒（上限）",
+                  "color": "red",
+                  "index": 11
+                }
+              }
+            }
+          ]
         },
         "overrides": [
           {
@@ -8037,6 +8118,21 @@
                   "text": "沒資料",
                   "color": "#64748b",
                   "index": 1
+                }
+              }
+            },
+            {
+              "type": "value",
+              "options": {
+                "60000": {
+                  "text": "≥ 60 秒（上限）",
+                  "color": "red",
+                  "index": 10
+                },
+                "30000": {
+                  "text": "≥ 30 秒（上限）",
+                  "color": "red",
+                  "index": 11
                 }
               }
             }
@@ -11360,6 +11456,23 @@
           "color": {
             "mode": "palette-classic"
           },
+          "mappings": [
+            {
+              "type": "value",
+              "options": {
+                "60000": {
+                  "text": "≥ 60 秒（上限）",
+                  "color": "red",
+                  "index": 10
+                },
+                "30000": {
+                  "text": "≥ 30 秒（上限）",
+                  "color": "red",
+                  "index": 11
+                }
+              }
+            }
+          ],
           "noValue": "沒資料：App 沒開 Micrometer histogram（management.metrics.distribution.percentiles-histogram.http.server.requests=true）"
         },
         "overrides": [
@@ -11638,6 +11751,23 @@
         "defaults": {
           "unit": "ms",
           "decimals": 0,
+          "mappings": [
+            {
+              "type": "value",
+              "options": {
+                "60000": {
+                  "text": "≥ 60 秒（上限）",
+                  "color": "red",
+                  "index": 10
+                },
+                "30000": {
+                  "text": "≥ 30 秒（上限）",
+                  "color": "red",
+                  "index": 11
+                }
+              }
+            }
+          ],
           "custom": {
             "align": "auto",
             "minWidth": 90,
@@ -11754,6 +11884,23 @@
           "color": {
             "mode": "palette-classic"
           },
+          "mappings": [
+            {
+              "type": "value",
+              "options": {
+                "60000": {
+                  "text": "≥ 60 秒（上限）",
+                  "color": "red",
+                  "index": 10
+                },
+                "30000": {
+                  "text": "≥ 30 秒（上限）",
+                  "color": "red",
+                  "index": 11
+                }
+              }
+            }
+          ],
           "noValue": "沒資料：App 沒開 Micrometer histogram（management.metrics.distribution.percentiles-histogram.http.server.requests=true）"
         },
         "overrides": []
@@ -11826,6 +11973,23 @@
           "color": {
             "mode": "palette-classic"
           },
+          "mappings": [
+            {
+              "type": "value",
+              "options": {
+                "60000": {
+                  "text": "≥ 60 秒（上限）",
+                  "color": "red",
+                  "index": 10
+                },
+                "30000": {
+                  "text": "≥ 30 秒（上限）",
+                  "color": "red",
+                  "index": 11
+                }
+              }
+            }
+          ],
           "noValue": "沒資料：App 沒開 Micrometer histogram（management.metrics.distribution.percentiles-histogram.http.server.requests=true）"
         },
         "overrides": []
@@ -11963,7 +12127,24 @@
           "color": {
             "mode": "palette-classic"
           },
-          "noValue": "—"
+          "noValue": "—",
+          "mappings": [
+            {
+              "type": "value",
+              "options": {
+                "60000": {
+                  "text": "≥ 60 秒（上限）",
+                  "color": "red",
+                  "index": 10
+                },
+                "30000": {
+                  "text": "≥ 30 秒（上限）",
+                  "color": "red",
+                  "index": 11
+                }
+              }
+            }
+          ]
         },
         "overrides": []
       },
@@ -11999,7 +12180,7 @@
       "title": "",
       "options": {
         "mode": "markdown",
-        "content": "**認出逾時**（不用知道設定值）：p99 變成一條**平線** = 卡在逾時；「有 504 時等後端最長」≈ 逾時值；實際要多久看 **App 最慢的一筆**。\n\n| 看到 | 誰的逾時 / 卡在哪 |\n|---|---|\n| **後端回的 504**（通常約 30 秒） | Router 等 Pod 逾時 → AP Pod 慢 |\n| **Kong 自己回的 504**，App 最慢的一筆也一樣久 | AP Pod 慢（或它的 DB / 下游服務） |\n| **Kong 自己回的 504**，App 快、執行緒 ≈ 100% | Pod 執行緒用完，在 Pod 裡排隊 |\n| **Kong 自己回的 504**（通常約 60 秒），App、Router 都正常 | 沒到 Router：A10 / F5、網路 |\n| **499** | Client 自己先放棄（Client 的逾時比 Kong 短，例如壓測工具） |\n| **Kong 自己回的 502 / 503** | 中間設備斷線、連不上後端 |\n\n確認單筆：暫時開 Router access log，`sH` = Router 等 Pod 逾時、`CH` = Kong 先斷線、沒有那筆 = 沒到 Router。"
+        "content": "**認出逾時**（不用知道設定值）：p99 變成一條**平線** = 卡在逾時；「有 504 時等後端最長」≈ 逾時值；實際要多久看 **App 最慢的一筆**。\n顯示 **≥ 60 秒（上限）** = 超過 Kong 直方圖最大一格（60 秒），實際多久量不到，不是剛好 1 分鐘。\n\n| 看到 | 誰的逾時 / 卡在哪 |\n|---|---|\n| **後端回的 504**（通常約 30 秒） | Router 等 Pod 逾時 → AP Pod 慢 |\n| **Kong 自己回的 504**，App 最慢的一筆也一樣久 | AP Pod 慢（或它的 DB / 下游服務） |\n| **Kong 自己回的 504**，App 快、執行緒 ≈ 100% | Pod 執行緒用完，在 Pod 裡排隊 |\n| **Kong 自己回的 504**（通常約 60 秒），App、Router 都正常 | 沒到 Router：A10 / F5、網路 |\n| **499** | Client 自己先放棄（Client 的逾時比 Kong 短，例如壓測工具） |\n| **Kong 自己回的 502 / 503** | 中間設備斷線、連不上後端 |\n\n確認單筆：暫時開 Router access log，`sH` = Router 等 Pod 逾時、`CH` = Kong 先斷線、沒有那筆 = 沒到 Router。"
       },
       "gridPos": {
         "x": 9,
@@ -12351,7 +12532,24 @@
           },
           "color": {
             "mode": "palette-classic"
-          }
+          },
+          "mappings": [
+            {
+              "type": "value",
+              "options": {
+                "60000": {
+                  "text": "≥ 60 秒（上限）",
+                  "color": "red",
+                  "index": 10
+                },
+                "30000": {
+                  "text": "≥ 30 秒（上限）",
+                  "color": "red",
+                  "index": 11
+                }
+              }
+            }
+          ]
         },
         "overrides": []
       },
@@ -12424,6 +12622,23 @@
           "color": {
             "mode": "palette-classic"
           },
+          "mappings": [
+            {
+              "type": "value",
+              "options": {
+                "60000": {
+                  "text": "≥ 60 秒（上限）",
+                  "color": "red",
+                  "index": 10
+                },
+                "30000": {
+                  "text": "≥ 30 秒（上限）",
+                  "color": "red",
+                  "index": 11
+                }
+              }
+            }
+          ],
           "noValue": "沒資料：App 沒有 Micrometer（http_server_requests_seconds）指標"
         },
         "overrides": []
@@ -12582,6 +12797,23 @@
           "color": {
             "mode": "palette-classic"
           },
+          "mappings": [
+            {
+              "type": "value",
+              "options": {
+                "60000": {
+                  "text": "≥ 60 秒（上限）",
+                  "color": "red",
+                  "index": 10
+                },
+                "30000": {
+                  "text": "≥ 30 秒（上限）",
+                  "color": "red",
+                  "index": 11
+                }
+              }
+            }
+          ],
           "noValue": "沒資料：App 沒有 Micrometer JVM 指標"
         },
         "overrides": []
@@ -12709,6 +12941,23 @@
           "color": {
             "mode": "palette-classic"
           },
+          "mappings": [
+            {
+              "type": "value",
+              "options": {
+                "60000": {
+                  "text": "≥ 60 秒（上限）",
+                  "color": "red",
+                  "index": 10
+                },
+                "30000": {
+                  "text": "≥ 30 秒（上限）",
+                  "color": "red",
+                  "index": 11
+                }
+              }
+            }
+          ],
           "thresholds": {
             "mode": "absolute",
             "steps": [
@@ -12870,7 +13119,24 @@
           },
           "color": {
             "mode": "palette-classic"
-          }
+          },
+          "mappings": [
+            {
+              "type": "value",
+              "options": {
+                "60000": {
+                  "text": "≥ 60 秒（上限）",
+                  "color": "red",
+                  "index": 10
+                },
+                "30000": {
+                  "text": "≥ 30 秒（上限）",
+                  "color": "red",
+                  "index": 11
+                }
+              }
+            }
+          ]
         },
         "overrides": []
       },
@@ -13121,7 +13387,24 @@
           },
           "color": {
             "mode": "palette-classic"
-          }
+          },
+          "mappings": [
+            {
+              "type": "value",
+              "options": {
+                "60000": {
+                  "text": "≥ 60 秒（上限）",
+                  "color": "red",
+                  "index": 10
+                },
+                "30000": {
+                  "text": "≥ 30 秒（上限）",
+                  "color": "red",
+                  "index": 11
+                }
+              }
+            }
+          ]
         },
         "overrides": []
       },
@@ -13192,7 +13475,24 @@
           },
           "color": {
             "mode": "palette-classic"
-          }
+          },
+          "mappings": [
+            {
+              "type": "value",
+              "options": {
+                "60000": {
+                  "text": "≥ 60 秒（上限）",
+                  "color": "red",
+                  "index": 10
+                },
+                "30000": {
+                  "text": "≥ 30 秒（上限）",
+                  "color": "red",
+                  "index": 11
+                }
+              }
+            }
+          ]
         },
         "overrides": []
       },
@@ -13637,6 +13937,23 @@
           "color": {
             "mode": "palette-classic"
           },
+          "mappings": [
+            {
+              "type": "value",
+              "options": {
+                "60000": {
+                  "text": "≥ 60 秒（上限）",
+                  "color": "red",
+                  "index": 10
+                },
+                "30000": {
+                  "text": "≥ 30 秒（上限）",
+                  "color": "red",
+                  "index": 11
+                }
+              }
+            }
+          ],
           "noValue": "沒資料：Router 沒有輸出 Pod 層級指標。Router 後面的 Pod 總數超過 ROUTER_METRICS_HAPROXY_SERVER_THRESHOLD（預設 500）時只輸出 route 層級；TCP passthrough 的 route 也沒有。改看下方 App 自己量的每個 Pod 時間"
         },
         "overrides": []
@@ -13781,6 +14098,23 @@
           "color": {
             "mode": "palette-classic"
           },
+          "mappings": [
+            {
+              "type": "value",
+              "options": {
+                "60000": {
+                  "text": "≥ 60 秒（上限）",
+                  "color": "red",
+                  "index": 10
+                },
+                "30000": {
+                  "text": "≥ 30 秒（上限）",
+                  "color": "red",
+                  "index": 11
+                }
+              }
+            }
+          ],
           "noValue": "沒資料：App 沒有 Micrometer（http_server_requests_seconds）指標"
         },
         "overrides": []
@@ -14095,7 +14429,24 @@
           },
           "color": {
             "mode": "palette-classic"
-          }
+          },
+          "mappings": [
+            {
+              "type": "value",
+              "options": {
+                "60000": {
+                  "text": "≥ 60 秒（上限）",
+                  "color": "red",
+                  "index": 10
+                },
+                "30000": {
+                  "text": "≥ 30 秒（上限）",
+                  "color": "red",
+                  "index": 11
+                }
+              }
+            }
+          ]
         },
         "overrides": [
           {
@@ -14417,6 +14768,23 @@
         "defaults": {
           "unit": "ms",
           "decimals": 0,
+          "mappings": [
+            {
+              "type": "value",
+              "options": {
+                "60000": {
+                  "text": "≥ 60 秒（上限）",
+                  "color": "red",
+                  "index": 10
+                },
+                "30000": {
+                  "text": "≥ 30 秒（上限）",
+                  "color": "red",
+                  "index": 11
+                }
+              }
+            }
+          ],
           "custom": {
             "align": "auto",
             "minWidth": 90,

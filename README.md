@@ -122,6 +122,7 @@ Client →（A10/F5?）→ Kong →（A10/F5? 網路）→ OCP Router → AP Pod
 - **需要的指標**：Kong 3.x prometheus plugin（`kong_http_requests_total` 有 `source` label、`kong_*_latency_ms` 直方圖）、OCP Router 的 `haproxy_*` 指標、kube-state-metrics、cAdvisor；App 自己處理時間需要 Micrometer（`http_server_requests_seconds`），沒有的話那幾條線沒資料，其他照常。
 - **逾時**（不用填設定值，看實際等了多久）：
   - **p95 / p99 變成一條平線** = 卡在逾時，那個秒數就是逾時。這不是儀表板的上限：Kong / Router 等到逾時就放棄了，量到的時間不會超過逾時（Kong 預設直方圖最大一格也是 60 秒）。
+  - **顯示「≥ 60 秒（上限）」**：百分位數是用直方圖估算的，Kong 直方圖最大一格是 60 秒（App / Micrometer 預設 30 秒）。超過 1% 的請求落在最大一格以外時，Prometheus 只能回傳那一格的上限，所以 p99 會剛好等於 60 秒。剛好等於上限的值都改顯示「≥ 上限」，代表實際比這更久、量不到，不是剛好 1 分鐘。
   - D 的「有 504 時，等後端最長」≈ 逾時值；「碰到逾時的請求」看 504 出現時，哪一條「等後端超過 5 / 10 / 30 / 60 秒」也跟著出現（用 Kong 直方圖的格子算）。
   - **實際要多久**看「App 最慢的一筆」（Micrometer `http_server_requests_seconds_max`，App 會把請求做完才記錄）。
   - **逾時不一定是 504**：
