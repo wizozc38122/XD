@@ -43,9 +43,14 @@ def r_rps_by(w):
 
 def r_avg(kind, w):
     """Router average in ms. Each router pod keeps its own average per route (over its last 1024
-    requests), so they are weighted by how many responses each router pod served."""
-    return (f'sum(max by (route, pod) (haproxy_backend_http_average_{kind}_latency_milliseconds{{{RS}}})'
-            f' * on (route, pod) {r_rps_by(w)}) / (sum({r_rps_by(w)}) > 0)')
+    requests), so they are weighted by how many responses each router pod served.
+    The gauge is only a snapshot of "now": for a longer window (5m, $__range) take it every minute and
+    weight each minute by its responses, so it covers the same time as Kong's average over that window."""
+    gauge = f'max by (route, pod) (haproxy_backend_http_average_{kind}_latency_milliseconds{{{RS}}})'
+    if w in (RI, "1m"):
+        return f'sum({gauge} * on (route, pod) {r_rps_by(w)}) / (sum({r_rps_by(w)}) > 0)'
+    return (f'sum_over_time((sum({gauge} * on (route, pod) {r_rps_by("1m")}))[{w}:1m])'
+            f' / (sum_over_time((sum({r_rps_by("1m")}))[{w}:1m]) > 0)')
 
 
 def app_avg(w):

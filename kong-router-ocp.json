@@ -353,7 +353,7 @@
             "type": "prometheus",
             "uid": "${ocp_ds}"
           },
-          "expr": "(sum(max by (route, pod) (haproxy_backend_http_average_queue_latency_milliseconds{exported_namespace=~\"$namespace\", route=~\"$router_route\"}) * on (route, pod) sum by (route, pod) (rate(haproxy_backend_http_responses_total{exported_namespace=~\"$namespace\", route=~\"$router_route\"}[5m]))) / (sum(sum by (route, pod) (rate(haproxy_backend_http_responses_total{exported_namespace=~\"$namespace\", route=~\"$router_route\"}[5m]))) > 0)) or on() vector(NaN)",
+          "expr": "(sum_over_time((sum(max by (route, pod) (haproxy_backend_http_average_queue_latency_milliseconds{exported_namespace=~\"$namespace\", route=~\"$router_route\"}) * on (route, pod) sum by (route, pod) (rate(haproxy_backend_http_responses_total{exported_namespace=~\"$namespace\", route=~\"$router_route\"}[1m]))))[5m:1m]) / (sum_over_time((sum(sum by (route, pod) (rate(haproxy_backend_http_responses_total{exported_namespace=~\"$namespace\", route=~\"$router_route\"}[1m]))))[5m:1m]) > 0)) or on() vector(NaN)",
           "legendFormat": "",
           "range": false,
           "instant": true,
@@ -366,7 +366,7 @@
             "type": "prometheus",
             "uid": "${ocp_ds}"
           },
-          "expr": "(sum(max by (route, pod) (haproxy_backend_http_average_connect_latency_milliseconds{exported_namespace=~\"$namespace\", route=~\"$router_route\"}) * on (route, pod) sum by (route, pod) (rate(haproxy_backend_http_responses_total{exported_namespace=~\"$namespace\", route=~\"$router_route\"}[5m]))) / (sum(sum by (route, pod) (rate(haproxy_backend_http_responses_total{exported_namespace=~\"$namespace\", route=~\"$router_route\"}[5m]))) > 0)) or on() vector(NaN)",
+          "expr": "(sum_over_time((sum(max by (route, pod) (haproxy_backend_http_average_connect_latency_milliseconds{exported_namespace=~\"$namespace\", route=~\"$router_route\"}) * on (route, pod) sum by (route, pod) (rate(haproxy_backend_http_responses_total{exported_namespace=~\"$namespace\", route=~\"$router_route\"}[1m]))))[5m:1m]) / (sum_over_time((sum(sum by (route, pod) (rate(haproxy_backend_http_responses_total{exported_namespace=~\"$namespace\", route=~\"$router_route\"}[1m]))))[5m:1m]) > 0)) or on() vector(NaN)",
           "legendFormat": "",
           "range": false,
           "instant": true,
@@ -379,7 +379,7 @@
             "type": "prometheus",
             "uid": "${ocp_ds}"
           },
-          "expr": "(sum(max by (route, pod) (haproxy_backend_http_average_response_latency_milliseconds{exported_namespace=~\"$namespace\", route=~\"$router_route\"}) * on (route, pod) sum by (route, pod) (rate(haproxy_backend_http_responses_total{exported_namespace=~\"$namespace\", route=~\"$router_route\"}[5m]))) / (sum(sum by (route, pod) (rate(haproxy_backend_http_responses_total{exported_namespace=~\"$namespace\", route=~\"$router_route\"}[5m]))) > 0)) or on() vector(NaN)",
+          "expr": "(sum_over_time((sum(max by (route, pod) (haproxy_backend_http_average_response_latency_milliseconds{exported_namespace=~\"$namespace\", route=~\"$router_route\"}) * on (route, pod) sum by (route, pod) (rate(haproxy_backend_http_responses_total{exported_namespace=~\"$namespace\", route=~\"$router_route\"}[1m]))))[5m:1m]) / (sum_over_time((sum(sum by (route, pod) (rate(haproxy_backend_http_responses_total{exported_namespace=~\"$namespace\", route=~\"$router_route\"}[1m]))))[5m:1m]) > 0)) or on() vector(NaN)",
           "legendFormat": "",
           "range": false,
           "instant": true,
@@ -479,7 +479,7 @@
             "type": "prometheus",
             "uid": "${ocp_ds}"
           },
-          "expr": "(sum(max by (route, pod) (haproxy_backend_http_average_queue_latency_milliseconds{exported_namespace=~\"$namespace\", route=~\"$router_route\"}) * on (route, pod) sum by (route, pod) (rate(haproxy_backend_http_responses_total{exported_namespace=~\"$namespace\", route=~\"$router_route\"}[5m]))) / (sum(sum by (route, pod) (rate(haproxy_backend_http_responses_total{exported_namespace=~\"$namespace\", route=~\"$router_route\"}[5m]))) > 0)) or on() vector(-1)",
+          "expr": "(sum_over_time((sum(max by (route, pod) (haproxy_backend_http_average_queue_latency_milliseconds{exported_namespace=~\"$namespace\", route=~\"$router_route\"}) * on (route, pod) sum by (route, pod) (rate(haproxy_backend_http_responses_total{exported_namespace=~\"$namespace\", route=~\"$router_route\"}[1m]))))[5m:1m]) / (sum_over_time((sum(sum by (route, pod) (rate(haproxy_backend_http_responses_total{exported_namespace=~\"$namespace\", route=~\"$router_route\"}[1m]))))[5m:1m]) > 0)) or on() vector(-1)",
           "legendFormat": "",
           "range": false,
           "instant": true,
@@ -492,7 +492,7 @@
             "type": "prometheus",
             "uid": "${ocp_ds}"
           },
-          "expr": "(sum(max by (route, pod) (haproxy_backend_http_average_connect_latency_milliseconds{exported_namespace=~\"$namespace\", route=~\"$router_route\"}) * on (route, pod) sum by (route, pod) (rate(haproxy_backend_http_responses_total{exported_namespace=~\"$namespace\", route=~\"$router_route\"}[5m]))) / (sum(sum by (route, pod) (rate(haproxy_backend_http_responses_total{exported_namespace=~\"$namespace\", route=~\"$router_route\"}[5m]))) > 0)) or on() vector(-1)",
+          "expr": "(sum_over_time((sum(max by (route, pod) (haproxy_backend_http_average_connect_latency_milliseconds{exported_namespace=~\"$namespace\", route=~\"$router_route\"}) * on (route, pod) sum by (route, pod) (rate(haproxy_backend_http_responses_total{exported_namespace=~\"$namespace\", route=~\"$router_route\"}[1m]))))[5m:1m]) / (sum_over_time((sum(sum by (route, pod) (rate(haproxy_backend_http_responses_total{exported_namespace=~\"$namespace\", route=~\"$router_route\"}[1m]))))[5m:1m]) > 0)) or on() vector(-1)",
           "legendFormat": "",
           "range": false,
           "instant": true,
@@ -505,7 +505,7 @@
             "type": "prometheus",
             "uid": "${ocp_ds}"
           },
-          "expr": "(sum(max by (route, pod) (haproxy_backend_http_average_response_latency_milliseconds{exported_namespace=~\"$namespace\", route=~\"$router_route\"}) * on (route, pod) sum by (route, pod) (rate(haproxy_backend_http_responses_total{exported_namespace=~\"$namespace\", route=~\"$router_route\"}[5m]))) / (sum(sum by (route, pod) (rate(haproxy_backend_http_responses_total{exported_namespace=~\"$namespace\", route=~\"$router_route\"}[5m]))) > 0)) or on() vector(-1)",
+          "expr": "(sum_over_time((sum(max by (route, pod) (haproxy_backend_http_average_response_latency_milliseconds{exported_namespace=~\"$namespace\", route=~\"$router_route\"}) * on (route, pod) sum by (route, pod) (rate(haproxy_backend_http_responses_total{exported_namespace=~\"$namespace\", route=~\"$router_route\"}[1m]))))[5m:1m]) / (sum_over_time((sum(sum by (route, pod) (rate(haproxy_backend_http_responses_total{exported_namespace=~\"$namespace\", route=~\"$router_route\"}[1m]))))[5m:1m]) > 0)) or on() vector(-1)",
           "legendFormat": "",
           "range": false,
           "instant": true,
@@ -3599,7 +3599,7 @@
             "type": "prometheus",
             "uid": "${ocp_ds}"
           },
-          "expr": "sum(max by (route, pod) (haproxy_backend_http_average_queue_latency_milliseconds{exported_namespace=~\"$namespace\", route=~\"$router_route\"}) * on (route, pod) sum by (route, pod) (rate(haproxy_backend_http_responses_total{exported_namespace=~\"$namespace\", route=~\"$router_route\"}[5m]))) / (sum(sum by (route, pod) (rate(haproxy_backend_http_responses_total{exported_namespace=~\"$namespace\", route=~\"$router_route\"}[5m]))) > 0)",
+          "expr": "sum_over_time((sum(max by (route, pod) (haproxy_backend_http_average_queue_latency_milliseconds{exported_namespace=~\"$namespace\", route=~\"$router_route\"}) * on (route, pod) sum by (route, pod) (rate(haproxy_backend_http_responses_total{exported_namespace=~\"$namespace\", route=~\"$router_route\"}[1m]))))[5m:1m]) / (sum_over_time((sum(sum by (route, pod) (rate(haproxy_backend_http_responses_total{exported_namespace=~\"$namespace\", route=~\"$router_route\"}[1m]))))[5m:1m]) > 0)",
           "legendFormat": "Router 排隊等 Pod",
           "range": false,
           "instant": true,
@@ -3612,7 +3612,7 @@
             "type": "prometheus",
             "uid": "${ocp_ds}"
           },
-          "expr": "sum(max by (route, pod) (haproxy_backend_http_average_connect_latency_milliseconds{exported_namespace=~\"$namespace\", route=~\"$router_route\"}) * on (route, pod) sum by (route, pod) (rate(haproxy_backend_http_responses_total{exported_namespace=~\"$namespace\", route=~\"$router_route\"}[5m]))) / (sum(sum by (route, pod) (rate(haproxy_backend_http_responses_total{exported_namespace=~\"$namespace\", route=~\"$router_route\"}[5m]))) > 0)",
+          "expr": "sum_over_time((sum(max by (route, pod) (haproxy_backend_http_average_connect_latency_milliseconds{exported_namespace=~\"$namespace\", route=~\"$router_route\"}) * on (route, pod) sum by (route, pod) (rate(haproxy_backend_http_responses_total{exported_namespace=~\"$namespace\", route=~\"$router_route\"}[1m]))))[5m:1m]) / (sum_over_time((sum(sum by (route, pod) (rate(haproxy_backend_http_responses_total{exported_namespace=~\"$namespace\", route=~\"$router_route\"}[1m]))))[5m:1m]) > 0)",
           "legendFormat": "Router 連線到 Pod",
           "range": false,
           "instant": true,
@@ -3625,7 +3625,7 @@
             "type": "prometheus",
             "uid": "${ocp_ds}"
           },
-          "expr": "sum(max by (route, pod) (haproxy_backend_http_average_response_latency_milliseconds{exported_namespace=~\"$namespace\", route=~\"$router_route\"}) * on (route, pod) sum by (route, pod) (rate(haproxy_backend_http_responses_total{exported_namespace=~\"$namespace\", route=~\"$router_route\"}[5m]))) / (sum(sum by (route, pod) (rate(haproxy_backend_http_responses_total{exported_namespace=~\"$namespace\", route=~\"$router_route\"}[5m]))) > 0)",
+          "expr": "sum_over_time((sum(max by (route, pod) (haproxy_backend_http_average_response_latency_milliseconds{exported_namespace=~\"$namespace\", route=~\"$router_route\"}) * on (route, pod) sum by (route, pod) (rate(haproxy_backend_http_responses_total{exported_namespace=~\"$namespace\", route=~\"$router_route\"}[1m]))))[5m:1m]) / (sum_over_time((sum(sum by (route, pod) (rate(haproxy_backend_http_responses_total{exported_namespace=~\"$namespace\", route=~\"$router_route\"}[1m]))))[5m:1m]) > 0)",
           "legendFormat": "Router 等 Pod 回應",
           "range": false,
           "instant": true,
@@ -4013,7 +4013,7 @@
             "type": "prometheus",
             "uid": "${ocp_ds}"
           },
-          "expr": "(sum(max by (route, pod) (haproxy_backend_http_average_queue_latency_milliseconds{exported_namespace=~\"$namespace\", route=~\"$router_route\"}) * on (route, pod) sum by (route, pod) (rate(haproxy_backend_http_responses_total{exported_namespace=~\"$namespace\", route=~\"$router_route\"}[$__range]))) / (sum(sum by (route, pod) (rate(haproxy_backend_http_responses_total{exported_namespace=~\"$namespace\", route=~\"$router_route\"}[$__range]))) > 0)) or on() vector(NaN)",
+          "expr": "(sum_over_time((sum(max by (route, pod) (haproxy_backend_http_average_queue_latency_milliseconds{exported_namespace=~\"$namespace\", route=~\"$router_route\"}) * on (route, pod) sum by (route, pod) (rate(haproxy_backend_http_responses_total{exported_namespace=~\"$namespace\", route=~\"$router_route\"}[1m]))))[$__range:1m]) / (sum_over_time((sum(sum by (route, pod) (rate(haproxy_backend_http_responses_total{exported_namespace=~\"$namespace\", route=~\"$router_route\"}[1m]))))[$__range:1m]) > 0)) or on() vector(NaN)",
           "legendFormat": "",
           "range": false,
           "instant": true,
@@ -4026,7 +4026,7 @@
             "type": "prometheus",
             "uid": "${ocp_ds}"
           },
-          "expr": "(sum(max by (route, pod) (haproxy_backend_http_average_connect_latency_milliseconds{exported_namespace=~\"$namespace\", route=~\"$router_route\"}) * on (route, pod) sum by (route, pod) (rate(haproxy_backend_http_responses_total{exported_namespace=~\"$namespace\", route=~\"$router_route\"}[$__range]))) / (sum(sum by (route, pod) (rate(haproxy_backend_http_responses_total{exported_namespace=~\"$namespace\", route=~\"$router_route\"}[$__range]))) > 0)) or on() vector(NaN)",
+          "expr": "(sum_over_time((sum(max by (route, pod) (haproxy_backend_http_average_connect_latency_milliseconds{exported_namespace=~\"$namespace\", route=~\"$router_route\"}) * on (route, pod) sum by (route, pod) (rate(haproxy_backend_http_responses_total{exported_namespace=~\"$namespace\", route=~\"$router_route\"}[1m]))))[$__range:1m]) / (sum_over_time((sum(sum by (route, pod) (rate(haproxy_backend_http_responses_total{exported_namespace=~\"$namespace\", route=~\"$router_route\"}[1m]))))[$__range:1m]) > 0)) or on() vector(NaN)",
           "legendFormat": "",
           "range": false,
           "instant": true,
@@ -4039,7 +4039,7 @@
             "type": "prometheus",
             "uid": "${ocp_ds}"
           },
-          "expr": "(sum(max by (route, pod) (haproxy_backend_http_average_response_latency_milliseconds{exported_namespace=~\"$namespace\", route=~\"$router_route\"}) * on (route, pod) sum by (route, pod) (rate(haproxy_backend_http_responses_total{exported_namespace=~\"$namespace\", route=~\"$router_route\"}[$__range]))) / (sum(sum by (route, pod) (rate(haproxy_backend_http_responses_total{exported_namespace=~\"$namespace\", route=~\"$router_route\"}[$__range]))) > 0)) or on() vector(NaN)",
+          "expr": "(sum_over_time((sum(max by (route, pod) (haproxy_backend_http_average_response_latency_milliseconds{exported_namespace=~\"$namespace\", route=~\"$router_route\"}) * on (route, pod) sum by (route, pod) (rate(haproxy_backend_http_responses_total{exported_namespace=~\"$namespace\", route=~\"$router_route\"}[1m]))))[$__range:1m]) / (sum_over_time((sum(sum by (route, pod) (rate(haproxy_backend_http_responses_total{exported_namespace=~\"$namespace\", route=~\"$router_route\"}[1m]))))[$__range:1m]) > 0)) or on() vector(NaN)",
           "legendFormat": "",
           "range": false,
           "instant": true,
@@ -4139,7 +4139,7 @@
             "type": "prometheus",
             "uid": "${ocp_ds}"
           },
-          "expr": "(sum(max by (route, pod) (haproxy_backend_http_average_queue_latency_milliseconds{exported_namespace=~\"$namespace\", route=~\"$router_route\"}) * on (route, pod) sum by (route, pod) (rate(haproxy_backend_http_responses_total{exported_namespace=~\"$namespace\", route=~\"$router_route\"}[$__range]))) / (sum(sum by (route, pod) (rate(haproxy_backend_http_responses_total{exported_namespace=~\"$namespace\", route=~\"$router_route\"}[$__range]))) > 0)) or on() vector(-1)",
+          "expr": "(sum_over_time((sum(max by (route, pod) (haproxy_backend_http_average_queue_latency_milliseconds{exported_namespace=~\"$namespace\", route=~\"$router_route\"}) * on (route, pod) sum by (route, pod) (rate(haproxy_backend_http_responses_total{exported_namespace=~\"$namespace\", route=~\"$router_route\"}[1m]))))[$__range:1m]) / (sum_over_time((sum(sum by (route, pod) (rate(haproxy_backend_http_responses_total{exported_namespace=~\"$namespace\", route=~\"$router_route\"}[1m]))))[$__range:1m]) > 0)) or on() vector(-1)",
           "legendFormat": "",
           "range": false,
           "instant": true,
@@ -4152,7 +4152,7 @@
             "type": "prometheus",
             "uid": "${ocp_ds}"
           },
-          "expr": "(sum(max by (route, pod) (haproxy_backend_http_average_connect_latency_milliseconds{exported_namespace=~\"$namespace\", route=~\"$router_route\"}) * on (route, pod) sum by (route, pod) (rate(haproxy_backend_http_responses_total{exported_namespace=~\"$namespace\", route=~\"$router_route\"}[$__range]))) / (sum(sum by (route, pod) (rate(haproxy_backend_http_responses_total{exported_namespace=~\"$namespace\", route=~\"$router_route\"}[$__range]))) > 0)) or on() vector(-1)",
+          "expr": "(sum_over_time((sum(max by (route, pod) (haproxy_backend_http_average_connect_latency_milliseconds{exported_namespace=~\"$namespace\", route=~\"$router_route\"}) * on (route, pod) sum by (route, pod) (rate(haproxy_backend_http_responses_total{exported_namespace=~\"$namespace\", route=~\"$router_route\"}[1m]))))[$__range:1m]) / (sum_over_time((sum(sum by (route, pod) (rate(haproxy_backend_http_responses_total{exported_namespace=~\"$namespace\", route=~\"$router_route\"}[1m]))))[$__range:1m]) > 0)) or on() vector(-1)",
           "legendFormat": "",
           "range": false,
           "instant": true,
@@ -4165,7 +4165,7 @@
             "type": "prometheus",
             "uid": "${ocp_ds}"
           },
-          "expr": "(sum(max by (route, pod) (haproxy_backend_http_average_response_latency_milliseconds{exported_namespace=~\"$namespace\", route=~\"$router_route\"}) * on (route, pod) sum by (route, pod) (rate(haproxy_backend_http_responses_total{exported_namespace=~\"$namespace\", route=~\"$router_route\"}[$__range]))) / (sum(sum by (route, pod) (rate(haproxy_backend_http_responses_total{exported_namespace=~\"$namespace\", route=~\"$router_route\"}[$__range]))) > 0)) or on() vector(-1)",
+          "expr": "(sum_over_time((sum(max by (route, pod) (haproxy_backend_http_average_response_latency_milliseconds{exported_namespace=~\"$namespace\", route=~\"$router_route\"}) * on (route, pod) sum by (route, pod) (rate(haproxy_backend_http_responses_total{exported_namespace=~\"$namespace\", route=~\"$router_route\"}[1m]))))[$__range:1m]) / (sum_over_time((sum(sum by (route, pod) (rate(haproxy_backend_http_responses_total{exported_namespace=~\"$namespace\", route=~\"$router_route\"}[1m]))))[$__range:1m]) > 0)) or on() vector(-1)",
           "legendFormat": "",
           "range": false,
           "instant": true,
