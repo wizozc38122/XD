@@ -87,9 +87,10 @@ Client →（A10/F5?）→ Kong →（A10/F5? 網路）→ OCP Router → AP Pod
 
 | 區塊 | 內容 |
 |---|---|
-| ① 鏈路總覽 | 拓樸圖（Client → A10/F5 → Kong → A10/F5 → Router → AP Pod，每個方塊的請求數、時間、錯誤，超過門檻變色）、每段平均花多久（長條 + 疊起來的走勢）、每段收到的請求數、5xx 是誰產生的 |
-| ①b 偶發的慢請求（p95 = 最慢的 5%、p99 = 最慢的 1%） | 各段 p95 / p99、App 以外造成的慢（Kong 等後端回應 p99 − App p99）、慢請求有多慢（p99 是平均的幾倍）、時間範圍內最差的 p99（依 Kong API）、App p99 依 URI / Pod |
-| ①c 很慢 / 逾時：卡在誰 | 每一段的最高值（Kong p99、Router 最慢 Pod 平均、App 最慢的一筆）、504 是誰回的、App 最慢的一筆 / Tomcat 執行緒忙碌 / GC 停頓（依 Pod）、判讀表 |
+| A. 現在（最近 5 分鐘） | 拓樸圖（Client → A10/F5 → Kong → A10/F5 → Router → AP Pod，每個方塊的數字超過門檻變色）、每段平均花多久、各段 p95 / p99 |
+| B. 整個時間範圍的平均 | 拓樸圖（整段平均）、每段平均耗時走勢（各段各自一條線，不疊加）、每段收到的請求數、5xx 是誰產生的 |
+| C. 整個時間範圍的慢請求 | 拓樸圖（p95 / p99、最慢的一分鐘、超過逾時的筆數）、各段 p99 走勢、p99 是平均的幾倍、最差的 p99（依 Kong API）、App p99 依 URI / Pod |
+| D. 逾時 | 每一段的最高值、判讀表、最慢的請求走勢 vs 逾時設定、碰到逾時的請求（超過 Router / Kong 逾時、504 是誰回的）、App 最慢的一筆 / Tomcat 執行緒 / GC 停頓 |
 | ② Kong | p95 / p99（總耗時、等後端回應、Kong 自己處理）、狀態碼與誰回的（Kong 自己回的 / 後端回的 / plugin 直接擋下）、各 Kong 節點、nginx 連線 |
 | ③ OCP Router | 排隊 / 連線 / 等 Pod 回應、各 Router Pod 的回應時間與流量、錯誤與重試、新連線比例、Router Pod CPU |
 | ④ AP Pod | Router 看到每個 Pod 的回應時間與 5xx、App 自己量的處理時間、CPU throttling、可用 / Ready / 重啟 |
@@ -114,15 +115,21 @@ Client →（A10/F5?）→ Kong →（A10/F5? 網路）→ OCP Router → AP Pod
   | AP Deployment | 名稱有關鍵字的 Deployment |
 
   名稱不像的例外用 `|` 加進關鍵字，例如 `order|ord-api`；清單裡也可以只勾其中幾個。Kong 和 OCP 兩邊要是同一條路徑，差值才有意義；關鍵字空白 = 全部，請求數和時間會對不上。
-- **平均和偶發的慢請求**：Router 只提供平均（每個 Router Pod 最近 1024 筆請求），所以 ① 各段拆解用平均（Kong 用直方圖的 sum ÷ count）。p95 / p99 只有 Kong 和 App（需開 Micrometer histogram）算得出來，在 ①b：Kong 等後端回應 p99 高、App p99 不高 → 慢請求在 App 以外；慢請求有多慢（p99 是平均的幾倍）哪段特別大，慢請求就是那段造成的。百分位數不能真的相減，「App 以外的慢請求」只當方向參考。要追單筆請求用 X-Request-ID 串 Kong、Router、App 的 log。
+- **平均和偶發的慢請求**：Router 只提供平均（每個 Router Pod 最近 1024 筆請求），所以各段拆解用平均（Kong 用直方圖的 sum ÷ count）。p95 / p99 只有 Kong 和 App（需開 Micrometer histogram）算得出來，在 C：Kong 等後端回應 p99 高、App p99 不高 → 慢請求在 App 以外；慢請求有多慢（p99 是平均的幾倍）哪段特別大，慢請求就是那段造成的。百分位數不能真的相減，「App 以外的慢請求」只當方向參考。要追單筆請求用 X-Request-ID 串 Kong、Router、App 的 log。
 - **「Kong 送了、Router 沒收到」很多時先排除假警報**：Kong 選的和 OCP Route 不是同一條路徑（Kong 一個 Service 可能對到好幾條 OCP route），或 OCP route 是 TLS passthrough（Router 是 TCP 模式，不記 HTTP 回應數、也沒有回應時間）。⑤ 的「每條 route 在 Router 上的流量」表可以確認：有 bytes 但沒有 HTTP 回應數 = passthrough。
 - **④ Router 看到的每個 Pod 沒資料**：Router 後面的 Pod 總數超過 `ROUTER_METRICS_HAPROXY_SERVER_THRESHOLD`（預設 500）時，Router 只輸出 route 層級的指標；passthrough 也沒有。改看 App 自己量的每個 Pod 時間。
 - **Kong 和 OCP 可以是兩個不同的 Prometheus**：跨資料來源的相減用 Grafana 的運算式（Expression），面板的資料來源會顯示為 Mixed。
 - **需要的指標**：Kong 3.x prometheus plugin（`kong_http_requests_total` 有 `source` label、`kong_*_latency_ms` 直方圖）、OCP Router 的 `haproxy_*` 指標、kube-state-metrics、cAdvisor；App 自己處理時間需要 Micrometer（`http_server_requests_seconds`），沒有的話那幾條線沒資料，其他照常。
-- **逾時**：Kong 等後端回應 p99 卡在 30s 附近通常是 Router 的 `timeout server`（預設 30s，route annotation `haproxy.router.openshift.io/timeout` 可改），卡在 60s 是 Kong 的 connect / read timeout（預設 60s）。
-  Router 會比 Kong 早 30 秒放棄，所以 **Kong 一路等到 60 秒、自己回 504**，通常代表請求沒到 Router（A10 / F5、網路），或 route 的 timeout 被調長。
-  ①c 把 App 最慢的一筆（Micrometer `http_server_requests_seconds_max`，不用開 histogram）、Tomcat 執行緒、GC 停頓放在一起比：App 也慢 → AP Pod；執行緒滿 → Pod 裡排隊；都正常 → 慢在 App 以外。
-  Tomcat 執行緒指標要開 `server.tomcat.mbeanregistry.enabled=true`。要百分之百確認，暫時開 Router access log 看那筆請求的結束狀態（`sH` = Router 等 Pod 逾時、`CH` = Kong 先斷線（Router 還在等 Pod）、沒有那筆 = 沒到 Router）。
+- **逾時**：上方「Kong 逾時」「Router 逾時」填你們的設定（預設 60 / 30 秒）。Kong 和 OCP Router 都沒有把逾時設定輸出成指標，所以要手動填；查實際設定：
+  - Kong：Admin API `GET /services/<name>` 的 `read_timeout`（毫秒）。
+  - Router：`oc get route <name> -o jsonpath='{.metadata.annotations.haproxy\.router\.openshift\.io/timeout}'`，沒設就是 IngressController 的 `spec.tuningOptions.serverTimeout`（預設 30s）。
+
+  **p95 / p99 剛好卡在 30 / 60 秒不是儀表板的上限**：Kong / Router 等到逾時就放棄了，Kong 量到的時間不會超過逾時（Kong 預設直方圖最大一格也是 60 秒）。
+  實際要多久看 D 的「App 最慢的一筆」（Micrometer `http_server_requests_seconds_max`，App 會把請求做完才記錄）；要讓 Kong 量到真實時間只能調長逾時，建議只在查問題時暫時調。
+  「超過逾時的請求」用 Kong 的直方圖算，填的秒數要是直方圖的分界（Kong 預設有 1、2、5、10、30、60 秒）。
+  Router 會比 Kong 早放棄，所以 **Kong 一路等到 60 秒、自己回 504**，通常代表請求沒到 Router（A10 / F5、網路），或 route 的 timeout 被調長。
+  Tomcat 執行緒指標要開 `server.tomcat.mbeanregistry.enabled=true`。要百分之百確認，暫時開 Router access log 看那筆請求的結束狀態（`sH` = Router 等 Pod 逾時、`CH` = Kong 先斷線、沒有那筆 = 沒到 Router）。
+- **圖例的 Mean 不會再出現無限大**：所有除法的分母都要大於 0 才計算（例如沒有請求的時段、passthrough 沒有 HTTP 回應數），沒資料就留空。
 
 ## 匯入
 

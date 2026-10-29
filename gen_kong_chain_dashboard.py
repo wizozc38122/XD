@@ -27,7 +27,7 @@ W5 = "5m"  # stats: the last 5 minutes before the end of the time range
 # ---------------------------------------------------------------- queries
 def k_avg(metric, w):
     """Kong average in ms from a histogram (sum ÷ count), comparable with the Router's averages."""
-    return f'sum(rate({metric}_sum{{{KS}}}[{w}])) / sum(rate({metric}_count{{{KS}}}[{w}]))'
+    return f'sum(rate({metric}_sum{{{KS}}}[{w}])) / (sum(rate({metric}_count{{{KS}}}[{w}])) > 0)'
 
 
 def k_pct(q, metric, w, by=""):
@@ -45,12 +45,12 @@ def r_avg(kind, w):
     """Router average in ms. Each router pod keeps its own average per route (over its last 1024
     requests), so they are weighted by how many responses each router pod served."""
     return (f'sum(max by (route, pod) (haproxy_backend_http_average_{kind}_latency_milliseconds{{{RS}}})'
-            f' * on (route, pod) {r_rps_by(w)}) / sum({r_rps_by(w)})')
+            f' * on (route, pod) {r_rps_by(w)}) / (sum({r_rps_by(w)}) > 0)')
 
 
 def app_avg(w):
     return (f'1000 * sum(rate(http_server_requests_seconds_sum{{{APP}}}[{w}]))'
-            f' / sum(rate(http_server_requests_seconds_count{{{APP}}}[{w}]))')
+            f' / (sum(rate(http_server_requests_seconds_count{{{APP}}}[{w}])) > 0)')
 
 
 def app_pct(q, w, by=""):
@@ -73,7 +73,17 @@ def app_recv(w):
     return f'sum(rate(http_server_requests_seconds_count{{{APP}}}[{w}]))'
 
 
+# ---- 逾時:Kong / Router 的逾時設定不在指標裡,由上方變數填;用 Kong 直方圖的格子算有幾筆超過
+TO_K, TO_R = "${kong_timeout}", "${router_timeout}"  # 用 ${} 寫法,後面才能直接接 000
+
+
+def over_timeout(secs, w, fn="rate"):
+    """Kong 等後端回應超過 secs 秒的請求 (每秒,或 fn=increase 時的筆數)。secs 要剛好是直方圖的分界才算得出來。"""
+    return (f'sum({fn}({K_UP}_count{{{KS}}}[{w}])) - sum({fn}({K_UP}_bucket{{{KS}, le=~"0*{secs}000([.]0+)?"}}[{w}]))')
+
+
 APP_MAX = f"1000 * max(http_server_requests_seconds_max{{{APP}}})"
+ROUTER_MAX_POD = f"max(haproxy_backend_http_average_response_latency_milliseconds{{{RS}}})"
 
 
 def pos(x):
@@ -225,13 +235,12 @@ class Board:
 
 # ---------------------------------------------------------------- dashboard
 B = Board()
-B.line(text(
-    "**Kong → Router → AP 延遲鏈路**：一個請求的時間拆成每一段，找出慢在哪段、錯在哪段。上方輸入**名稱關鍵字**（例如 `order`），"
-    "下面的清單就只剩名稱裡有這段文字的（All = 清單裡全部）；名稱不像的例外用 `|` 加進來，例如 `order|ord-api`。"
-    "Kong 和 OCP 兩邊要是同一條路徑，數字才對得起來。\n\n"
-    "`Client →（A10/F5?）→ Kong →（A10/F5? 網路）→ OCP Router → AP Pod`　"
-    "Kong ↔ Router 之間沒有指標，用「Kong 等後端回應 − Router 量到的時間」推算。時間都是**平均**（Router 只有平均），"
-    "偶發的慢請求看 ①b。判讀表在下面「看到什麼 → 哪段有問題」。"), h=4)
+B.line(text("""**Kong → Router → AP 延遲鏈路**　`Client →（A10/F5?）→ Kong →（A10/F5 / 網路）→ OCP Router → AP Pod`
+
+- **篩選**：上方「名稱關鍵字」輸入共同名稱（例如 `order`），清單只剩符合的；名稱不像的例外用 `|` 加，例如 `order|ord-api`。
+- **逾時**：「Kong 逾時」「Router 逾時」填你們的設定（秒），用來畫逾時線、算有幾筆碰到逾時。
+- **區塊**：**A** 現在（最近 5 分鐘）→ **B** 整段平均 → **C** 整段慢請求（p95 / p99）→ **D** 逾時 → ②～⑤ 各段細節。B～D 跟著上方時間，拖曳選壓測時段可回看。
+- **A10 / F5 沒有指標**：時間用「Kong 等後端回應 − Router 量到的」推算，請求數用「Kong 送出 − Router 收到」推算。"""), h=4)
 
 GUIDE = """| 看到 | 可能是哪段 / 原因 |
 |---|---|
@@ -244,14 +253,13 @@ GUIDE = """| 看到 | 可能是哪段 / 原因 |
 | **Router 等 Pod 回應** 高、App 自己處理也高 | App 慢：看 ④ CPU throttling、GC、DB、下游服務 |
 | **Router 等 Pod 回應** 高、App 自己處理不高 | 請求在 Pod 裡排隊（thread pool 滿）或 Pod 網路慢 |
 | 只有某台 Kong / Router Pod / AP Pod 慢 | 那台機器的 Node、LB 分配不均、那個 Pod 的資料或 GC |
-| Kong 等後端回應 p99 卡在 30 秒 / 60 秒 | 碰到逾時：Router 預設 30 秒、Kong 預設 60 秒；誰卡住看 ①c |
+| Kong 等後端回應 p95 / p99 卡在 30 秒 / 60 秒 | 碰到逾時（Router 預設 30 秒、Kong 預設 60 秒），誰卡住看 D |
 
 **注意**：Router 的平均是每個 Router Pod 最近 1024 筆請求的平均，流量很小時會反應比較慢。要追單筆請求，用 X-Request-ID 串 Kong、Router、App 的 log。"""
 B.row("看到什麼 → 哪段有問題（判讀表，點開）", collapsed=True)
 B.line(text(GUIDE), h=12)
 
-# ---- ① chain
-B.row("① 鏈路總覽：時間花在哪段、請求和錯誤在哪段對不上")
+# ---- 拓樸圖 (Canvas)
 
 
 # ---- 拓樸圖 (Canvas):每個方塊 = 背景 + 標題 + 「名稱 值」好幾列;位置都是面板的百分比
@@ -292,39 +300,22 @@ def c_node(key, x0, x1, title, sub, rows, top=6, bottom=30, bg="#1e293b", border
     step = (h * (0.70 if sub else 0.5)) / max(len(rows), 4 if sub else 1)
     for i, (label, field) in enumerate(rows):
         b = 100 - y - step
-        out.append(c_el(f"{key}-l{i}", "text", (x0 + 0.6, y, right + (x1 - x0) * 0.45, b), {"mode": "fixed", "fixed": label}))
-        out.append(c_el(f"{key}-v{i}", "metric-value", (x0 + (x1 - x0) * 0.55, y, right + 0.6, b),
+        out.append(c_el(f"{key}-l{i}", "text", (x0 + 0.6, y, right + (x1 - x0) * 0.38, b), {"mode": "fixed", "fixed": label}))
+        out.append(c_el(f"{key}-v{i}", "metric-value", (x0 + (x1 - x0) * 0.6, y, right + 0.6, b),
                         {"mode": "field", "field": field, "fixed": "—"}, color={"field": field, "fixed": "#e2e8f0"},
                         align="right"))
         y += step
     return out
 
 
-T_FIELDS = {  # refId: (顯示名稱, 單位, 門檻 [(值, 顏色)])
-    "KR": ("Kong 收到", "reqps", None),
-    "A": ("Kong 自己處理", "ms", [(50, "orange"), (200, "red")]),
-    "KP": ("Kong 等後端回應 p99", "ms", [(30000, "orange"), (55000, "red")]),
-    "K5": ("Kong 自己回的 5xx", "reqps", [(0.01, "red")]),
-    "B": ("Kong ↔ Router 之間", "ms", [(100, "orange"), (300, "red")]),
-    "L": ("Kong 送了、Router 沒收到", "reqps", [(0.5, "red")]),
-    "RR": ("Router 收到", "reqps", None),
-    "C": ("Router 排隊等 Pod", "ms", [(10, "orange"), (100, "red")]),
-    "D": ("Router 連線到 Pod", "ms", [(10, "orange"), (100, "red")]),
-    "E": ("Router 等 Pod 回應", "ms", None),
-    "R5": ("Router 回的 5xx", "reqps", [(0.01, "red")]),
-    "O": ("Router 收到、不是 Kong 來的", "reqps", [(0.5, "orange")]),
-    "AR": ("App 收到", "reqps", None),
-    "F": ("App 自己處理", "ms", None),
-    "AM": ("App 最慢的一筆", "ms", [(30000, "orange"), (55000, "red")]),
-    "PR": ("Ready Pod", "none", None),
-    "A5": ("App 回的 5xx", "reqps", [(0.01, "red")]),
-}
+RED_30S = [(30000, "orange"), (55000, "red")]
+NO_DATA_MAPPINGS = [{"type": "value", "options": {"-1": {"text": "沒資料", "color": "#64748b", "index": 0}}},
+                    {"type": "special", "options": {"match": "nan", "result": {"text": "沒資料", "color": "#64748b", "index": 1}}}]
 
 
-def t_override(ref):
-    name, unit, steps = T_FIELDS[ref]
+def t_override(ref, name, unit, steps):
     props = [{"id": "displayName", "value": name}, {"id": "unit", "value": unit},
-             {"id": "decimals", "value": 0 if unit == "none" else 1}]
+             {"id": "decimals", "value": 0 if unit in ("none", "short") else 1}]
     if steps:
         props += [{"id": "color", "value": {"mode": "thresholds"}},
                   {"id": "thresholds", "value": {"mode": "absolute", "steps": [{"color": "#e2e8f0", "value": None}]
@@ -332,21 +323,69 @@ def t_override(ref):
     return {"matcher": {"id": "byFrameRefID", "options": ref}, "properties": props}
 
 
-def topology():
-    """沒資料的欄位 Canvas 會顯示 Field not found,所以顯示用的查詢都補 -1 (對應成「沒資料」);
-    算差值的 expression 用另外一組補 NaN 的隱藏查詢:缺一個就算出 NaN,一樣顯示「沒資料」,不會把 -1 拿去算。"""
-    w = W5
-    def fb(expr):
-        return f"({expr}) or on() vector(-1)"
-    def nan(expr):
-        return f"({expr}) or on() vector(NaN)"
-    raw = {"X": K(nan(k_avg(K_UP, w)), "", "X", hide=True, instant=True),
-           "HKS": K(nan(kong_sent(w)), "", "HKS", hide=True, instant=True),
-           "HRR": O(nan(router_recv(w)), "", "HRR", hide=True, instant=True),
-           "HC": O(nan(r_avg("queue", w)), "", "HC", hide=True, instant=True),
-           "HD": O(nan(r_avg("connect", w)), "", "HD", hide=True, instant=True),
-           "HE": O(nan(r_avg("response", w)), "", "HE", hide=True, instant=True)}
-    targets = list(raw.values()) + [
+def fb(expr):
+    """顯示用:沒資料時 Canvas 會顯示 Field not found,補 -1 (對應成「沒資料」)。"""
+    return f"({expr}) or on() vector(-1)"
+
+
+def nan(expr):
+    """算差值用:補 NaN,缺一個就算出 NaN (一樣顯示「沒資料」),不會把 -1 拿去算。"""
+    return f"({expr}) or on() vector(NaN)"
+
+
+def worst(expr, w):
+    """時間範圍內每分鐘看一次,取最高。"""
+    return f"max_over_time(({expr})[{w}:1m])"
+
+
+def topo_canvas(title, d, targets, fields, nodes):
+    """fields: {refId: (顯示名稱, 單位, 門檻)};nodes 用顯示名稱綁欄位。"""
+    return {"id": nid(), "type": "canvas", "title": title, "description": d, "datasource": MIXED, "targets": targets,
+            "interval": "1m",
+            "fieldConfig": {"defaults": {"color": {"mode": "fixed", "fixedColor": "#e2e8f0"}, "noValue": "—",
+                                         "mappings": NO_DATA_MAPPINGS},
+                            "overrides": [t_override(r, *f) for r, f in fields.items()]},
+            "options": {"inlineEditing": False, "showAdvancedTypes": True, "panZoom": False, "infinitePan": False,
+                        "root": {"type": "frame", "name": "root", "elements": nodes,
+                                 "background": {"color": {"fixed": "transparent"}},
+                                 "border": {"color": {"fixed": "transparent"}},
+                                 "constraint": {"horizontal": "left", "vertical": "top"}, "placement": {}, "config": {}}}}
+
+
+def front_nodes(bottom=30):
+    return (c_node("client", 0.5, 8.5, "Client", "外部 / 內部呼叫", [], bottom=bottom, conns=[c_conn("lb1")])
+            + c_node("lb1", 11, 19, "A10 / F5 ?", "沒有指標", [], bottom=bottom, bg="#111827", border="#64748b",
+                     conns=[c_conn("kong")]))
+
+
+def topology(w, when):
+    """平均版:每一段的請求數、平均時間、錯誤。w = 5m (看現在) 或 $__range (整個時間範圍)。"""
+    fields = {
+        "KR": ("Kong 收到", "reqps", None),
+        "A": ("Kong 自己處理", "ms", [(50, "orange"), (200, "red")]),
+        "KP": ("Kong 等後端回應 p99", "ms", RED_30S),
+        "K5": ("Kong 自己回的 5xx", "reqps", [(0.01, "red")]),
+        "B": ("Kong ↔ Router 之間", "ms", [(100, "orange"), (300, "red")]),
+        "L": ("Kong 送了、Router 沒收到", "reqps", [(0.5, "red")]),
+        "RR": ("Router 收到", "reqps", None),
+        "C": ("Router 排隊等 Pod", "ms", [(10, "orange"), (100, "red")]),
+        "D": ("Router 連線到 Pod", "ms", [(10, "orange"), (100, "red")]),
+        "E": ("Router 等 Pod 回應", "ms", None),
+        "R5": ("Router 回的 5xx", "reqps", [(0.01, "red")]),
+        "O": ("Router 收到、不是 Kong 來的", "reqps", [(0.5, "orange")]),
+        "AR": ("App 收到", "reqps", None),
+        "F": ("App 自己處理", "ms", None),
+        "AM": ("App 最慢的一筆", "ms", RED_30S),
+        "PR": ("Ready Pod（最少）", "none", None),
+        "A5": ("App 回的 5xx", "reqps", [(0.01, "red")]),
+    }
+    targets = [
+        K(nan(k_avg(K_UP, w)), "", "X", hide=True, instant=True),
+        K(nan(kong_sent(w)), "", "HKS", hide=True, instant=True),
+        O(nan(router_recv(w)), "", "HRR", hide=True, instant=True),
+        O(nan(r_avg("queue", w)), "", "HC", hide=True, instant=True),
+        O(nan(r_avg("connect", w)), "", "HD", hide=True, instant=True),
+        O(nan(r_avg("response", w)), "", "HE", hide=True, instant=True),
         K(fb(f'sum(rate(kong_http_requests_total{{{KS}}}[{w}]))'), "", "KR", instant=True),
         K(fb(k_avg(K_SELF, w)), "", "A", instant=True),
         K(fb(k_pct(0.99, K_UP, w)), "", "KP", instant=True),
@@ -361,46 +400,106 @@ def topology():
         M(pos("$HRR - $HKS"), "O"),
         O(fb(app_recv(w)), "", "AR", instant=True),
         O(fb(app_avg(w)), "", "F", instant=True),
-        O(fb(APP_MAX), "", "AM", instant=True),
-        O(fb(f'sum(kube_pod_status_ready{{{POD}, condition="true"}})'), "", "PR", instant=True),
+        O(fb(worst(APP_MAX, w)), "", "AM", instant=True),
+        O(fb(f'min_over_time((sum(kube_pod_status_ready{{{POD}, condition="true"}}))[{w}:1m])'), "", "PR", instant=True),
         O(f'sum(rate(http_server_requests_seconds_count{{{APP}, status=~"5.."}}[{w}])) or on() vector(0)', "", "A5", instant=True),
     ]
-    F = {ref: T_FIELDS[ref][0] for ref in T_FIELDS}
-    els = []
-    els += c_node("client", 0.5, 8.5, "Client", "外部 / 內部呼叫", [], conns=[c_conn("lb1")])
-    els += c_node("lb1", 11, 19, "A10 / F5 ?", "沒有指標", [], bg="#111827", border="#64748b", conns=[c_conn("kong")])
-    els += c_node("kong", 22, 40, "Kong", "最近 5 分鐘", [
+    F = {r: f[0] for r, f in fields.items()}
+    nodes = front_nodes()
+    nodes += c_node("kong", 22, 40, "Kong", when, [
         ("收到", F["KR"]), ("自己處理（平均）", F["A"]), ("等後端回應 p99", F["KP"]), ("自己回的 5xx", F["K5"])],
         conns=[c_conn("lb2")])
-    els += c_node("lb2", 43, 57, "A10 / F5 / 網路", "沒有指標，用差值推算", [
+    nodes += c_node("lb2", 43, 57, "A10 / F5 / 網路", "沒有指標，用差值推算", [
         ("多花的時間", F["B"]), ("沒到 Router", F["L"])], bg="#111827", border="#64748b", conns=[c_conn("router")])
-    els += c_node("router", 60, 78, "OCP Router", "HAProxy，只有平均", [
+    nodes += c_node("router", 60, 78, "OCP Router", "HAProxy，只有平均", [
         ("收到", F["RR"]), ("排隊等 Pod", F["C"]), ("連線到 Pod", F["D"]), ("等 Pod 回應", F["E"]), ("回的 5xx", F["R5"])],
         conns=[c_conn("app")])
-    els += c_node("app", 81, 99.5, "AP Pod", "Micrometer", [
-        ("收到", F["AR"]), ("自己處理（平均）", F["F"]), ("最慢的一筆", F["AM"]), ("Ready Pod", F["PR"]), ("回的 5xx", F["A5"])])
-    els += c_node("other", 60, 78, "其他來源", "", [("不是從 Kong 來的", F["O"])], top=72, bottom=1,
-                  bg="#111827", border="#64748b", conns=[c_conn("router", 0, 1, 0, -1)])
-    p = {"id": nid(), "type": "canvas", "title": "鏈路拓樸（最近 5 分鐘）",
-         "description": desc("同一條路徑每一段最近 5 分鐘的請求數、時間和錯誤。A10 / F5 沒有指標，時間用「Kong 等後端回應 − Router 量到的」推算，"
-                             "請求數用「Kong 送往後端 − Router 收到」推算。數字變橘 / 紅 = 超過參考門檻。",
-                             "先看哪個方塊有紅字，再往下看那一段的細節；時間花在哪段看下面的長條圖。"),
-         "datasource": MIXED, "targets": targets,
-         "fieldConfig": {"defaults": {"color": {"mode": "fixed", "fixedColor": "#e2e8f0"}, "noValue": "—",
-                                      "mappings": [{"type": "value", "options": {
-                                          "-1": {"text": "沒資料", "color": "#64748b", "index": 0}}},
-                                                   {"type": "special", "options": {"match": "nan", "result": {
-                                                       "text": "沒資料", "color": "#64748b", "index": 1}}}]},
-                         "overrides": [t_override(r) for r in T_FIELDS]},
-         "options": {"inlineEditing": False, "showAdvancedTypes": True, "panZoom": False, "infinitePan": False,
-                     "root": {"type": "frame", "name": "root", "elements": els,
-                              "background": {"color": {"fixed": "transparent"}},
-                              "border": {"color": {"fixed": "transparent"}},
-                              "constraint": {"horizontal": "left", "vertical": "top"}, "placement": {}, "config": {}}}}
-    return p
+    nodes += c_node("app", 81, 99.5, "AP Pod", "Micrometer", [
+        ("收到", F["AR"]), ("自己處理（平均）", F["F"]), ("最慢的一筆", F["AM"]), ("Ready Pod（最少）", F["PR"]),
+        ("回的 5xx", F["A5"])])
+    nodes += c_node("other", 60, 78, "其他來源", "", [("不是從 Kong 來的", F["O"])], top=72, bottom=1,
+                    bg="#111827", border="#64748b", conns=[c_conn("router", 0, 1, 0, -1)])
+    return targets, fields, nodes
 
 
-B.line(topology(), h=12)
+def topology_tail(w):
+    """慢請求版:p95 / p99 和時間範圍內最差的那一分鐘。Router 沒有百分位數,用每分鐘平均的最高值。"""
+    fields = {
+        "OVR": ("超過 Router 逾時的請求", "short", [(1, "red")]),
+        "T99": ("總耗時 p99", "ms", RED_30S),
+        "U95": ("等後端回應 p95", "ms", RED_30S),
+        "U99": ("等後端回應 p99", "ms", RED_30S),
+        "UW": ("等後端回應 p99 最慢的一分鐘", "ms", RED_30S),
+        "S99": ("Kong 自己處理 p99", "ms", [(100, "orange"), (500, "red")]),
+        "GAP99": ("App 以外 p99（估算）", "ms", [(500, "orange"), (3000, "red")]),
+        "GW": ("Kong ↔ Router 之間 最慢的一分鐘", "ms", [(100, "orange"), (300, "red")]),
+        "LW": ("沒到 Router 最多的一分鐘", "reqps", [(0.5, "red")]),
+        "RW": ("Router 等 Pod 回應 最高", "ms", RED_30S),
+        "QW": ("Router 排隊等 Pod 最高", "ms", [(10, "orange"), (100, "red")]),
+        "CW": ("Router 連線到 Pod 最高", "ms", [(10, "orange"), (100, "red")]),
+        "R5N": ("Router 回的 5xx 總數", "short", [(1, "red")]),
+        "P95": ("App p95", "ms", RED_30S),
+        "P99": ("App p99", "ms", RED_30S),
+        "AMW": ("App 最慢的一筆 最高", "ms", RED_30S),
+        "THW": ("App 執行緒忙碌 最高", "percentunit", [(0.7, "orange"), (0.9, "red")]),
+        "GCW": ("GC 最長停頓", "ms", [(500, "orange"), (2000, "red")]),
+        "A5N": ("App 回的 5xx 總數", "short", [(1, "red")]),
+    }
+    reduce_max = lambda ref, expr: {"refId": ref, "datasource": EXPR, "type": "reduce", "expression": expr,
+                                    "reducer": "max", "settings": {"mode": "dropNN"}, "hide": False}
+    targets = [
+        # 每分鐘的 Kong ↔ Router 之間 / 沒到 Router (兩個資料來源相減,再取最高)
+        K(nan(k_avg(K_UP, "1m")), "", "GX", hide=True),
+        O(nan(r_avg("queue", "1m")), "", "GC", hide=True),
+        O(nan(r_avg("connect", "1m")), "", "GD", hide=True),
+        O(nan(r_avg("response", "1m")), "", "GE", hide=True),
+        K(nan(kong_sent("1m")), "", "GKS", hide=True),
+        O(nan(router_recv("1m")), "", "GRR", hide=True),
+        dict(M(pos("$GX - ($GC + $GD + $GE)"), "GS"), hide=True),
+        dict(M(pos("$GKS - $GRR"), "LS"), hide=True),
+        reduce_max("GW", "GS"),
+        reduce_max("LW", "LS"),
+        K(nan(k_pct(0.99, K_UP, w)), "", "HU99", hide=True, instant=True),
+        O(nan(app_pct(0.99, w)), "", "HP99", hide=True, instant=True),
+        M(pos("$HU99 - $HP99"), "GAP99"),
+        K(fb(over_timeout(TO_R, w, "increase")), "", "OVR", instant=True),
+        K(fb(k_pct(0.99, K_TOTAL, w)), "", "T99", instant=True),
+        K(fb(k_pct(0.95, K_UP, w)), "", "U95", instant=True),
+        K(fb(k_pct(0.99, K_UP, w)), "", "U99", instant=True),
+        K(fb(worst(k_pct(0.99, K_UP, "1m"), w)), "", "UW", instant=True),
+        K(fb(k_pct(0.99, K_SELF, w)), "", "S99", instant=True),
+        O(fb(worst(ROUTER_MAX_POD, w)), "", "RW", instant=True),
+        O(fb(worst(f"max(haproxy_backend_http_average_queue_latency_milliseconds{{{RS}}})", w)), "", "QW", instant=True),
+        O(fb(worst(f"max(haproxy_backend_http_average_connect_latency_milliseconds{{{RS}}})", w)), "", "CW", instant=True),
+        O(f'sum(increase(haproxy_backend_http_responses_total{{{RS}, code=~"5.*"}}[{w}])) or on() vector(0)', "", "R5N",
+          instant=True),
+        O(fb(app_pct(0.95, w)), "", "P95", instant=True),
+        O(fb(app_pct(0.99, w)), "", "P99", instant=True),
+        O(fb(worst(APP_MAX, w)), "", "AMW", instant=True),
+        O(fb(worst(f"max(max by (pod) (tomcat_threads_busy_threads{{{POD}}}) "
+                   f"/ (max by (pod) (tomcat_threads_config_max_threads{{{POD}}}) > 0))", w)), "", "THW", instant=True),
+        O(fb(worst(f"1000 * max(jvm_gc_pause_seconds_max{{{POD}}})", w)), "", "GCW", instant=True),
+        O(f'sum(increase(http_server_requests_seconds_count{{{APP}, status=~"5.."}}[{w}])) or on() vector(0)', "", "A5N",
+          instant=True),
+    ]
+    F = {r: f[0] for r, f in fields.items()}
+    nodes = front_nodes(bottom=5)
+    nodes += c_node("kong", 22, 40, "Kong", "整個時間範圍", [
+        ("等後端回應 p95", F["U95"]), ("等後端回應 p99", F["U99"]), ("p99 最慢的一分鐘", F["UW"]),
+        ("總耗時 p99", F["T99"]), ("自己處理 p99", F["S99"]), ("超過 Router 逾時（筆）", F["OVR"])],
+        bottom=5, conns=[c_conn("lb2")])
+    nodes += c_node("lb2", 43, 57, "A10 / F5 / 網路", "沒有指標，用差值推算", [
+        ("App 以外 p99", F["GAP99"]), ("多花（最慢一分鐘）", F["GW"]), ("沒到（最多一分鐘）", F["LW"])],
+        bottom=5, bg="#111827", border="#64748b", conns=[c_conn("router")])
+    nodes += c_node("router", 60, 78, "OCP Router", "只有平均：每分鐘平均的最高值", [
+        ("等 Pod 回應 最高", F["RW"]), ("排隊等 Pod 最高", F["QW"]), ("連線到 Pod 最高", F["CW"]), ("回的 5xx 總數", F["R5N"])],
+        bottom=5, conns=[c_conn("app")])
+    nodes += c_node("app", 81, 99.5, "AP Pod", "p95 / p99 需開 histogram", [
+        ("p95", F["P95"]), ("p99", F["P99"]), ("最慢的一筆", F["AMW"]), ("執行緒忙碌 最高", F["THW"]),
+        ("GC 最長停頓", F["GCW"]), ("回的 5xx 總數", F["A5N"])], bottom=5)
+    return targets, fields, nodes
+
+
 def segments(w, inst):
     """依請求經過的順序:Kong 自己處理 → Kong ↔ Router 之間 → Router 排隊等 Pod → 連線到 Pod → 等 Pod 回應,
     再加兩條參考線 (App 自己處理、Client 感受到的總耗時)。Grafana 依 refId 排序,所以 refId 照這個順序編;X 是只拿來算差值的隱藏查詢。"""
@@ -416,21 +515,65 @@ def segments(w, inst):
     ]
 
 
+
 GAP_NAME = name_ref("B", "Kong ↔ Router 之間（A10/F5、網路）")
+NO_APP_HIST = "沒資料：App 沒開 Micrometer histogram（management.metrics.distribution.percentiles-histogram.http.server.requests=true）"
+TAIL_GAP = name_ref("H", "App 以外造成的慢（Kong 等後端回應 p99 − App p99，估算）",
+                    [{"id": "color", "value": {"mode": "fixed", "fixedColor": "red"}}, {"id": "custom.lineWidth", "value": 3}])
+
+
+def block(title, note):
+    """區塊標題 + 一行說明這區在看什麼。"""
+    B.row(title)
+    B.line(text(note), h=2)
+
+
+# ---- A 現在
+block("A. 現在：最近 5 分鐘（不管上方選的時間範圍）",
+      "**看現在**：拓樸圖哪個方塊有紅字，問題就在那一段。下面兩張長條：左邊是每段的平均，右邊是 p95 / p99（偶發的慢）。")
+tg, fl, nd = topology(W5, "最近 5 分鐘")
+B.line(topo_canvas("鏈路拓樸：最近 5 分鐘（平均）",
+                   desc("同一條路徑每一段最近 5 分鐘的請求數、時間和錯誤。A10 / F5 沒有指標：時間用「Kong 等後端回應 − Router 量到的」推算，"
+                        "請求數用「Kong 送往後端 − Router 收到」推算。數字變橘 / 紅 = 超過參考門檻。",
+                        "先看哪個方塊有紅字，再往下看那一段的細節。"), tg, fl, nd), h=12)
 B.line(
     bar("最近 5 分鐘：每段平均花多久",
-        desc("一個請求在每一段平均花的時間（ms），由上到下是請求經過的順序。**Kong ↔ Router 之間** = Kong 等後端回應 − Router 量到的，"
-             "是 A10 / F5、網路、TLS 這些沒有指標的部分。最後兩條是參考：App 自己處理（包含在 Router 等 Pod 回應裡）、Client 感受到的總耗時。",
+        desc("一個請求在每一段平均花的時間，由上到下是請求經過的順序。最後兩條是參考：App 自己處理（包含在 Router 等 Pod 回應裡）、"
+             "Client 感受到的總耗時（全部請求的平均，包含 Kong 自己擋下的 401 / 429，所以不一定等於各段相加）。",
              "最長的那一條就是時間主要花的地方。App 自己處理沒資料 = App 沒有 Micrometer 指標。"),
         segments(W5, True),
         overrides=[GAP_NAME, name_ref("F", "（其中）App 自己處理"), name_ref("G", "Client 感受到的總耗時")]),
-    ts("每段平均耗時（疊起來 ≈ Client 感受到的總耗時）",
-       desc("每一段的平均時間疊在一起，總高度約等於 Client 感受到的總耗時（虛線）。App 自己處理（虛線）是 Router 等 Pod 回應的一部分。",
-            "哪一層突然變厚，問題就在那一段；對照下面的請求數和 5xx 看同一個時間點。"),
-       segments(RI, False), stack=True,
+    bar("最近 5 分鐘：各段 p95 / p99",
+        desc("有直方圖的段才算得出百分位數：Kong 和 App（需開 Micrometer histogram）；Router 只有平均。"
+             "**App 以外造成的慢** = Kong 等後端回應 p99 − App p99（估算，百分位數不能真的相減，只當方向參考）。",
+             "Kong 等後端回應 p99 很高、App p99 不高 → 慢在 App 以外；兩個都高 → App 自己慢。"),
+        [K(k_pct(0.95, K_SELF, W5), "Kong 自己處理 p95", "A", instant=True),
+         K(k_pct(0.99, K_SELF, W5), "Kong 自己處理 p99", "B", instant=True),
+         K(k_pct(0.95, K_UP, W5), "Kong 等後端回應 p95", "C", instant=True),
+         K(k_pct(0.99, K_UP, W5), "Kong 等後端回應 p99", "D", instant=True),
+         O(app_pct(0.95, W5), "App 自己處理 p95", "E", instant=True),
+         O(app_pct(0.99, W5), "App 自己處理 p99", "F", instant=True),
+         K(k_pct(0.99, K_TOTAL, W5), "Client 感受到的總耗時 p99", "G", instant=True),
+         M(pos("$D - $F"), "H")],
+        overrides=[name_ref("H", "App 以外造成的慢（估算）")]),
+    h=10)
+
+# ---- B 整段平均
+block("B. 整個時間範圍的平均（跟著上方時間，拖曳選壓測時段可回看）",
+      "**回看一段時間**：拓樸圖是整段時間的平均；下面的趨勢圖找出**哪個時間點、哪一段**變慢或請求對不上。")
+tg, fl, nd = topology("$__range", "整個時間範圍")
+B.line(topo_canvas("鏈路拓樸：整個時間範圍（平均）",
+                   desc("跟 A 的拓樸圖一樣，但算的是上方選的整個時間範圍。請求數是那段時間的平均每秒。",
+                        "A 正常、這張有紅字 → 問題發生在過去某個時段，看下面趨勢圖找時間點。"), tg, fl, nd), h=12)
+B.line(
+    ts("每段平均耗時（各段各自的值，沒有疊加）",
+       desc("每一段的平均時間各畫一條線，線的高度就是那一段自己的值。**Client 感受到的總耗時**是全部請求的平均，"
+            "包含 Kong 自己擋下的 401 / 429（很快）和 Kong 自己回的 504，所以不一定等於各段相加。",
+            "哪一條突然升高，問題就在那一段；對照右邊的請求數和下面的 5xx 看同一個時間點。"),
+       segments(RI, False),
        overrides=[GAP_NAME, name_ref("F", "App 自己處理（含在 Router 等 Pod 回應裡）", DASHED),
                   name_ref("G", "Client 感受到的總耗時", DASHED)]),
-    h=10, widths=[9, 15])
+    h=10, widths=[24])
 B.line(
     ts("每段收到的請求數（req/s）",
        desc("Kong 送往後端的請求、Router 收到的請求、App 收到的請求。同一條路徑三條線應該差不多。",
@@ -447,60 +590,51 @@ B.line(
         K(f'sum(rate(kong_http_requests_total{{{KS}, source="service", code=~"5.."}}[{RI}]))', "Kong 收到後端回的", "B"),
         O(f'sum(rate(haproxy_backend_http_responses_total{{{RS}, code=~"5.*"}}[{RI}]))', "Router 回的（含 App）", "C"),
         O(f'sum(rate(http_server_requests_seconds_count{{{APP}, status=~"5.."}}[{RI}]))', "App 回的", "D")],
-       unit="reqps"))
+       unit="reqps"),
+    h=10)
 
-# ---- ①b 慢請求
-B.row("①b 偶發的慢請求（p95 = 最慢的 5%、p99 = 最慢的 1%）：平均看不出來的慢")
-NO_APP_HIST = "沒資料：App 沒開 Micrometer histogram（management.metrics.distribution.percentiles-histogram.http.server.requests=true）"
-TAIL_GAP = name_ref("H", "App 以外造成的慢（Kong 等後端回應 p99 − App p99，估算）",
-                    [{"id": "color", "value": {"mode": "fixed", "fixedColor": "red"}}, {"id": "custom.lineWidth", "value": 3}])
+# ---- C 慢請求
+block("C. 整個時間範圍的慢請求：p95 / p99 / 最慢的那一分鐘",
+      "**偶發的慢**：平均正常、但使用者偶爾很慢時看這裡。p95 = 最慢的 5%、p99 = 最慢的 1%；Router 沒有百分位數，用每分鐘平均的最高值。")
+tg, fl, nd = topology_tail("$__range")
+B.line(topo_canvas("鏈路拓樸：整個時間範圍的慢請求（p95 / p99 / 最高）",
+                   desc("Kong 和 App 的 p95 / p99、時間範圍內最慢的那一分鐘、超過 Router 逾時的請求筆數。"
+                        "**App 以外 p99** = Kong 等後端回應 p99 − App p99（估算）。",
+                        "Kong 的 p99 很高、App 的 p99 / 最慢的一筆不高 → 慢在 App 以外（A10 / F5、網路、Router）；App 也高 → AP Pod。"
+                        "有請求超過逾時（紅）→ 看 D。"), tg, fl, nd), h=10)
 B.line(
-    bar("最近 5 分鐘：各段 p95 / p99",
-        desc("有直方圖的段才算得出百分位數：Kong（總耗時、等後端回應、Kong 自己處理）和 App（需開 Micrometer histogram）。"
-             "Router 只提供平均，沒有 p95 / p99。**App 以外造成的慢** = Kong 等後端回應 p99 − App p99，是 A10 / F5、網路、Router、"
-             "Pod 內排隊這些 App 以外的部分造成的慢請求（百分位數不能真的相減，只當方向參考）。",
-             "Kong 等後端回應 p99 很高、App p99 不高 → 慢請求在 App 以外；兩個都高 → App 自己有慢請求。"),
-        [K(k_pct(0.95, K_SELF, W5), "Kong 自己處理 p95", "A", instant=True),
-         K(k_pct(0.99, K_SELF, W5), "Kong 自己處理 p99", "B", instant=True),
-         K(k_pct(0.95, K_UP, W5), "Kong 等後端回應 p95", "C", instant=True),
-         K(k_pct(0.99, K_UP, W5), "Kong 等後端回應 p99", "D", instant=True),
-         O(app_pct(0.95, W5), "App 自己處理 p95", "E", instant=True),
-         O(app_pct(0.99, W5), "App 自己處理 p99", "F", instant=True),
-         K(k_pct(0.99, K_TOTAL, W5), "Client 感受到的總耗時 p99", "G", instant=True),
-         M(pos("$D - $F"), "H")],
-        overrides=[name_ref("H", "App 以外造成的慢（估算）")]),
     ts("各段 p99 走勢（紅線 = App 以外造成的慢）",
-       desc("Kong 等後端回應、App、Kong 自己處理的 p99，以及兩者的差（紅線）。",
+       desc("Kong 等後端回應、App、Kong 自己處理的 p99，以及 Kong 和 App 的差（紅線）。",
             "紅線往上飆、App p99 沒變 → 慢請求發生在 App 以外（A10 / F5、網路、Router、Pod 內排隊），對照 ⑤ 和 ③；"
             "App p99 跟著飆 → App 自己變慢，看 ④。"),
        [K(k_pct(0.99, K_TOTAL, RI), "Client 感受到的總耗時 p99", "A"), K(k_pct(0.99, K_UP, RI), "Kong 等後端回應 p99", "D"),
         O(app_pct(0.99, RI), "App 自己處理 p99", "F"), K(k_pct(0.99, K_SELF, RI), "Kong 自己處理 p99", "G"),
         M(pos("$D - $F"), "H")],
        overrides=[TAIL_GAP], no_value=NO_APP_HIST),
-    h=10, widths=[9, 15])
-B.line(
-    ts("慢請求有多慢：p99 是平均的幾倍（哪段的慢請求比較嚴重）",
+    ts("慢請求有多慢：p99 是平均的幾倍",
        desc("每段的 p99 是平均的幾倍。1～3 倍算正常；倍數大代表大部分請求很快、但有一小部分特別慢。",
-            "Kong 等後端回應的倍數比 App 的大很多 → 慢請求是 App 以外造成的（網路、LB、Router 排隊等 Pod、Pod 內排隊）；"
+            "Kong 等後端回應的倍數比 App 的大很多 → 慢請求是 App 以外造成的（網路、LB、Router 排隊、Pod 內排隊）；"
             "App 的倍數大 → App 有特定慢請求（看下面依 URI、依 Pod）。"),
-       [K(f"({k_pct(0.99, K_UP, RI)}) / ({k_avg(K_UP, RI)})", "Kong 等後端回應", "A"),
-        O(f"({app_pct(0.99, RI)}) / ({app_avg(RI)})", "App 自己處理", "B"),
-        K(f"({k_pct(0.99, K_SELF, RI)}) / ({k_avg(K_SELF, RI)})", "Kong 自己處理", "C")],
+       [K(f"({k_pct(0.99, K_UP, RI)}) / (({k_avg(K_UP, RI)}) > 0)", "Kong 等後端回應", "A"),
+        O(f"({app_pct(0.99, RI)}) / (({app_avg(RI)}) > 0)", "App 自己處理", "B"),
+        K(f"({k_pct(0.99, K_SELF, RI)}) / (({k_avg(K_SELF, RI)}) > 0)", "Kong 自己處理", "C")],
        unit="none"),
+    h=10)
+B.line(
     table("時間範圍內最差的 p99（依 Kong API）",
-          desc("每個 Kong Service / Route 在整個時間範圍內 p99 最高的那一刻（每分鐘看一次），以及平均。",
-               "等後端回應 p99 最高很大、平均不大 → 那個 API 有偶發的慢請求；Kong 自己處理 p99 高 → 那個 API 的 plugin 慢。"),
+          desc("每個 Kong Service / Route 在整個時間範圍內 p99 最高的那一分鐘，以及平均。",
+               "等後端 p99 最高很大、平均不大 → 那個 API 有偶發的慢請求；Kong 處理 p99 高 → 那個 API 的 plugin 慢。"),
           [("service", "Service"), ("route", "Route")],
           [("等後端 p99 最高", K(f"max_over_time(({k_pct(0.99, K_UP, '1m', ', service, route')})[$__range:1m])"), None),
            ("總耗時 p99 最高", K(f"max_over_time(({k_pct(0.99, K_TOTAL, '1m', ', service, route')})[$__range:1m])"), None),
            ("Kong 處理 p99 最高", K(f"max_over_time(({k_pct(0.99, K_SELF, '1m', ', service, route')})[$__range:1m])"),
             [{"id": "custom.minWidth", "value": 150}]),
            ("等後端 平均", K(f'sum by (service, route) (rate({K_UP}_sum{{{KS}}}[$__range])) '
-                          f'/ sum by (service, route) (rate({K_UP}_count{{{KS}}}[$__range]))'), None),
+                          f'/ (sum by (service, route) (rate({K_UP}_count{{{KS}}}[$__range])) > 0)'), None),
            ("每秒請求", K(f'sum by (service, route) (rate(kong_http_requests_total{{{KS}}}[$__range]))'),
             [{"id": "unit", "value": "reqps"}, {"id": "decimals", "value": 1}])],
-          sort="等後端 p99 最高", key_width=110),
-    widths=[9, 15])
+          sort="等後端 p99 最高", key_width=160),
+    h=7, widths=[24])
 B.line(
     ts("App p99 依 URI（前 10，找哪個 API 慢）",
        desc("App 自己記錄的 p99，依 URI 分開。", "某個 URI 特別高 → 那支 API 本身慢（DB、下游服務）；全部一起高 → App 整體或 Pod 資源問題。"),
@@ -509,23 +643,24 @@ B.line(
        desc("App 自己記錄的 p99，依 Pod 分開。", "只有一個 Pod 特別高 → 那個 Pod 的 Node、GC 或分到的資料有問題。"),
        [O(app_pct(0.99, RI, ", pod"), "{{pod}}", "A")], no_value=NO_APP_HIST))
 
-# ---- ② Kong
-# ---- ①c 很慢 / 逾時:卡在誰
-B.row("①c 很慢 / 逾時（p99 卡在 30 秒、60 秒）：卡在 F5、Router 還是 AP Pod？")
-ROUTER_MAX_POD = f"max(haproxy_backend_http_average_response_latency_milliseconds{{{RS}}})"
-TIMEOUT_LINES = [{"color": "green", "value": None}, {"color": "orange", "value": 30000}, {"color": "red", "value": 60000}]
-TIMEOUT_GUIDE = """Kong 預設等後端 **60 秒**（connect / read timeout），OCP Router 預設等 Pod **30 秒**（`timeout server`）。
-所以請求如果有到 Router、是 Pod 太慢，Router 會在 30 秒先回 504；**Kong 一路等到 60 秒自己回 504，通常代表請求沒到 Router**，或 route 的 timeout 被調長了。
+# ---- D 逾時
+block("D. 逾時：剛好卡在 30 秒 / 60 秒，是誰的逾時、卡在哪一段",
+      "**碰到逾時**：上方「Kong 逾時」「Router 逾時」填你們的設定（秒）。超過逾時的請求有幾筆、504 是誰回的、App 自己有沒有那麼慢，都在這區。")
+TIMEOUT_GUIDE = """**目前設定**：Kong 等後端 **${kong_timeout} 秒**，OCP Router 等 Pod **${router_timeout} 秒**（上方可改）。
+
+- **p95 / p99 剛好卡在某個秒數** = 碰到那個逾時。這不是儀表板的上限：Kong / Router 等到逾時就放棄了，Kong 量到的時間不會超過逾時（Kong 預設直方圖最大一格也是 60 秒）。
+- **實際要多久**：看「App 最慢的一筆」，App 會把請求做完才記錄。要讓 Kong 量到真實時間只能調長逾時（Kong service `read_timeout`、route annotation `haproxy.router.openshift.io/timeout`），建議只在查問題時暫時調。
+- **Router 比 Kong 早放棄**：請求有到 Router、是 Pod 太慢，Router 會在 ${router_timeout} 秒先回 504（Kong 看到「後端回的 504」）。
+- **Kong 一路等到 ${kong_timeout} 秒、自己回 504**：通常是請求沒到 Router，或 route 的 timeout 被調長。
 
 | 看到 | 卡在 |
 |---|---|
-| **後端回的 504** 上升、Kong p99 ≈ 30 秒 | Router 等 Pod 等到逾時 → AP Pod 慢，看下面 App |
-| **Kong 自己回的 504** 上升、**App 最慢的一筆**也 ≥ 60 秒 | AP Pod 慢（或它呼叫的 DB / 外部服務），而且 route 的 timeout 被調長過 |
-| **Kong 自己回的 504** 上升、App 最慢的一筆很短、**執行緒忙碌 ≈ 100%** | AP Pod 執行緒用完，請求在 Pod 裡排隊（App 從開始處理才計時，看不到排隊） |
-| **Kong 自己回的 504** 上升、App 和 Router 都正常 | 請求沒到 Router：**A10 / F5、網路、連線建不起來**；對照 ⑤「Kong 送了、Router 沒收到」 |
-| 只有一台 Kong 節點的 p99 高（看 ②） | 那台 Kong 到後端的路徑（所在網段、LB） |
+| 後端回的 504 上升、超過 Router 逾時的請求增加 | Router 等 Pod 逾時 → AP Pod 慢 |
+| Kong 自己回的 504、App 最慢的一筆也一樣久 | AP Pod 慢（或它呼叫的 DB / 外部服務） |
+| Kong 自己回的 504、App 很快、執行緒忙碌 ≈ 100% | Pod 執行緒用完，請求在 Pod 裡排隊 |
+| Kong 自己回的 504、App 和 Router 都正常 | 請求沒到 Router：A10 / F5、網路 |
 
-Router 只有平均，一筆 60 秒會被其他請求稀釋。要百分之百確認，暫時開 Router access log 查那段時間：有那筆請求、結束狀態 `sH` = Router 等 Pod 逾時；`CH` = Kong 先斷線（Router 還在等 Pod）；**完全沒有那筆** = 沒到 Router。"""
+要百分之百確認：暫時開 Router access log，結束狀態 `sH` = Router 等 Pod 逾時、`CH` = Kong 先斷線、沒有那筆 = 沒到 Router。"""
 B.line(
     bar("時間範圍內最慢：每一段的最高值",
         desc("整個時間範圍內，每一段最慢的時候（每分鐘看一次）。Kong 是 p99；Router 只有平均，取最慢那台 Router Pod；"
@@ -537,34 +672,43 @@ B.line(
            instant=True),
          O(f"max_over_time(({APP_MAX})[$__range:1m])", "App 最慢的一筆", "D", instant=True)]),
     text(TIMEOUT_GUIDE),
-    h=10, widths=[9, 15])
+    h=12, widths=[9, 15])
+TIMEOUT_REF = [{"id": "custom.lineStyle", "value": {"fill": "dash", "dash": [6, 6]}}, {"id": "custom.fillOpacity", "value": 0},
+               {"id": "custom.lineWidth", "value": 2}]
 B.line(
-    ts("最慢的請求走勢：Kong 等後端回應 p99 vs Router vs App 最慢的一筆",
-       desc("三段同一張圖（對數刻度），虛線是 30 秒（Router 預設逾時）和 60 秒（Kong 預設逾時）。",
-            "Kong 的線碰到虛線、App 的線沒跟著上去 → 卡在 App 以外；兩條一起上去 → AP Pod 慢。"),
+    ts("最慢的請求走勢 vs 逾時設定",
+       desc("Kong 等後端回應 p99、Router 最慢 Pod 的平均、App 最慢的一筆（對數刻度）；虛線是上方填的逾時設定。",
+            "Kong 的線貼著虛線變平 → 碰到逾時；App 的線沒跟著上去 → 卡在 App 以外；一起上去 → AP Pod 慢。"),
        [K(k_pct(0.99, K_UP, RI), "Kong 等後端回應 p99", "A"),
         O(ROUTER_MAX_POD, "Router 等 Pod 回應（最慢 Router Pod 的平均）", "B"),
-        O(APP_MAX, "App 最慢的一筆", "C")],
-       log=True, thresholds=TIMEOUT_LINES),
-    ts("504 是誰回的（req/s）",
-       desc("**Kong 自己回的 504** = Kong 等到自己的逾時（預設 60 秒）都沒收到回應；**後端回的 504** = 後面（Router 或 F5）先逾時、回了 504 給 Kong；"
-            "Router 回的 5xx 包含 Router 自己回的 504 和 App 回的 5xx。",
-            "只有 Kong 自己回的 → 後面完全沒回應，看左邊 App 和 ⑤；後端回的 504 和 Router 5xx 一起上升 → Router 等 Pod 逾時。"),
-       [K(f'sum(rate(kong_http_requests_total{{{KS}, source="kong", code="504"}}[{RI}]))', "Kong 自己回的 504（Kong 等到逾時）", "A"),
-        K(f'sum(rate(kong_http_requests_total{{{KS}, source="service", code="504"}}[{RI}]))', "後端回的 504（Router 或 F5 先逾時）", "B"),
-        O(f'sum(rate(haproxy_backend_http_responses_total{{{RS}, code=~"5.*"}}[{RI}]))', "Router 回的 5xx", "C")],
-       unit="reqps"))
+        O(APP_MAX, "App 最慢的一筆", "C"),
+        K(f"vector({TO_K} * 1000)", "Kong 逾時設定", "TK"),
+        O(f"vector({TO_R} * 1000)", "Router 逾時設定", "TR")],
+       log=True,
+       overrides=[name_ref("TK", "Kong 逾時設定", TIMEOUT_REF + [{"id": "color", "value": {"mode": "fixed", "fixedColor": "red"}}]),
+                  name_ref("TR", "Router 逾時設定", TIMEOUT_REF + [{"id": "color", "value": {"mode": "fixed", "fixedColor": "orange"}}])]),
+    ts("碰到逾時的請求（req/s）",
+       desc("**超過 Router / Kong 逾時** = Kong 等後端回應超過上方設定秒數的請求（用 Kong 的直方圖算，設定要是直方圖的分界才算得出來，"
+            "Kong 預設有 1、2、5、10、30、60 秒）。**Kong 自己回的 504** = Kong 等到逾時；**後端回的 504** = Router 或 F5 先逾時。",
+            "超過 Router 逾時的請求和後端回的 504 一起上升 → Router 等 Pod 逾時；只有 Kong 自己回的 504 → 後面完全沒回應，看左邊 App 和 ⑤。"),
+       [K(over_timeout(TO_R, RI), "超過 Router 逾時（${router_timeout} 秒）", "A"),
+        K(over_timeout(TO_K, RI), "超過 Kong 逾時（${kong_timeout} 秒）", "B"),
+        K(f'sum(rate(kong_http_requests_total{{{KS}, source="kong", code="504"}}[{RI}]))', "Kong 自己回的 504（Kong 等到逾時）", "C"),
+        K(f'sum(rate(kong_http_requests_total{{{KS}, source="service", code="504"}}[{RI}]))', "後端回的 504（Router 或 F5 先逾時）", "D"),
+        O(f'sum(rate(haproxy_backend_http_responses_total{{{RS}, code=~"5.*"}}[{RI}]))', "Router 回的 5xx", "E")],
+       unit="reqps"),
+    h=12)
 B.line(
     ts("App 最慢的一筆（依 Pod）",
        desc("Micrometer 記錄的每個 Pod 最近最慢的一筆請求（http_server_requests_seconds_max，約 2 分鐘的視窗）。"
             "請求結束才記錄，Kong 逾時放棄後 App 還在跑的那筆，跑完一樣會記到。",
             "只有一個 Pod 很高 → 那個 Pod；全部都高 → App 共用的 DB / 下游服務。"),
        [O(f"1000 * max by (pod) (http_server_requests_seconds_max{{{APP}}})", "{{pod}}", "A")],
-       thresholds=TIMEOUT_LINES, no_value="沒資料：App 沒有 Micrometer（http_server_requests_seconds）指標"),
+       no_value="沒資料：App 沒有 Micrometer（http_server_requests_seconds）指標"),
     ts("App 執行緒忙碌 ÷ 上限（Tomcat，依 Pod）",
        desc("每個 Pod 的 Tomcat 處理執行緒用了幾成。用完時新請求在 Pod 裡排隊，App 的計時看不到這段等待。",
             "接近 100% → Pod 處理不過來，請求在 Pod 裡排隊；加 Pod 或找出卡住執行緒的原因（DB、下游服務）。"),
-       [O(f"max by (pod) (tomcat_threads_busy_threads{{{POD}}}) / max by (pod) (tomcat_threads_config_max_threads{{{POD}}})",
+       [O(f"max by (pod) (tomcat_threads_busy_threads{{{POD}}}) / (max by (pod) (tomcat_threads_config_max_threads{{{POD}}}) > 0)",
           "{{pod}}", "A")],
        unit="percentunit",
        thresholds=[{"color": "green", "value": None}, {"color": "red", "value": 0.9}],
@@ -637,7 +781,7 @@ B.line(
     ts("Router 對 Pod 開新連線的比例（新連線 ÷ 請求數）",
        desc("Router 每處理一個請求，平均要對 Pod 開幾條新連線。接近 0 = 連線有重用；接近 1 = 每個請求都重新連線。",
             "比例突然升高、Router 連線到 Pod 的時間也上升 → 連線一直被關掉重開（Pod 或中間設備沒保持連線）。"),
-       [O(f'sum(rate(haproxy_backend_connections_total{{{RS}}}[{RI}])) / sum(rate(haproxy_backend_http_responses_total{{{RS}}}[{RI}]))',
+       [O(f'sum(rate(haproxy_backend_connections_total{{{RS}}}[{RI}])) / (sum(rate(haproxy_backend_http_responses_total{{{RS}}}[{RI}])) > 0)',
           "新連線 ÷ 請求數", "A")], unit="percentunit"),
     ts("Router Pod：CPU 用量（核）與目前連線數",
        desc("Router Pod（openshift-ingress）的 CPU，以及每台 Router 目前的連線數（右軸）。Router 是全叢集共用，別的服務流量也會算進來。",
@@ -667,13 +811,13 @@ B.line(
     ts("App 自己量的處理時間：每個 Pod 平均（需 Micrometer）",
        desc("App 自己記錄的處理時間（http_server_requests_seconds，不含 /actuator）。這是請求進到 App 之後的時間。",
             "跟上面 Router 看到的比：Router 的比 App 的高很多 → 請求在 Pod 裡排隊（thread pool 滿）或 Pod 網路慢。沒資料 = App 沒有 Micrometer 指標。"),
-       [O(f'1000 * sum by (pod) (rate(http_server_requests_seconds_sum{{{APP}}}[{RI}])) / sum by (pod) (rate(http_server_requests_seconds_count{{{APP}}}[{RI}]))',
+       [O(f'1000 * sum by (pod) (rate(http_server_requests_seconds_sum{{{APP}}}[{RI}])) / (sum by (pod) (rate(http_server_requests_seconds_count{{{APP}}}[{RI}])) > 0)',
           "{{pod}}", "A")],
        no_value="沒資料：App 沒有 Micrometer（http_server_requests_seconds）指標"),
     ts("Pod CPU throttling（各 Pod）",
        desc("CPU 想用但被 limit 擋下的時間比例。", "超過 25% → App 被 CPU limit 卡住，處理時間會變長；調高 CPU limit 或加 Pod。"),
        [O(f'sum by (pod) (max by (pod, container) (rate(container_cpu_cfs_throttled_periods_total{{{CT}}}[{RI}])))'
-          f' / sum by (pod) (max by (pod, container) (rate(container_cpu_cfs_periods_total{{{CT}}}[{RI}])))', "{{pod}}", "A")],
+          f' / (sum by (pod) (max by (pod, container) (rate(container_cpu_cfs_periods_total{{{CT}}}[{RI}]))) > 0)', "{{pod}}", "A")],
        unit="percentunit"))
 B.line(
     ts("Pod 狀態：Router 判定可用、Ready、重啟",
@@ -702,7 +846,7 @@ B.line(
        desc("**Kong 送了、Router 沒收到** = Kong 送往後端 − Router 收到；**Router 收到、不是 Kong 來的** = Router 收到 − Kong 送往後端。",
             "**先排除假警報**：Kong 選的 Service / Route 和 OCP Route 不是同一條路徑（Kong 一個 Service 可能對到好幾條 OCP route）；"
             "OCP route 是 TLS passthrough（Router 不記 HTTP 回應數，Router 收到 = 0）。看右邊的表確認。"
-            "排除後：前者 > 0 → 請求在中間被擋、逾時或被導到別處（同時看 ① Kong 自己回的 502/504）；"
+            "排除後：前者 > 0 → 請求在中間被擋、逾時或被導到別處（同時看 B 的 5xx 是誰產生的）；"
             "後者 > 0 → 有其他來源直接打這條 route（內部呼叫、繞過 Kong、LB health check）。"),
        [K(kong_sent(RI), "", "A", hide=True), O(router_recv(RI), "", "B", hide=True),
         M(pos("$A - $B"), "C"), M(pos("$B - $A"), "D")],
@@ -764,6 +908,12 @@ dash = {
         {"type": "textbox", "name": "keyword", "label": "名稱關鍵字",
          "description": "同一條路徑共同的名稱（不分大小寫）。下面的清單只會列出名稱裡有這段文字的；名稱不像的例外用 | 加進來，例如 order|ord-api。",
          "query": "", "current": {"text": "", "value": ""}, "hide": 0},
+        {"type": "textbox", "name": "kong_timeout", "label": "Kong 逾時（秒）",
+         "description": "Kong service 的 read_timeout（預設 60 秒）。Kong 沒有把設定輸出成指標，請填實際值；要是 Kong 直方圖的分界（1、2、5、10、30、60）才算得出超過的筆數。",
+         "query": "60", "current": {"text": "60", "value": "60"}, "hide": 0},
+        {"type": "textbox", "name": "router_timeout", "label": "Router 逾時（秒）",
+         "description": "OCP Router 等 Pod 的逾時（預設 30 秒；route annotation haproxy.router.openshift.io/timeout 可改）。Router 沒有把設定輸出成指標，請填實際值。",
+         "query": "30", "current": {"text": "30", "value": "30"}, "hide": 0},
         var("kong_service", "Kong Service", DSK, f'label_values(kong_http_requests_total{{service=~"{KW}"}}, service)', None,
             "清單 = 名稱裡有關鍵字的 Service；All = 清單裡全部。"),
         var("kong_route", "Kong Route", DSK, 'label_values(kong_http_requests_total{service=~"$kong_service"}, route)', ".*",
