@@ -89,8 +89,8 @@ Client →（A10/F5?）→ Kong →（A10/F5? 網路）→ OCP Router → AP Pod
 |---|---|
 | A. 現在（最近 5 分鐘） | 拓樸圖（Client → A10/F5 → Kong → A10/F5 → Router → AP Pod，每個方塊的數字超過門檻變色）、每段平均花多久、各段 p95 / p99 |
 | B. 整個時間範圍的平均 | 拓樸圖（整段平均）、每段平均耗時走勢（各段各自一條線，不疊加）、每段收到的請求數、5xx 是誰產生的 |
-| C. 整個時間範圍的慢請求 | 拓樸圖（p95 / p99、最慢的一分鐘、超過逾時的筆數）、各段 p99 走勢、p99 是平均的幾倍、最差的 p99（依 Kong API）、App p99 依 URI / Pod |
-| D. 逾時 | 每一段的最高值、判讀表、最慢的請求走勢 vs 逾時設定、碰到逾時的請求（超過 Router / Kong 逾時、504 是誰回的）、App 最慢的一筆 / Tomcat 執行緒 / GC 停頓 |
+| C. 整個時間範圍的慢請求 | 拓樸圖（p95 / p99、最慢的一分鐘、等後端超過 30 秒的筆數）、各段 p99 走勢、p99 是平均的幾倍、最差的 p99（依 Kong API）、App p99 依 URI / Pod |
+| D. 逾時 | 每一段的最高值與「有 504 時等後端最長」、判讀表、碰到逾時的請求（等後端超過 5 / 10 / 30 / 60 秒、504 / 499 / 502 / 503）、最慢的請求走勢、App 最慢的一筆 / Tomcat 執行緒 / GC 停頓 |
 | ② Kong | p95 / p99（總耗時、等後端回應、Kong 自己處理）、狀態碼與誰回的（Kong 自己回的 / 後端回的 / plugin 直接擋下）、各 Kong 節點、nginx 連線 |
 | ③ OCP Router | 排隊 / 連線 / 等 Pod 回應、各 Router Pod 的回應時間與流量、錯誤與重試、新連線比例、Router Pod CPU |
 | ④ AP Pod | Router 看到每個 Pod 的回應時間與 5xx、App 自己量的處理時間、CPU throttling、可用 / Ready / 重啟 |
@@ -120,15 +120,22 @@ Client →（A10/F5?）→ Kong →（A10/F5? 網路）→ OCP Router → AP Pod
 - **④ Router 看到的每個 Pod 沒資料**：Router 後面的 Pod 總數超過 `ROUTER_METRICS_HAPROXY_SERVER_THRESHOLD`（預設 500）時，Router 只輸出 route 層級的指標；passthrough 也沒有。改看 App 自己量的每個 Pod 時間。
 - **Kong 和 OCP 可以是兩個不同的 Prometheus**：跨資料來源的相減用 Grafana 的運算式（Expression），面板的資料來源會顯示為 Mixed。
 - **需要的指標**：Kong 3.x prometheus plugin（`kong_http_requests_total` 有 `source` label、`kong_*_latency_ms` 直方圖）、OCP Router 的 `haproxy_*` 指標、kube-state-metrics、cAdvisor；App 自己處理時間需要 Micrometer（`http_server_requests_seconds`），沒有的話那幾條線沒資料，其他照常。
-- **逾時**：上方「Kong 逾時」「Router 逾時」填你們的設定（預設 60 / 30 秒）。Kong 和 OCP Router 都沒有把逾時設定輸出成指標，所以要手動填；查實際設定：
-  - Kong：Admin API `GET /services/<name>` 的 `read_timeout`（毫秒）。
-  - Router：`oc get route <name> -o jsonpath='{.metadata.annotations.haproxy\.router\.openshift\.io/timeout}'`，沒設就是 IngressController 的 `spec.tuningOptions.serverTimeout`（預設 30s）。
+- **逾時**（不用填設定值，看實際等了多久）：
+  - **p95 / p99 變成一條平線** = 卡在逾時，那個秒數就是逾時。這不是儀表板的上限：Kong / Router 等到逾時就放棄了，量到的時間不會超過逾時（Kong 預設直方圖最大一格也是 60 秒）。
+  - D 的「有 504 時，等後端最長」≈ 逾時值；「碰到逾時的請求」看 504 出現時，哪一條「等後端超過 5 / 10 / 30 / 60 秒」也跟著出現（用 Kong 直方圖的格子算）。
+  - **實際要多久**看「App 最慢的一筆」（Micrometer `http_server_requests_seconds_max`，App 會把請求做完才記錄）。
+  - **逾時不一定是 504**：
 
-  **p95 / p99 剛好卡在 30 / 60 秒不是儀表板的上限**：Kong / Router 等到逾時就放棄了，Kong 量到的時間不會超過逾時（Kong 預設直方圖最大一格也是 60 秒）。
-  實際要多久看 D 的「App 最慢的一筆」（Micrometer `http_server_requests_seconds_max`，App 會把請求做完才記錄）；要讓 Kong 量到真實時間只能調長逾時，建議只在查問題時暫時調。
-  「超過逾時的請求」用 Kong 的直方圖算，填的秒數要是直方圖的分界（Kong 預設有 1、2、5、10、30、60 秒）。
-  Router 會比 Kong 早放棄，所以 **Kong 一路等到 60 秒、自己回 504**，通常代表請求沒到 Router（A10 / F5、網路），或 route 的 timeout 被調長。
-  Tomcat 執行緒指標要開 `server.tomcat.mbeanregistry.enabled=true`。要百分之百確認，暫時開 Router access log 看那筆請求的結束狀態（`sH` = Router 等 Pod 逾時、`CH` = Kong 先斷線、沒有那筆 = 沒到 Router）。
+    | 誰的逾時 | 回什麼 |
+    |---|---|
+    | Kong 等後端回應 / 連線逾時（預設 60 秒） | 504（Kong 自己回的） |
+    | Router 等 Pod 回應逾時（`timeout server`，預設 30 秒） | 504（Kong 看到「後端回的 504」） |
+    | Router 連不上 Pod、排隊太久 | 503 |
+    | A10 / F5 直接斷線 | Kong 回 502 |
+    | Client 的逾時比 Kong 短（例如壓測工具）、先放棄 | 499 |
+
+  - 要知道實際設定：Kong Admin API `GET /services/<name>` 的 `read_timeout`；Router 看 route annotation `haproxy.router.openshift.io/timeout`，沒設就是 IngressController 的 `spec.tuningOptions.serverTimeout`。
+  - Tomcat 執行緒指標要開 `server.tomcat.mbeanregistry.enabled=true`。要確認單筆，暫時開 Router access log 看結束狀態（`sH` = Router 等 Pod 逾時、`CH` = Kong 先斷線、沒有那筆 = 沒到 Router）。
 - **圖例的 Mean 不會再出現無限大**：所有除法的分母都要大於 0 才計算（例如沒有請求的時段、passthrough 沒有 HTTP 回應數），沒資料就留空。
 
 ## 匯入
