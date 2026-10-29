@@ -82,8 +82,12 @@ def app_recv(w):
 
 
 def over_timeout(secs, w, fn="rate"):
-    """Kong 等後端回應超過 secs 秒的請求 (每秒,或 fn=increase 時的筆數)。secs 要剛好是直方圖的分界 (Kong 預設有 5、10、30、60 秒)。"""
-    return (f'sum({fn}({K_UP}_count{{{KS}}}[{w}])) - sum({fn}({K_UP}_bucket{{{KS}, le=~"0*{secs}000([.]0+)?"}}[{w}]))')
+    """Kong 等後端回應超過 secs 秒的請求 (每秒,或 fn=increase 時的筆數)。secs 要剛好是直方圖的分界 (Kong 預設有 5、10、30、60 秒)。
+    同一組直方圖裡 +Inf 格減掉 secs 那一格,每個 series 先各自相減再加總 (分開加總再相減,series 出現 / 消失的時間不同會算出負數),
+    最後小於 0 的歸零。"""
+    b = f"{K_UP}_bucket"
+    return (f'clamp_min(sum({fn}({b}{{{KS}, le="+Inf"}}[{w}]) - ignoring (le) '
+            f'{fn}({b}{{{KS}, le=~"0*{secs}000([.]0+)?"}}[{w}])), 0)')
 
 
 APP_MAX = f"1000 * max(http_server_requests_seconds_max{{{APP}}})"
@@ -134,6 +138,10 @@ DASHED = [{"id": "custom.lineStyle", "value": {"fill": "dash", "dash": [10, 10]}
 CAP_MAPPINGS = [{"type": "value", "options": {
     "60000": {"text": "≥ 60 秒（上限）", "color": "red", "index": 10},
     "30000": {"text": "≥ 30 秒（上限）", "color": "red", "index": 11}}}]
+SEC = "suffix: 秒"
+CAP_MAPPINGS_S = [{"type": "value", "options": {
+    "60": {"text": "≥ 60 秒（上限）", "color": "red", "index": 10},
+    "30": {"text": "≥ 30 秒（上限）", "color": "red", "index": 11}}}]
 
 
 def desc(what, how):
@@ -148,6 +156,12 @@ def ds_of(targets):
 def ts(title, d, targets, unit="ms", overrides=(), stack=False, fill=10, thresholds=None, no_value=None, log=False,
        rows=None):
     """rows: 圖例大概有幾列 (預設:每個顯示的查詢一列,依 label 拆的算 3 列),Board.line 用來把面板撐高到圖例放得下。"""
+    if log and unit == "ms" and all("expr" in t for t in targets):
+        # 對數刻度的格線在 10 的次方;用 ms 或 s 單位時 100 秒那條會被換算成「1.67 mins」,看起來像有請求跑了 1.67 分鐘。
+        # 改用固定後綴「秒」的單位,不會被換算成分鐘。
+        targets = [dict(t, expr=f"({t['expr']}) / 1000") for t in targets]
+        thresholds = [dict(st, value=None if st["value"] is None else st["value"] / 1000) for st in thresholds or []] or None
+        unit = SEC
     custom = {"drawStyle": "line", "lineWidth": 1, "fillOpacity": 35 if stack else fill, "showPoints": "never",
               "spanNulls": True, "axisSoftMin": 0,
               "stacking": {"mode": "normal" if stack else "none", "group": "A"},
@@ -160,6 +174,8 @@ def ts(title, d, targets, unit="ms", overrides=(), stack=False, fill=10, thresho
     defaults = {"unit": unit, "custom": custom, "color": {"mode": "palette-classic"}}
     if unit == "ms":
         defaults["mappings"] = CAP_MAPPINGS
+    elif unit == SEC:
+        defaults["mappings"] = CAP_MAPPINGS_S
     if thresholds:
         defaults["thresholds"] = {"mode": "absolute", "steps": thresholds}
     if no_value:
@@ -512,7 +528,9 @@ def topology_tail(w):
 
 def segments(w, inst):
     """依請求經過的順序:Kong 自己處理 → Kong ↔ Router 之間 → Router 排隊等 Pod → 連線到 Pod → 等 Pod 回應,
-    再加兩條參考線 (App 自己處理、Client 感受到的總耗時)。Grafana 依 refId 排序,所以 refId 照這個順序編;X 是只拿來算差值的隱藏查詢。"""
+    再加兩條參考線 (App 自己處理、總耗時)。Grafana 依 refId 排序,所以 refId 照這個順序編;X 是只拿來算差值的隱藏查詢。
+    總耗時 = Kong 自己處理 + 等後端回應:只算有送到後端的請求,跟各段同一群請求、同一段時間、依請求數加權
+    (Kong 的 request latency 包含 Kong 自己擋下的 401 / 429,會被拉低,不能拿來跟各段比)。"""
     return [
         K(k_avg(K_SELF, w), "Kong 自己處理", "A", instant=inst),
         M(pos("$X - ($C + $D + $E)"), "B"),
@@ -520,7 +538,7 @@ def segments(w, inst):
         O(r_avg("connect", w), "Router 連線到 Pod", "D", instant=inst),
         O(r_avg("response", w), "Router 等 Pod 回應", "E", instant=inst),
         O(app_avg(w), "App 自己處理", "F", instant=inst),
-        K(k_avg(K_TOTAL, w), "Client 感受到的總耗時", "G", instant=inst),
+        M("$A + $X", "G"),
         K(k_avg(K_UP, w), "Kong 等後端回應", "X", hide=True, instant=inst),
     ]
 
@@ -547,10 +565,11 @@ B.line(topo_canvas("鏈路拓樸：最近 5 分鐘（平均）",
 B.line(
     bar("最近 5 分鐘：每段平均花多久",
         desc("一個請求在每一段平均花的時間，由上到下是請求經過的順序。最後兩條是參考：App 自己處理（包含在 Router 等 Pod 回應裡）、"
-             "Client 感受到的總耗時（全部請求的平均，包含 Kong 自己擋下的 401 / 429，所以不一定等於各段相加）。",
+             "總耗時 = Kong 自己處理 + 等後端回應，只算有送到後端的請求（跟各段同一群請求；Kong 自己擋下的 401 / 429 不算）。"
+             "Router、App 也會收到不經過 Kong 的請求（拓樸圖的「其他來源」），那部分很大時它們的平均要打折看。",
              "最長的那一條就是時間主要花的地方。App 自己處理沒資料 = App 沒有 Micrometer 指標。"),
         segments(W5, True),
-        overrides=[GAP_NAME, name_ref("F", "（其中）App 自己處理"), name_ref("G", "Client 感受到的總耗時")]),
+        overrides=[GAP_NAME, name_ref("F", "（其中）App 自己處理"), name_ref("G", "總耗時（有送到後端的）")]),
     bar("最近 5 分鐘：各段 p95 / p99",
         desc("有直方圖的段才算得出百分位數：Kong 和 App（需開 Micrometer histogram）；Router 只有平均。"
              "**App 以外造成的慢** = Kong 等後端回應 p99 − App p99（估算，百分位數不能真的相減，只當方向參考）。",
@@ -561,7 +580,7 @@ B.line(
          K(k_pct(0.99, K_UP, W5), "Kong 等後端回應 p99", "D", instant=True),
          O(app_pct(0.95, W5), "App 自己處理 p95", "E", instant=True),
          O(app_pct(0.99, W5), "App 自己處理 p99", "F", instant=True),
-         K(k_pct(0.99, K_TOTAL, W5), "Client 感受到的總耗時 p99", "G", instant=True),
+         K(k_pct(0.99, K_TOTAL, W5), "總耗時 p99（全部請求）", "G", instant=True),
          M(pos("$D - $F"), "H")],
         overrides=[name_ref("H", "App 以外造成的慢（估算）")]),
     h=10)
@@ -574,12 +593,12 @@ B.line(topo_canvas("鏈路拓樸：整個時間範圍（平均）",
                         "A 正常、這張有紅字 → 問題發生在過去某個時段，看下面趨勢圖找時間點。"), tg, fl, nd), h=12)
 B.line(
     ts("每段平均耗時（各段各自的值，沒有疊加）",
-       desc("每一段的平均時間各畫一條線，線的高度就是那一段自己的值。**Client 感受到的總耗時**是全部請求的平均，"
-            "包含 Kong 自己擋下的 401 / 429（很快）和 Kong 自己回的 504，所以不一定等於各段相加。",
+       desc("每一段的平均時間各畫一條線，線的高度就是那一段自己的值。**總耗時** = Kong 自己處理 + 等後端回應，"
+            "只算有送到後端的請求，跟各段是同一群請求。",
             "哪一條突然升高，問題就在那一段；對照右邊的請求數和下面的 5xx 看同一個時間點。"),
        segments(RI, False),
        overrides=[GAP_NAME, name_ref("F", "App 自己處理（含在 Router 等 Pod 回應裡）", DASHED),
-                  name_ref("G", "Client 感受到的總耗時", DASHED)]),
+                  name_ref("G", "總耗時（有送到後端的）", DASHED)]),
     h=10, widths=[24])
 B.line(
     ts("每段收到的請求數（req/s）",
@@ -613,7 +632,7 @@ B.line(
        desc("Kong 等後端回應、App、Kong 自己處理的 p99，以及 Kong 和 App 的差（紅線）。",
             "紅線往上飆、App p99 沒變 → 慢請求發生在 App 以外（A10 / F5、網路、Router、Pod 內排隊），對照 ⑤ 和 ③；"
             "App p99 跟著飆 → App 自己變慢，看 ④。"),
-       [K(k_pct(0.99, K_TOTAL, RI), "Client 感受到的總耗時 p99", "A"), K(k_pct(0.99, K_UP, RI), "Kong 等後端回應 p99", "D"),
+       [K(k_pct(0.99, K_TOTAL, RI), "總耗時 p99（全部請求）", "A"), K(k_pct(0.99, K_UP, RI), "Kong 等後端回應 p99", "D"),
         O(app_pct(0.99, RI), "App 自己處理 p99", "F"), K(k_pct(0.99, K_SELF, RI), "Kong 自己處理 p99", "G"),
         M(pos("$D - $F"), "H")],
        overrides=[TAIL_GAP], no_value=NO_APP_HIST),
@@ -658,7 +677,7 @@ def while_504(source):
 
 block("D. 逾時（p99 卡在同一個秒數）：是誰的逾時、卡在哪一段")
 TIMEOUT_GUIDE = """**認出逾時**（不用知道設定值）：p99 變成一條**平線** = 卡在逾時；「有 504 時等後端最長」≈ 逾時值；實際要多久看 **App 最慢的一筆**。
-顯示 **≥ 60 秒（上限）** = 超過 Kong 直方圖最大一格（60 秒），實際多久量不到，不是剛好 1 分鐘。
+顯示 **≥ 60 秒（上限）** = 超過 Kong 直方圖最大一格（60 秒），實際多久量不到。30～60 秒之間的 p99 是在格子裡內插估的，只能當「大概在 30～60 秒」。
 
 | 看到 | 誰的逾時 / 卡在哪 |
 |---|---|
