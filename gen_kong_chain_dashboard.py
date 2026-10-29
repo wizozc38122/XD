@@ -73,6 +73,9 @@ def app_recv(w):
     return f'sum(rate(http_server_requests_seconds_count{{{APP}}}[{w}]))'
 
 
+APP_MAX = f"1000 * max(http_server_requests_seconds_max{{{APP}}})"
+
+
 def pos(x):
     """Server-side expression: x when positive, else 0."""
     return f"({x}) * (({x}) > 0)"
@@ -224,7 +227,7 @@ class Board:
 B = Board()
 B.line(text(
     "**Kong → Router → AP 延遲鏈路**：一個請求的時間拆成每一段，找出慢在哪段、錯在哪段。上方輸入**名稱關鍵字**（例如 `order`），"
-    "Kong Service、OCP Route、Deployment 選 All 的都會只看名稱裡有這段文字的；名稱不像的個別欄位直接選特定值。"
+    "下面的清單就只剩名稱裡有這段文字的（All = 清單裡全部）；名稱不像的例外用 `|` 加進來，例如 `order|ord-api`。"
     "Kong 和 OCP 兩邊要是同一條路徑，數字才對得起來。\n\n"
     "`Client →（A10/F5?）→ Kong →（A10/F5? 網路）→ OCP Router → AP Pod`　"
     "Kong ↔ Router 之間沒有指標，用「Kong 等後端回應 − Router 量到的時間」推算。時間都是**平均**（Router 只有平均），"
@@ -249,6 +252,155 @@ B.line(text(GUIDE), h=12)
 
 # ---- ① chain
 B.row("① 鏈路總覽：時間花在哪段、請求和錯誤在哪段對不上")
+
+
+# ---- 拓樸圖 (Canvas):每個方塊 = 背景 + 標題 + 「名稱 值」好幾列;位置都是面板的百分比
+def c_el(name, typ, box, text=None, size=13, color="#cbd5e1", align="left", bg=None, border=None, dash=False, conns=()):
+    left, top, right, bottom = box
+    e = {"type": typ, "name": name, "constraint": {"horizontal": "scale", "vertical": "scale"},
+         "placement": {"left": left, "top": top, "right": right, "bottom": bottom},
+         "config": {"align": align, "valign": "middle", "size": size,
+                    "color": color if isinstance(color, dict) else {"fixed": color}},
+         "background": {"color": {"fixed": bg or "transparent"}},
+         "border": {"color": {"fixed": border or "transparent"}, "width": 2 if border else 0, "radius": 10},
+         "connections": list(conns)}
+    if text is not None:
+        e["config"]["text"] = text
+    if dash:
+        e["border"]["color"] = {"fixed": border}
+    return e
+
+
+def c_conn(target, sx=1, sy=0, tx=-1, ty=0, color="#94a3b8"):
+    return {"source": {"x": sx, "y": sy}, "target": {"x": tx, "y": ty}, "targetName": target, "path": "straight",
+            "color": {"fixed": color}, "size": {"fixed": 2, "min": 1, "max": 10}}
+
+
+def c_node(key, x0, x1, title, sub, rows, top=6, bottom=30, bg="#1e293b", border="#475569", conns=()):
+    """rows: [(標籤, 欄位名稱)];欄位名稱 = 查詢的顯示名稱,值跟著那個欄位的單位和門檻顏色。"""
+    right = 100 - x1
+    h = 100 - top - bottom
+    tf = 0.14 if sub else 0.4   # 標題佔方塊高度的比例
+    out = [c_el(key, "rectangle", (x0, top, right, bottom), {"mode": "fixed", "fixed": ""}, bg=bg, border=border,
+                conns=conns),
+           c_el(key + "-t", "text", (x0 + 0.6, top + 2, right + 0.6, 100 - top - 2 - h * tf),
+                {"mode": "fixed", "fixed": title}, size=15, color="#f8fafc")]
+    if sub:
+        out.append(c_el(key + "-s", "text", (x0 + 0.6, top + 2 + h * 0.13, right + 0.6, 100 - top - 2 - h * 0.24),
+                        {"mode": "fixed", "fixed": sub}, size=11, color="#94a3b8"))
+    y = top + 2 + h * (0.27 if sub else 0.45)
+    step = (h * (0.70 if sub else 0.5)) / max(len(rows), 4 if sub else 1)
+    for i, (label, field) in enumerate(rows):
+        b = 100 - y - step
+        out.append(c_el(f"{key}-l{i}", "text", (x0 + 0.6, y, right + (x1 - x0) * 0.45, b), {"mode": "fixed", "fixed": label}))
+        out.append(c_el(f"{key}-v{i}", "metric-value", (x0 + (x1 - x0) * 0.55, y, right + 0.6, b),
+                        {"mode": "field", "field": field, "fixed": "—"}, color={"field": field, "fixed": "#e2e8f0"},
+                        align="right"))
+        y += step
+    return out
+
+
+T_FIELDS = {  # refId: (顯示名稱, 單位, 門檻 [(值, 顏色)])
+    "KR": ("Kong 收到", "reqps", None),
+    "A": ("Kong 自己處理", "ms", [(50, "orange"), (200, "red")]),
+    "KP": ("Kong 等後端回應 p99", "ms", [(30000, "orange"), (55000, "red")]),
+    "K5": ("Kong 自己回的 5xx", "reqps", [(0.01, "red")]),
+    "B": ("Kong ↔ Router 之間", "ms", [(100, "orange"), (300, "red")]),
+    "L": ("Kong 送了、Router 沒收到", "reqps", [(0.5, "red")]),
+    "RR": ("Router 收到", "reqps", None),
+    "C": ("Router 排隊等 Pod", "ms", [(10, "orange"), (100, "red")]),
+    "D": ("Router 連線到 Pod", "ms", [(10, "orange"), (100, "red")]),
+    "E": ("Router 等 Pod 回應", "ms", None),
+    "R5": ("Router 回的 5xx", "reqps", [(0.01, "red")]),
+    "O": ("Router 收到、不是 Kong 來的", "reqps", [(0.5, "orange")]),
+    "AR": ("App 收到", "reqps", None),
+    "F": ("App 自己處理", "ms", None),
+    "AM": ("App 最慢的一筆", "ms", [(30000, "orange"), (55000, "red")]),
+    "PR": ("Ready Pod", "none", None),
+    "A5": ("App 回的 5xx", "reqps", [(0.01, "red")]),
+}
+
+
+def t_override(ref):
+    name, unit, steps = T_FIELDS[ref]
+    props = [{"id": "displayName", "value": name}, {"id": "unit", "value": unit},
+             {"id": "decimals", "value": 0 if unit == "none" else 1}]
+    if steps:
+        props += [{"id": "color", "value": {"mode": "thresholds"}},
+                  {"id": "thresholds", "value": {"mode": "absolute", "steps": [{"color": "#e2e8f0", "value": None}]
+                                                 + [{"color": c, "value": v} for v, c in steps]}}]
+    return {"matcher": {"id": "byFrameRefID", "options": ref}, "properties": props}
+
+
+def topology():
+    """沒資料的欄位 Canvas 會顯示 Field not found,所以顯示用的查詢都補 -1 (對應成「沒資料」);
+    算差值的 expression 用另外一組補 NaN 的隱藏查詢:缺一個就算出 NaN,一樣顯示「沒資料」,不會把 -1 拿去算。"""
+    w = W5
+    def fb(expr):
+        return f"({expr}) or on() vector(-1)"
+    def nan(expr):
+        return f"({expr}) or on() vector(NaN)"
+    raw = {"X": K(nan(k_avg(K_UP, w)), "", "X", hide=True, instant=True),
+           "HKS": K(nan(kong_sent(w)), "", "HKS", hide=True, instant=True),
+           "HRR": O(nan(router_recv(w)), "", "HRR", hide=True, instant=True),
+           "HC": O(nan(r_avg("queue", w)), "", "HC", hide=True, instant=True),
+           "HD": O(nan(r_avg("connect", w)), "", "HD", hide=True, instant=True),
+           "HE": O(nan(r_avg("response", w)), "", "HE", hide=True, instant=True)}
+    targets = list(raw.values()) + [
+        K(fb(f'sum(rate(kong_http_requests_total{{{KS}}}[{w}]))'), "", "KR", instant=True),
+        K(fb(k_avg(K_SELF, w)), "", "A", instant=True),
+        K(fb(k_pct(0.99, K_UP, w)), "", "KP", instant=True),
+        K(f'sum(rate(kong_http_requests_total{{{KS}, source="kong", code=~"5.."}}[{w}])) or on() vector(0)', "", "K5", instant=True),
+        M(pos("$X - ($HC + $HD + $HE)"), "B"),
+        M(pos("$HKS - $HRR"), "L"),
+        O(fb(router_recv(w)), "", "RR", instant=True),
+        O(fb(r_avg("queue", w)), "", "C", instant=True),
+        O(fb(r_avg("connect", w)), "", "D", instant=True),
+        O(fb(r_avg("response", w)), "", "E", instant=True),
+        O(f'sum(rate(haproxy_backend_http_responses_total{{{RS}, code=~"5.*"}}[{w}])) or on() vector(0)', "", "R5", instant=True),
+        M(pos("$HRR - $HKS"), "O"),
+        O(fb(app_recv(w)), "", "AR", instant=True),
+        O(fb(app_avg(w)), "", "F", instant=True),
+        O(fb(APP_MAX), "", "AM", instant=True),
+        O(fb(f'sum(kube_pod_status_ready{{{POD}, condition="true"}})'), "", "PR", instant=True),
+        O(f'sum(rate(http_server_requests_seconds_count{{{APP}, status=~"5.."}}[{w}])) or on() vector(0)', "", "A5", instant=True),
+    ]
+    F = {ref: T_FIELDS[ref][0] for ref in T_FIELDS}
+    els = []
+    els += c_node("client", 0.5, 8.5, "Client", "外部 / 內部呼叫", [], conns=[c_conn("lb1")])
+    els += c_node("lb1", 11, 19, "A10 / F5 ?", "沒有指標", [], bg="#111827", border="#64748b", conns=[c_conn("kong")])
+    els += c_node("kong", 22, 40, "Kong", "最近 5 分鐘", [
+        ("收到", F["KR"]), ("自己處理（平均）", F["A"]), ("等後端回應 p99", F["KP"]), ("自己回的 5xx", F["K5"])],
+        conns=[c_conn("lb2")])
+    els += c_node("lb2", 43, 57, "A10 / F5 / 網路", "沒有指標，用差值推算", [
+        ("多花的時間", F["B"]), ("沒到 Router", F["L"])], bg="#111827", border="#64748b", conns=[c_conn("router")])
+    els += c_node("router", 60, 78, "OCP Router", "HAProxy，只有平均", [
+        ("收到", F["RR"]), ("排隊等 Pod", F["C"]), ("連線到 Pod", F["D"]), ("等 Pod 回應", F["E"]), ("回的 5xx", F["R5"])],
+        conns=[c_conn("app")])
+    els += c_node("app", 81, 99.5, "AP Pod", "Micrometer", [
+        ("收到", F["AR"]), ("自己處理（平均）", F["F"]), ("最慢的一筆", F["AM"]), ("Ready Pod", F["PR"]), ("回的 5xx", F["A5"])])
+    els += c_node("other", 60, 78, "其他來源", "", [("不是從 Kong 來的", F["O"])], top=72, bottom=1,
+                  bg="#111827", border="#64748b", conns=[c_conn("router", 0, 1, 0, -1)])
+    p = {"id": nid(), "type": "canvas", "title": "鏈路拓樸（最近 5 分鐘）",
+         "description": desc("同一條路徑每一段最近 5 分鐘的請求數、時間和錯誤。A10 / F5 沒有指標，時間用「Kong 等後端回應 − Router 量到的」推算，"
+                             "請求數用「Kong 送往後端 − Router 收到」推算。數字變橘 / 紅 = 超過參考門檻。",
+                             "先看哪個方塊有紅字，再往下看那一段的細節；時間花在哪段看下面的長條圖。"),
+         "datasource": MIXED, "targets": targets,
+         "fieldConfig": {"defaults": {"color": {"mode": "fixed", "fixedColor": "#e2e8f0"}, "noValue": "—",
+                                      "mappings": [{"type": "value", "options": {
+                                          "-1": {"text": "沒資料", "color": "#64748b", "index": 0}}},
+                                                   {"type": "special", "options": {"match": "nan", "result": {
+                                                       "text": "沒資料", "color": "#64748b", "index": 1}}}]},
+                         "overrides": [t_override(r) for r in T_FIELDS]},
+         "options": {"inlineEditing": False, "showAdvancedTypes": True, "panZoom": False, "infinitePan": False,
+                     "root": {"type": "frame", "name": "root", "elements": els,
+                              "background": {"color": {"fixed": "transparent"}},
+                              "border": {"color": {"fixed": "transparent"}},
+                              "constraint": {"horizontal": "left", "vertical": "top"}, "placement": {}, "config": {}}}}
+    return p
+
+
+B.line(topology(), h=12)
 def segments(w, inst):
     """依請求經過的順序:Kong 自己處理 → Kong ↔ Router 之間 → Router 排隊等 Pod → 連線到 Pod → 等 Pod 回應,
     再加兩條參考線 (App 自己處理、Client 感受到的總耗時)。Grafana 依 refId 排序,所以 refId 照這個順序編;X 是只拿來算差值的隱藏查詢。"""
@@ -360,7 +512,6 @@ B.line(
 # ---- ② Kong
 # ---- ①c 很慢 / 逾時:卡在誰
 B.row("①c 很慢 / 逾時（p99 卡在 30 秒、60 秒）：卡在 F5、Router 還是 AP Pod？")
-APP_MAX = f"1000 * max(http_server_requests_seconds_max{{{APP}}})"
 ROUTER_MAX_POD = f"max(haproxy_backend_http_average_response_latency_milliseconds{{{RS}}})"
 TIMEOUT_LINES = [{"color": "green", "value": None}, {"color": "orange", "value": 30000}, {"color": "red", "value": 60000}]
 TIMEOUT_GUIDE = """Kong 預設等後端 **60 秒**（connect / read timeout），OCP Router 預設等 Pod **30 秒**（`timeout server`）。
@@ -565,13 +716,13 @@ B.line(
                "**有 bytes、但 HTTP 回應數是 0 或沒有** → passthrough，Router 只看得到 TCP，請求數、回應時間都沒有，"
                "只能看 Kong 的等後端回應和 App 自己的時間；**Kong 的流量跟某條沒選到的 route 對得上** → 上方 OCP Route 選錯了。"),
           [("route", "Route"), ("backend", "Backend")],
-          [("HTTP 回應", O(f'sum by (route, backend) (rate(haproxy_backend_http_responses_total{{exported_namespace=~"$namespace", route=~"(?i).*${{keyword}}.*"}}[5m]))'),
+          [("HTTP 回應", O(f'sum by (route, backend) (rate(haproxy_backend_http_responses_total{{exported_namespace=~"$namespace", route=~"(?i).*(${{keyword}}).*"}}[5m]))'),
             [{"id": "unit", "value": "reqps"}, {"id": "decimals", "value": 1}]),
-           ("收到", O(f'sum by (route, backend) (rate(haproxy_backend_bytes_in_total{{exported_namespace=~"$namespace", route=~"(?i).*${{keyword}}.*"}}[5m]))'),
+           ("收到", O(f'sum by (route, backend) (rate(haproxy_backend_bytes_in_total{{exported_namespace=~"$namespace", route=~"(?i).*(${{keyword}}).*"}}[5m]))'),
             [{"id": "unit", "value": "Bps"}]),
-           ("送出", O(f'sum by (route, backend) (rate(haproxy_backend_bytes_out_total{{exported_namespace=~"$namespace", route=~"(?i).*${{keyword}}.*"}}[5m]))'),
+           ("送出", O(f'sum by (route, backend) (rate(haproxy_backend_bytes_out_total{{exported_namespace=~"$namespace", route=~"(?i).*(${{keyword}}).*"}}[5m]))'),
             [{"id": "unit", "value": "Bps"}]),
-           ("新連線", O(f'sum by (route, backend) (rate(haproxy_backend_connections_total{{exported_namespace=~"$namespace", route=~"(?i).*${{keyword}}.*"}}[5m]))'),
+           ("新連線", O(f'sum by (route, backend) (rate(haproxy_backend_connections_total{{exported_namespace=~"$namespace", route=~"(?i).*(${{keyword}}).*"}}[5m]))'),
             [{"id": "unit", "value": "cps"}, {"id": "decimals", "value": 1}])],
           sort="收到", key_width=190),
     ts("Kong 自己回的 502 / 503 / 504（連不上 / 逾時）",
@@ -583,15 +734,16 @@ B.line(
 
 # ---------------------------------------------------------------- variables
 def var(name, label, ds, query, all_value, desc):
-    """多選 + All;All 不是「全部」,而是 all_value 這個 regex (通常是名稱關鍵字)。選了特定值就只看那些值。"""
+    """多選 + All。清單本身已經用名稱關鍵字篩過,All = 清單裡全部 (all_value 為 None 時由 Grafana 把清單串成 regex)。"""
     return {"type": "query", "name": name, "label": label, "description": desc, "datasource": ds,
             "query": {"query": query, "refId": f"{name}-var"}, "definition": query, "regex": "",
             "refresh": 2, "sort": 1, "multi": True, "includeAll": True, "allValue": all_value,
             "current": {"selected": True, "text": ["All"], "value": ["$__all"]}, "hide": 0, "options": []}
 
 
-# 名稱關鍵字:不分大小寫、名稱裡有這段文字就算
-KW = "(?i).*${keyword}.*"
+# 名稱關鍵字:不分大小寫、名稱裡有這段文字就算;可以用 | 放多個 (例外名稱)。
+# 直接寫在變數清單的查詢裡 (各版 Grafana 都會代入),不放在 All 的 allValue (舊版 Grafana 不會再代入一次)。
+KW = "(?i).*($keyword).*"
 
 
 dash = {
@@ -610,20 +762,21 @@ dash = {
         {"type": "datasource", "name": "ocp_ds", "label": "OCP 資料來源", "query": "prometheus",
          "regex": "/^Prometheus.*OCP$/", "current": {}, "hide": 0, "refresh": 1},
         {"type": "textbox", "name": "keyword", "label": "名稱關鍵字",
-         "description": "同一條路徑共同的名稱（不分大小寫）。下面選 All 的欄位都只看名稱裡有這段文字的；個別欄位選特定值就不套用關鍵字。",
+         "description": "同一條路徑共同的名稱（不分大小寫）。下面的清單只會列出名稱裡有這段文字的；名稱不像的例外用 | 加進來，例如 order|ord-api。",
          "query": "", "current": {"text": "", "value": ""}, "hide": 0},
-        var("kong_service", "Kong Service", DSK, "label_values(kong_http_requests_total, service)", KW,
-            "All = 名稱裡有關鍵字的 Service；名稱不像的，直接選。"),
+        var("kong_service", "Kong Service", DSK, f'label_values(kong_http_requests_total{{service=~"{KW}"}}, service)', None,
+            "清單 = 名稱裡有關鍵字的 Service；All = 清單裡全部。"),
         var("kong_route", "Kong Route", DSK, 'label_values(kong_http_requests_total{service=~"$kong_service"}, route)', ".*",
             "清單跟著上面的 Service；All = 那些 Service 底下的全部 Route。"),
-        var("namespace", "OCP Namespace", DSO, "label_values(haproxy_backend_http_responses_total, exported_namespace)", ".+",
-            "All = 不限；同樣的名稱出現在多個 Namespace（例如 dev / prod）時，選要看的那個。"),
+        var("namespace", "OCP Namespace", DSO,
+            f'label_values(haproxy_backend_http_responses_total{{route=~"{KW}"}}, exported_namespace)', ".+",
+            "清單 = 有名稱符合關鍵字的 Route 的 Namespace；All = 不限。同樣名稱出現在多個 Namespace（例如 dev / prod）時，選要看的那個。"),
         var("router_route", "OCP Route", DSO,
-            'label_values(haproxy_backend_http_responses_total{exported_namespace=~"$namespace"}, route)', KW,
-            "All = 名稱裡有關鍵字的 Route；名稱不像的，直接選。"),
+            f'label_values(haproxy_backend_http_responses_total{{exported_namespace=~"$namespace", route=~"{KW}"}}, route)', None,
+            "清單 = 名稱裡有關鍵字的 Route；All = 清單裡全部。"),
         var("deployment", "AP Deployment", DSO,
-            'label_values(kube_deployment_spec_replicas{namespace=~"$namespace"}, deployment)', KW,
-            "All = 名稱裡有關鍵字的 Deployment；名稱不像的，直接選。"),
+            f'label_values(kube_deployment_spec_replicas{{namespace=~"$namespace", deployment=~"{KW}"}}, deployment)', None,
+            "清單 = 名稱裡有關鍵字的 Deployment；All = 清單裡全部。"),
     ]},
     "annotations": {"list": [{"builtIn": 1, "datasource": {"type": "grafana", "uid": "-- Grafana --"},
                               "enable": True, "hide": True, "iconColor": "rgba(0, 211, 255, 1)",

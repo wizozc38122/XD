@@ -87,7 +87,7 @@ Client →（A10/F5?）→ Kong →（A10/F5? 網路）→ OCP Router → AP Pod
 
 | 區塊 | 內容 |
 |---|---|
-| ① 鏈路總覽 | 每段平均花多久（長條 + 疊起來的走勢）、每段收到的請求數、5xx 是誰產生的 |
+| ① 鏈路總覽 | 拓樸圖（Client → A10/F5 → Kong → A10/F5 → Router → AP Pod，每個方塊的請求數、時間、錯誤，超過門檻變色）、每段平均花多久（長條 + 疊起來的走勢）、每段收到的請求數、5xx 是誰產生的 |
 | ①b 偶發的慢請求（p95 = 最慢的 5%、p99 = 最慢的 1%） | 各段 p95 / p99、App 以外造成的慢（Kong 等後端回應 p99 − App p99）、慢請求有多慢（p99 是平均的幾倍）、時間範圍內最差的 p99（依 Kong API）、App p99 依 URI / Pod |
 | ①c 很慢 / 逾時：卡在誰 | 每一段的最高值（Kong p99、Router 最慢 Pod 平均、App 最慢的一筆）、504 是誰回的、App 最慢的一筆 / Tomcat 執行緒忙碌 / GC 停頓（依 Pod）、判讀表 |
 | ② Kong | p95 / p99（總耗時、等後端回應、Kong 自己處理）、狀態碼與誰回的（Kong 自己回的 / 後端回的 / plugin 直接擋下）、各 Kong 節點、nginx 連線 |
@@ -103,17 +103,17 @@ Client →（A10/F5?）→ Kong →（A10/F5? 網路）→ OCP Router → AP Pod
 
 注意事項：
 
-- **用名稱關鍵字一次篩選**：上方「名稱關鍵字」輸入同一條路徑共同的名稱（例如 `order`，不分大小寫）。選 All 的欄位不是「全部」，而是「名稱裡有關鍵字的」：
+- **用名稱關鍵字一次篩選**：上方「名稱關鍵字」輸入同一條路徑共同的名稱（例如 `order`，不分大小寫），下面的清單就只剩名稱裡有這段文字的，All = 清單裡全部：
 
-  | 欄位 | All 代表 | 例外時 |
-  |---|---|---|
-  | Kong Service | 名稱有關鍵字的 Service | 名稱不像的直接選，可多選 |
-  | Kong Route | 上面那些 Service 底下的全部 Route | 只看某幾條 Route 時選 |
-  | OCP Namespace | 不限 | 同樣名稱出現在多個 Namespace（dev / prod）時選要看的 |
-  | OCP Route | 名稱有關鍵字的 Route | 名稱不像的直接選 |
-  | AP Deployment | 名稱有關鍵字的 Deployment | 名稱不像的直接選 |
+  | 欄位 | 清單 |
+  |---|---|
+  | Kong Service | 名稱有關鍵字的 Service |
+  | Kong Route | 上面選到的 Service 底下的 Route |
+  | OCP Namespace | 有名稱符合關鍵字的 Route 的 Namespace（All = 不限；同樣名稱在 dev / prod 都有時選要看的） |
+  | OCP Route | 名稱有關鍵字的 Route |
+  | AP Deployment | 名稱有關鍵字的 Deployment |
 
-  個別欄位選了特定值，該欄位就不套用關鍵字，其他欄位照樣用關鍵字。Kong 和 OCP 兩邊要是同一條路徑，差值才有意義；關鍵字空白 = 全部，請求數和時間會對不上。
+  名稱不像的例外用 `|` 加進關鍵字，例如 `order|ord-api`；清單裡也可以只勾其中幾個。Kong 和 OCP 兩邊要是同一條路徑，差值才有意義；關鍵字空白 = 全部，請求數和時間會對不上。
 - **平均和偶發的慢請求**：Router 只提供平均（每個 Router Pod 最近 1024 筆請求），所以 ① 各段拆解用平均（Kong 用直方圖的 sum ÷ count）。p95 / p99 只有 Kong 和 App（需開 Micrometer histogram）算得出來，在 ①b：Kong 等後端回應 p99 高、App p99 不高 → 慢請求在 App 以外；慢請求有多慢（p99 是平均的幾倍）哪段特別大，慢請求就是那段造成的。百分位數不能真的相減，「App 以外的慢請求」只當方向參考。要追單筆請求用 X-Request-ID 串 Kong、Router、App 的 log。
 - **「Kong 送了、Router 沒收到」很多時先排除假警報**：Kong 選的和 OCP Route 不是同一條路徑（Kong 一個 Service 可能對到好幾條 OCP route），或 OCP route 是 TLS passthrough（Router 是 TCP 模式，不記 HTTP 回應數、也沒有回應時間）。⑤ 的「每條 route 在 Router 上的流量」表可以確認：有 bytes 但沒有 HTTP 回應數 = passthrough。
 - **④ Router 看到的每個 Pod 沒資料**：Router 後面的 Pod 總數超過 `ROUTER_METRICS_HAPROXY_SERVER_THRESHOLD`（預設 500）時，Router 只輸出 route 層級的指標；passthrough 也沒有。改看 App 自己量的每個 Pod 時間。
