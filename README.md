@@ -103,9 +103,18 @@ Client →（A10/F5?）→ Kong →（A10/F5? 網路）→ OCP Router → AP Pod
 
 注意事項：
 
-- **兩邊要選同一條路徑**：上方先選 Kong 的 Service / Route，再選對應的 OCP Namespace / Route / Deployment。選的不是同一條路徑時，差值沒有意義。
+- **用名稱關鍵字一次篩選**：上方「名稱關鍵字」輸入同一條路徑共同的名稱（例如 `order`，不分大小寫）。選 All 的欄位不是「全部」，而是「名稱裡有關鍵字的」：
+
+  | 欄位 | All 代表 | 例外時 |
+  |---|---|---|
+  | Kong Service | 名稱有關鍵字的 Service | 名稱不像的直接選，可多選 |
+  | Kong Route | 上面那些 Service 底下的全部 Route | 只看某幾條 Route 時選 |
+  | OCP Namespace | 不限 | 同樣名稱出現在多個 Namespace（dev / prod）時選要看的 |
+  | OCP Route | 名稱有關鍵字的 Route | 名稱不像的直接選 |
+  | AP Deployment | 名稱有關鍵字的 Deployment | 名稱不像的直接選 |
+
+  個別欄位選了特定值，該欄位就不套用關鍵字，其他欄位照樣用關鍵字。Kong 和 OCP 兩邊要是同一條路徑，差值才有意義；關鍵字空白 = 全部，請求數和時間會對不上。
 - **平均和偶發的慢請求**：Router 只提供平均（每個 Router Pod 最近 1024 筆請求），所以 ① 各段拆解用平均（Kong 用直方圖的 sum ÷ count）。p95 / p99 只有 Kong 和 App（需開 Micrometer histogram）算得出來，在 ①b：Kong 等後端回應 p99 高、App p99 不高 → 慢請求在 App 以外；慢請求有多慢（p99 是平均的幾倍）哪段特別大，慢請求就是那段造成的。百分位數不能真的相減，「App 以外的慢請求」只當方向參考。要追單筆請求用 X-Request-ID 串 Kong、Router、App 的 log。
-- **Kong 的 Service / Route 不能選 All**：All 會拿全部 Kong 流量跟一條 OCP route 比，請求數和時間都對不上。
 - **「Kong 送了、Router 沒收到」很多時先排除假警報**：Kong 選的和 OCP Route 不是同一條路徑（Kong 一個 Service 可能對到好幾條 OCP route），或 OCP route 是 TLS passthrough（Router 是 TCP 模式，不記 HTTP 回應數、也沒有回應時間）。⑤ 的「每條 route 在 Router 上的流量」表可以確認：有 bytes 但沒有 HTTP 回應數 = passthrough。
 - **④ Router 看到的每個 Pod 沒資料**：Router 後面的 Pod 總數超過 `ROUTER_METRICS_HAPROXY_SERVER_THRESHOLD`（預設 500）時，Router 只輸出 route 層級的指標；passthrough 也沒有。改看 App 自己量的每個 Pod 時間。
 - **Kong 和 OCP 可以是兩個不同的 Prometheus**：跨資料來源的相減用 Grafana 的運算式（Expression），面板的資料來源會顯示為 Mixed。

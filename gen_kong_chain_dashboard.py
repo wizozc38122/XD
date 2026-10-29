@@ -16,8 +16,8 @@ MIXED = {"type": "datasource", "uid": "-- Mixed --"}
 EXPR = {"type": "__expr__", "uid": "__expr__", "name": "Expression"}
 
 KS = 'service=~"$kong_service", route=~"$kong_route"'
-RS = 'exported_namespace="$namespace", route=~"$router_route"'
-POD = 'namespace="$namespace", pod=~"$deployment-[a-z0-9]+-[a-z0-9]+"'
+RS = 'exported_namespace=~"$namespace", route=~"$router_route"'
+POD = 'namespace=~"$namespace", pod=~"$deployment-[a-z0-9]+-[a-z0-9]+"'
 APP = POD + ', uri!~"/actuator.*"'
 CT = POD + ', container!="", container!="POD"'
 RI = "$__rate_interval"
@@ -223,8 +223,9 @@ class Board:
 # ---------------------------------------------------------------- dashboard
 B = Board()
 B.line(text(
-    "**Kong → Router → AP 延遲鏈路**：一個請求的時間拆成每一段，找出慢在哪段、錯在哪段。上方先選 Kong 的 Service / Route，"
-    "再選對應的 OCP Namespace / Route / Deployment（兩邊要選同一條路徑，數字才對得起來）。\n\n"
+    "**Kong → Router → AP 延遲鏈路**：一個請求的時間拆成每一段，找出慢在哪段、錯在哪段。上方輸入**名稱關鍵字**（例如 `order`），"
+    "Kong Service、OCP Route、Deployment 選 All 的都會只看名稱裡有這段文字的；名稱不像的個別欄位直接選特定值。"
+    "Kong 和 OCP 兩邊要是同一條路徑，數字才對得起來。\n\n"
     "`Client →（A10/F5?）→ Kong →（A10/F5? 網路）→ OCP Router → AP Pod`　"
     "Kong ↔ Router 之間沒有指標，用「Kong 等後端回應 − Router 量到的時間」推算。時間都是**平均**（Router 只有平均），"
     "偶發的慢請求看 ①b。判讀表在下面「看到什麼 → 哪段有問題」。"), h=4)
@@ -558,19 +559,19 @@ B.line(
        overrides=[name_ref("C", "Kong 送了、Router 沒收到", [{"id": "color", "value": {"mode": "fixed", "fixedColor": "red"}}]),
                   name_ref("D", "Router 收到、不是 Kong 來的", [{"id": "color", "value": {"mode": "fixed", "fixedColor": "orange"}}])]))
 B.line(
-    table("這個 Namespace 每條 route 在 Router 上的流量（找 passthrough、選錯 route）",
-          desc("Namespace 裡每條 route 在 Router 上的 backend、HTTP 回應數、收到 / 送出的流量。"
+    table("名稱有關鍵字的 route 在 Router 上的流量（找 passthrough、選錯 route）",
+          desc("名稱裡有關鍵字的每條 route（不管上方 OCP Route 選了什麼；清空關鍵字 = 整個 Namespace）在 Router 上的 backend、HTTP 回應數、收到 / 送出的流量。"
                "backend 開頭是 be_http（HTTP）、be_edge_http（edge TLS）、be_secure（reencrypt）、be_tcp（**TLS passthrough**）。",
                "**有 bytes、但 HTTP 回應數是 0 或沒有** → passthrough，Router 只看得到 TCP，請求數、回應時間都沒有，"
                "只能看 Kong 的等後端回應和 App 自己的時間；**Kong 的流量跟某條沒選到的 route 對得上** → 上方 OCP Route 選錯了。"),
           [("route", "Route"), ("backend", "Backend")],
-          [("HTTP 回應", O(f'sum by (route, backend) (rate(haproxy_backend_http_responses_total{{exported_namespace="$namespace"}}[5m]))'),
+          [("HTTP 回應", O(f'sum by (route, backend) (rate(haproxy_backend_http_responses_total{{exported_namespace=~"$namespace", route=~"(?i).*${{keyword}}.*"}}[5m]))'),
             [{"id": "unit", "value": "reqps"}, {"id": "decimals", "value": 1}]),
-           ("收到", O(f'sum by (route, backend) (rate(haproxy_backend_bytes_in_total{{exported_namespace="$namespace"}}[5m]))'),
+           ("收到", O(f'sum by (route, backend) (rate(haproxy_backend_bytes_in_total{{exported_namespace=~"$namespace", route=~"(?i).*${{keyword}}.*"}}[5m]))'),
             [{"id": "unit", "value": "Bps"}]),
-           ("送出", O(f'sum by (route, backend) (rate(haproxy_backend_bytes_out_total{{exported_namespace="$namespace"}}[5m]))'),
+           ("送出", O(f'sum by (route, backend) (rate(haproxy_backend_bytes_out_total{{exported_namespace=~"$namespace", route=~"(?i).*${{keyword}}.*"}}[5m]))'),
             [{"id": "unit", "value": "Bps"}]),
-           ("新連線", O(f'sum by (route, backend) (rate(haproxy_backend_connections_total{{exported_namespace="$namespace"}}[5m]))'),
+           ("新連線", O(f'sum by (route, backend) (rate(haproxy_backend_connections_total{{exported_namespace=~"$namespace", route=~"(?i).*${{keyword}}.*"}}[5m]))'),
             [{"id": "unit", "value": "cps"}, {"id": "decimals", "value": 1}])],
           sort="收到", key_width=190),
     ts("Kong 自己回的 502 / 503 / 504（連不上 / 逾時）",
@@ -581,11 +582,16 @@ B.line(
 
 
 # ---------------------------------------------------------------- variables
-def var(name, label, ds, query, multi=False, include_all=False, regex=""):
-    return {"type": "query", "name": name, "label": label, "datasource": ds,
-            "query": {"query": query, "refId": f"{name}-var"}, "definition": query, "regex": regex,
-            "refresh": 2, "sort": 1, "multi": multi, "includeAll": include_all,
-            "allValue": ".*" if include_all else None, "current": {}, "hide": 0, "options": []}
+def var(name, label, ds, query, all_value, desc):
+    """多選 + All;All 不是「全部」,而是 all_value 這個 regex (通常是名稱關鍵字)。選了特定值就只看那些值。"""
+    return {"type": "query", "name": name, "label": label, "description": desc, "datasource": ds,
+            "query": {"query": query, "refId": f"{name}-var"}, "definition": query, "regex": "",
+            "refresh": 2, "sort": 1, "multi": True, "includeAll": True, "allValue": all_value,
+            "current": {"selected": True, "text": ["All"], "value": ["$__all"]}, "hide": 0, "options": []}
+
+
+# 名稱關鍵字:不分大小寫、名稱裡有這段文字就算
+KW = "(?i).*${keyword}.*"
 
 
 dash = {
@@ -596,20 +602,28 @@ dash = {
     "timezone": "browser", "schemaVersion": 41, "version": 1, "editable": True, "graphTooltip": 1,
     "refresh": "1m", "time": {"from": "now-1h", "to": "now"},
     "links": [{"title": "OCP 壓測影響評估（單一 Deployment）", "type": "link", "icon": "dashboard",
-               "url": "/d/ocp-loadtest-impact/?var-datasource=${ocp_ds}&var-namespace=${namespace}&var-workload=${deployment}",
+               "url": "/d/ocp-loadtest-impact/?var-datasource=${ocp_ds}&${namespace:queryparam}&var-workload=${deployment:text}",
                "keepTime": True, "targetBlank": False}],
     "templating": {"list": [
         {"type": "datasource", "name": "kong_ds", "label": "Kong 資料來源", "query": "prometheus", "regex": "",
          "current": {}, "hide": 0, "refresh": 1},
         {"type": "datasource", "name": "ocp_ds", "label": "OCP 資料來源", "query": "prometheus",
          "regex": "/^Prometheus.*OCP$/", "current": {}, "hide": 0, "refresh": 1},
-        # 不給 All:All 會拿全部 Kong 流量跟一條 OCP route 比,請求數和時間都對不上
-        var("kong_service", "Kong Service", DSK, "label_values(kong_http_requests_total, service)", True, False),
-        var("kong_route", "Kong Route", DSK, 'label_values(kong_http_requests_total{service=~"$kong_service"}, route)', True, False),
-        var("namespace", "OCP Namespace", DSO, "label_values(haproxy_backend_http_responses_total, exported_namespace)"),
+        {"type": "textbox", "name": "keyword", "label": "名稱關鍵字",
+         "description": "同一條路徑共同的名稱（不分大小寫）。下面選 All 的欄位都只看名稱裡有這段文字的；個別欄位選特定值就不套用關鍵字。",
+         "query": "", "current": {"text": "", "value": ""}, "hide": 0},
+        var("kong_service", "Kong Service", DSK, "label_values(kong_http_requests_total, service)", KW,
+            "All = 名稱裡有關鍵字的 Service；名稱不像的，直接選。"),
+        var("kong_route", "Kong Route", DSK, 'label_values(kong_http_requests_total{service=~"$kong_service"}, route)', ".*",
+            "清單跟著上面的 Service；All = 那些 Service 底下的全部 Route。"),
+        var("namespace", "OCP Namespace", DSO, "label_values(haproxy_backend_http_responses_total, exported_namespace)", ".+",
+            "All = 不限；同樣的名稱出現在多個 Namespace（例如 dev / prod）時，選要看的那個。"),
         var("router_route", "OCP Route", DSO,
-            'label_values(haproxy_backend_http_responses_total{exported_namespace="$namespace"}, route)', True, True),
-        var("deployment", "AP Deployment", DSO, 'label_values(kube_deployment_spec_replicas{namespace="$namespace"}, deployment)'),
+            'label_values(haproxy_backend_http_responses_total{exported_namespace=~"$namespace"}, route)', KW,
+            "All = 名稱裡有關鍵字的 Route；名稱不像的，直接選。"),
+        var("deployment", "AP Deployment", DSO,
+            'label_values(kube_deployment_spec_replicas{namespace=~"$namespace"}, deployment)', KW,
+            "All = 名稱裡有關鍵字的 Deployment；名稱不像的，直接選。"),
     ]},
     "annotations": {"list": [{"builtIn": 1, "datasource": {"type": "grafana", "uid": "-- Grafana --"},
                               "enable": True, "hide": True, "iconColor": "rgba(0, 211, 255, 1)",
