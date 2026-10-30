@@ -105,6 +105,7 @@ GUIDE = """### 這個 Dashboard 怎麼用
 | 應用程式報錯 | ③ **錯誤回應（依類型）**、**失敗 / 被拒的指令** |
 | 對方說「指令打不進去」、有在用 EVAL / Lua 腳本 | ③b **Lua 佔用主執行緒**、**單次腳本耗時**、**BUSY 錯誤**、**指令排隊的跡象** |
 | 權限錯誤（NOPERM、WRONGPASS） | ③ **權限被拒（依類型）** |
+| 看起來都沒滿、卻 command timeout | ⑤b **15 秒尖峰**、**最忙的那一顆核心**、**網卡使用率**、**TCP 重傳** |
 | 連不上、連線被拒、連線越來越多 | ① 健康總覽 → ⑤ **連線數使用率**、**拒絕連線**、**各帳號連線數** |
 | 想知道是哪個帳號（專案） | ⑤ **各帳號** 開頭的圖表：連線、重連、大回應 |
 | 容器被 OOM kill、Redis 到不了 maxmemory | ④ **實際佔用（RSS）vs 資料用量 vs maxmemory**、**記憶體組成** |
@@ -347,39 +348,71 @@ LUA_SHARE_1M = f"sum by (instance) (rate(redis_commands_duration_seconds_total{{
 LUA_AVG_1M = (f"sum by (instance) (rate(redis_commands_duration_seconds_total{{{CIS}}}[1m])) / "
               f"(sum by (instance) (rate(redis_commands_total{{{CIS}}}[1m])) > 0)")
 NOLUA = "這段時間沒有 EVAL / EVALSHA / FCALL"
-LUA_GUIDE = """**怎麼證明是 Lua 腳本卡住**：Redis 一次只跑一個指令，腳本跑完之前，其他人的指令都在排隊（不是被丟掉，是等）。
+LUA_GUIDE = """**怎麼證明是 Lua 腳本卡住**：Redis 一次只跑一個指令，腳本跑完前，其他人的指令都在排隊。Redis 沒有「佇列長度」指標，用下面的證據：
 
-1. **Lua 佔用主執行緒**接近 100% → 那段時間 Redis 幾乎都在跑腳本，其他指令只能等。
-2. **單次腳本耗時**是 ms～秒級，一般指令是 µs 級 → 每跑一次腳本，後面的指令就多等那麼久。
-3. 一般指令在 Redis 內的執行時間仍然很短，但應用程式 timeout → 時間花在**排隊**，不是指令本身慢。
-4. 加強證據：**BUSY 錯誤**（腳本跑超過 busy-reply-threshold，預設 5 秒，其他指令直接被拒）、client 輸入緩衝堆積、重連變多、`SLOWLOG GET` 幾乎都是 EVAL / EVALSHA。"""
+- **其他指令要排多久**（最直接）：exporter 下的簡單指令平常幾 ms 回來，變成秒級 = 每個指令都在排隊。
+- **Lua 佔用主執行緒**接近 100% → 排隊是腳本造成的。
+- **單次腳本耗時** ms～秒級、一般指令 µs 級 → 每跑一次腳本，後面的指令就多等那麼久。
+- **BUSY 錯誤** > 0 → 腳本跑超過 5 秒，其他指令直接被拒。
+- 是哪支腳本、誰呼叫的：`SLOWLOG GET`。"""
 panels.append(row("③b Lua 腳本（EVAL / FCALL）：是不是腳本佔住 Redis、卡住其他指令", y)); y += 1
-panels.append({"id": nid(), "type": "text", "title": "", "gridPos": gp(0, y, 12, 8),
+panels.append({"id": nid(), "type": "text", "title": "", "gridPos": gp(0, y, 9, 8),
                "options": {"mode": "markdown", "content": LUA_GUIDE}})
+# exporter 抓一輪要下幾個簡單指令 (INFO 等),它們跟其他 client 一樣排隊;平常幾 ms,主執行緒被佔滿時會變成秒級
+QUEUE_WAIT = f"max by (instance) (redis_exporter_last_scrape_duration_seconds{{{CI}}})"
+QUEUE_TH = steps(("green", None), ("yellow", 0.1), ("red", 1))
 SH = 4
 panels += [
+    stat("其他指令要排多久（這段時間最高）",
+         desc("exporter 每 15 秒連進 Redis 下幾個簡單指令（INFO 等），這些指令跟應用程式的指令一樣要排隊。"
+              "這裡是時間範圍內最久的一次（最慢的節點）。",
+              "幾 ms～幾十 ms。",
+              "到秒級 = Redis 主執行緒被佔住，每個指令都在排隊；這就是應用程式 command timeout 的原因。"),
+         f"max(max_over_time(redis_exporter_last_scrape_duration_seconds{{{CI}}}[$__range]))", gp(9, y, 5, 2 * SH),
+         unit="s", th=QUEUE_TH),
     stat("Lua 佔用主執行緒（這段時間最高）",
          desc("時間範圍內，腳本佔掉主執行緒時間的最高比例（每分鐘看一次，取最忙的節點）。",
               "< 30%。", "> 80% = 那一分鐘 Redis 幾乎都在跑腳本，其他指令都在排隊。"),
-         f"max(max_over_time(({LUA_SHARE_1M})[$__range:1m]))", gp(12, y, 6, SH), unit="percentunit",
+         f"max(max_over_time(({LUA_SHARE_1M})[$__range:1m]))", gp(14, y, 5, SH), unit="percentunit",
          th=steps(("green", None), ("yellow", 0.3), ("red", 0.8)), no_value=NOLUA, decimals=0),
     stat("單次腳本平均耗時（這段時間最高）",
          desc("時間範圍內，每次 EVAL / EVALSHA / FCALL 平均跑多久的最高值（每分鐘看一次）。",
               "1 ms 以內。", "幾十 ms 以上 = 每次腳本都讓其他指令等那麼久；> 5 秒會讓其他指令收到 BUSY。"),
-         f"max(max_over_time(({LUA_AVG_1M})[$__range:1m]))", gp(18, y, 6, SH), unit="s",
+         f"max(max_over_time(({LUA_AVG_1M})[$__range:1m]))", gp(19, y, 5, SH), unit="s",
          th=steps(("green", None), ("yellow", 0.01), ("red", 0.1)), no_value=NOLUA),
 ]
 panels += [
     stat("腳本呼叫次數（這段時間）",
          desc("時間範圍內 EVAL / EVALSHA / FCALL 總共被呼叫幾次。", "依業務。",
               "次數不多但左邊佔用很高 = 單一腳本很重（一次處理很多 key / 大迴圈）。"),
-         f"sum(increase(redis_commands_total{{{CIS}}}[$__range]))", gp(12, y + SH, 6, SH), unit="short",
+         f"sum(increase(redis_commands_total{{{CIS}}}[$__range]))", gp(14, y + SH, 5, SH), unit="short",
          no_value=NOLUA, decimals=0),
     stat("BUSY 錯誤（這段時間）",
          desc("其他指令因為腳本跑太久被 Redis 直接拒絕（BUSY Redis is busy running a script）的次數。",
               "0。", "> 0 = 有腳本跑超過 busy-reply-threshold（預設 5 秒），這段時間其他指令全部失敗。"),
-         f"sum({new_counts(f'redis_errors_total{{{CI},err=\"BUSY\"}}', '$__range')}) or vector(0)", gp(18, y + SH, 6, SH),
+         f"sum({new_counts(f'redis_errors_total{{{CI},err=\"BUSY\"}}', '$__range')}) or vector(0)", gp(19, y + SH, 5, SH),
          unit="short", th=ALERT_COUNT, decimals=0),
+]
+y += 8
+panels += [
+    ts("其他指令要排多久（exporter 實測）",
+       desc("exporter 每 15 秒連進 Redis 查一輪（INFO 等幾個簡單指令）花多久。這些指令本身幾乎不花時間，"
+            "多出來的都是排在別人後面等。Redis 沒有「佇列長度」指標，這條線就是排隊的實測值。黃線 0.1 秒、紅線 1 秒。",
+            "幾 ms～幾十 ms，而且平穩。",
+            "跟左上 Lua 佔用同時升高到秒級 = 腳本把 Redis 佔住，其他人的指令都在排隊（對方說「指令打不進去」）；"
+            "Lua 不高但這條也升高 = 是別的大指令或主機問題，看 ⑤b。"),
+       [tgt(QUEUE_WAIT, "{{instance}}", "A")],
+       gp(0, y, 12, 8), unit="s", th=QUEUE_TH, th_style="line", legend_calcs=("max", "lastNotNull")),
+    ts("指令排隊的跡象（client 端）",
+       desc("Redis 忙著跑腳本時，其他 client 送來的指令會堆在輸入緩衝等著；等太久的 client 會逾時、斷線再重連。",
+            "輸入緩衝幾 KB 以內；新建連線很低。",
+            "跟左上 Lua 佔用同時升高 = 指令在排隊等腳本跑完（對方說「指令打不進去」就是這個）。"),
+       [tgt(f"max by (instance) (redis_client_recent_max_input_buffer_bytes{{{CI}}})", "{{instance}} 輸入緩衝最大", "A"),
+        tgt(f"sum by (instance) (rate(redis_connections_received_total{{{CI}}}[{RI}]))", "{{instance}} 新建連線 / 秒", "B")],
+       gp(12, y, 12, 8), unit="short",
+       overrides=[{"matcher": {"id": "byRegexp", "options": ".*輸入緩衝最大"},
+                   "properties": [{"id": "unit", "value": "bytes"}, {"id": "custom.axisPlacement", "value": "right"}]}],
+       legend_calcs=("max", "lastNotNull")),
 ]
 y += 8
 panels += [
@@ -413,23 +446,13 @@ panels += [
 ]
 y += 8
 panels += [
-    ts("指令排隊的跡象（client 端）",
-       desc("Redis 忙著跑腳本時，其他 client 送來的指令會堆在輸入緩衝等著；等太久的 client 會逾時、斷線再重連。",
-            "輸入緩衝幾 KB 以內；新建連線很低。",
-            "跟左上 Lua 佔用同時升高 = 指令在排隊等腳本跑完（對方說「指令打不進去」就是這個）。"),
-       [tgt(f"max by (instance) (redis_client_recent_max_input_buffer_bytes{{{CI}}})", "{{instance}} 輸入緩衝最大", "A"),
-        tgt(f"sum by (instance) (rate(redis_connections_received_total{{{CI}}}[{RI}]))", "{{instance}} 新建連線 / 秒", "B")],
-       gp(0, y, 8, 8), unit="short",
-       overrides=[{"matcher": {"id": "byRegexp", "options": ".*輸入緩衝最大"},
-                   "properties": [{"id": "unit", "value": "bytes"}, {"id": "custom.axisPlacement", "value": "right"}]}],
-       legend_calcs=("max", "lastNotNull")),
     ts("腳本呼叫次數 vs 全部指令（每秒）",
        desc("每秒有幾次腳本呼叫，和 Redis 每秒處理的全部指令數（含腳本裡的 redis.call）。",
             "腳本佔全部的一小部分。",
             "腳本次數不多、但左上 Lua 佔用很高 = 每個腳本都很重；全部指令數掉下去 = 其他人的指令被擠掉了。"),
        [tgt(f"sum by (instance) (rate(redis_commands_total{{{CIS}}}[{RI}]))", "{{instance}} 腳本", "A"),
         tgt(f"sum by (instance) (rate(redis_commands_processed_total{{{CI}}}[{RI}]))", "{{instance}} 全部指令", "B")],
-       gp(8, y, 8, 8), unit="ops", no_value=NOLUA),
+       gp(0, y, 12, 8), unit="ops", no_value=NOLUA),
     ts("BUSY 與腳本錯誤（每分鐘次數）",
        desc("**BUSY** 其他指令因腳本跑太久被拒　**NOSCRIPT** EVALSHA 找不到腳本（節點重啟 / failover 後要重新 SCRIPT LOAD）　"
             "**UNKILLABLE** 腳本已經寫入資料、不能用 SCRIPT KILL 停（只能 SHUTDOWN NOSAVE）。另列腳本本身執行失敗的次數。",
@@ -437,7 +460,7 @@ panels += [
             "BUSY > 0 是腳本卡住 Redis 最直接的證據：那段時間所有其他指令都被拒絕。"),
        [tgt(f"sum by (err) ({new_counts(f'redis_errors_total{{{CI},err=~\"BUSY|NOSCRIPT|UNKILLABLE\"}}', '1m')})", "{{err}}", "A"),
         tgt(f"sum by (cmd) ({new_counts(f'redis_commands_failed_calls_total{{{CIS}}}', '1m')}) > 0", "{{cmd}} 執行失敗", "B")],
-       gp(16, y, 8, 8), unit="short", legend_calcs=("max", "lastNotNull"), no_value="0"),
+       gp(12, y, 12, 8), unit="short", legend_calcs=("max", "lastNotNull"), no_value="0"),
 ]
 y += 8
 
@@ -642,6 +665,79 @@ panels += [
          col("最久閒置", [{"id": "unit", "value": "s"}, {"id": "decimals", "value": 0}])]},
      "options": {"showHeader": True, "cellHeight": "sm", "footer": {"show": False}}},
 ]
+y += 8
+
+# ⑤b 看起來沒滿、卻 timeout:短暫爆滿與主機 / 網路瓶頸
+NJ = 'job=~"$node_job"'
+NIC = 'device!~"lo|docker.*|veth.*|br-.*|cni.*|flannel.*|virbr.*"'
+NONODE = "沒有資料：上方「主機 (node exporter)」要選 Redis 主機的 node exporter"
+SPIKE_GUIDE = """**看起來都沒滿、卻 command timeout**：圖表多半是 15 秒～1 分鐘的平均，Redis 是單執行緒，爆滿幾百毫秒就足以讓 timeout 設得短的 client 逾時。
+
+- **先看 ③b「其他指令要排多久」**：秒級 = Redis 在排隊（看是誰佔住）；一直只有幾 ms = Redis 沒塞，問題在主機、網路或 client。
+- **右邊 15 秒尖峰**碰到 100%，1 分鐘平均卻不高 → Redis 主執行緒短暫滿了（大指令、Lua、某個 client 一次灌大量指令）。
+- **下面三張**：某一顆核心滿（網路中斷 softirq、docker-proxy）、網卡滿、TCP 重傳 → 卡在主機或網路，不在 Redis。
+- 都沒有 → 在 timeout 的那台跑 `redis-cli -h <redis> --latency-history -i 1`：PING 正常 = 問題在 client（連線池、執行緒、GC）。"""
+panels.append(row("⑤b 看起來沒滿、卻 command timeout：短暫爆滿與主機 / 網路瓶頸", y)); y += 1
+MAIN_CPU = ("sum by (instance) ({f}(redis_cpu_sys_main_thread_seconds_total{{{ci}}}[{w}]) + "
+            "{f}(redis_cpu_user_main_thread_seconds_total{{{ci}}}[{w}])) or "
+            "sum by (instance) ({f}(redis_cpu_sys_seconds_total{{{ci}}}[{w}]) + {f}(redis_cpu_user_seconds_total{{{ci}}}[{w}]))")
+panels += [
+    {"id": nid(), "type": "text", "title": "", "gridPos": gp(0, y, 9, 8), "options": {"mode": "markdown", "content": SPIKE_GUIDE}},
+    ts("Redis 主執行緒 CPU：15 秒尖峰 vs 1 分鐘平均",
+       desc("實線是每 15 秒（兩次抓取之間）的 CPU，虛線是 1 分鐘平均。Redis 指令是單執行緒，100% 就是極限。",
+            "實線也低於 80%。",
+            "實線常碰到 100%、虛線只有一半左右 = 有短暫爆滿，這段時間其他 client 的指令在排隊；"
+            "對照 ② 每節點 ops、③b Lua、② 最大的單次回應，看是哪種指令造成。15 秒內更短的爆滿還是看不到，要用 redis-cli 每秒看。"),
+       [tgt(MAIN_CPU.format(f="irate", ci=CI, w="1m"), "{{instance}} 15 秒", "A"),
+        tgt(MAIN_CPU.format(f="rate", ci=CI, w="1m"), "{{instance}} 1 分鐘平均", "B")],
+       gp(9, y, 15, 8), unit="percentunit", th=steps(("green", None), ("red", 0.8)), th_style="line", min_=0, max_=1,
+       overrides=[{"matcher": {"id": "byRegexp", "options": ".*1 分鐘平均"},
+                   "properties": [{"id": "custom.lineStyle", "value": {"fill": "dash", "dash": [8, 6]}},
+                                  {"id": "custom.fillOpacity", "value": 0}]}],
+       legend_calcs=("max", "lastNotNull")),
+]
+y += 8
+panels += [
+    ts("主機：最忙的那一顆 CPU 核心",
+       desc("Redis 主機上最忙的一顆核心（15 秒解析度），以及其中處理網路中斷（softirq）的比例。虛線是所有核心的平均。",
+            "最忙的核心也低於 80%。",
+            "平均很低、但某一顆核心滿了 = 單核瓶頸：網路中斷都擠在同一顆（softirq 高，要調 RPS / irqbalance）、"
+            "docker-proxy 轉送（Docker 用 -p 開 port，可改 host network）、或 Redis 主執行緒跟它們搶同一顆。"),
+       [tgt(f"max by (instance) (1 - irate(node_cpu_seconds_total{{{NJ},mode=\"idle\"}}[1m]))", "{{instance}} 最忙的核心", "A"),
+        tgt(f"max by (instance) (irate(node_cpu_seconds_total{{{NJ},mode=\"softirq\"}}[1m]))", "{{instance}} 網路中斷（softirq）最高", "B"),
+        tgt(f"1 - avg by (instance) (irate(node_cpu_seconds_total{{{NJ},mode=\"idle\"}}[1m]))", "{{instance}} 全部核心平均", "C")],
+       gp(0, y, 8, 8), unit="percentunit", th=steps(("green", None), ("red", 0.8)), th_style="line", min_=0, max_=1,
+       overrides=[{"matcher": {"id": "byRegexp", "options": ".*全部核心平均"},
+                   "properties": [{"id": "custom.lineStyle", "value": {"fill": "dash", "dash": [8, 6]}},
+                                  {"id": "custom.fillOpacity", "value": 0}]}],
+       no_value=NONODE, legend_calcs=("max", "lastNotNull")),
+    ts("主機：網卡使用率（÷ 網卡速度）",
+       desc("每張網卡收 / 送的量 ÷ 網卡速度（15 秒解析度）。虛擬機或部分虛擬網卡不回報速度，就不會有線。",
+            "低於 70%。",
+            "接近 100% = 網卡滿了，所有 client 的回應都在排隊，Redis 本身卻不忙；通常是大 key / 大回應（看 ② 最大的單次回應）。"),
+       [tgt(f"max by (instance) (irate(node_network_receive_bytes_total{{{NJ},{NIC}}}[1m]) / "
+            f"(node_network_speed_bytes{{{NJ},{NIC}}} > 0))", "{{instance}} 收", "A"),
+        tgt(f"max by (instance) (irate(node_network_transmit_bytes_total{{{NJ},{NIC}}}[1m]) / "
+            f"(node_network_speed_bytes{{{NJ},{NIC}}} > 0))", "{{instance}} 送", "B")],
+       gp(8, y, 8, 8), unit="percentunit", th=steps(("green", None), ("red", 0.8)), th_style="line", min_=0, max_=1,
+       no_value="沒有資料：網卡沒有回報速度（常見於虛擬機），改看 ⑦ 主機網路的流量", legend_calcs=("max", "lastNotNull")),
+    ts("主機：TCP 重傳、連線佇列溢出、conntrack",
+       desc("**TCP 重傳率** = 重送的封包 ÷ 送出的封包　**連線佇列溢出** = 新連線來不及接、被丟掉（每秒）　"
+            "**conntrack 使用率** = 連線追蹤表用了幾成（Docker / iptables NAT 會用到）。",
+            "重傳率 < 1%；溢出 0；conntrack < 70%。",
+            "重傳率高 = 網路掉封包，client 要等重送（常見 200ms 起跳）；溢出 > 0 = 連線進不來（tcp-backlog / somaxconn 太小）；"
+            "conntrack 接近 100% = 新連線被丟。"),
+       [tgt(f"sum by (instance) (irate(node_netstat_Tcp_RetransSegs{{{NJ}}}[1m])) / "
+            f"(sum by (instance) (irate(node_netstat_Tcp_OutSegs{{{NJ}}}[1m])) > 0)", "{{instance}} TCP 重傳率", "A"),
+        tgt(f"node_nf_conntrack_entries{{{NJ}}} / (node_nf_conntrack_entries_limit{{{NJ}}} > 0)", "{{instance}} conntrack 使用率", "B"),
+        tgt(f"sum by (instance) (irate(node_netstat_TcpExt_ListenOverflows{{{NJ}}}[1m]) + "
+            f"irate(node_netstat_TcpExt_ListenDrops{{{NJ}}}[1m]))", "{{instance}} 連線佇列溢出 / 秒", "C")],
+       gp(16, y, 8, 8), unit="percentunit", min_=0,
+       overrides=[{"matcher": {"id": "byRegexp", "options": ".*連線佇列溢出.*"},
+                   "properties": [{"id": "unit", "value": "short"}, {"id": "custom.axisPlacement", "value": "right"}]}],
+       no_value=NONODE, legend_calcs=("max", "lastNotNull")),
+]
+panels[-1]["fieldConfig"]["defaults"]["custom"]["axisSoftMax"] = 0.05  # 都是 0 時刻度不要放大到 10000%
 y += 8
 
 # ⑥ 複寫、failover、背景存檔 (預設收合)

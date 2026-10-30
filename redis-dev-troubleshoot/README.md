@@ -35,6 +35,7 @@ python gen_dashboard.py redis-dev-troubleshoot-dashboard.json "Prometheus-.*"
    - ③b Lua 腳本（EVAL / FCALL）：是不是腳本佔住 Redis、卡住其他指令
 4. ④ 記憶體與 Key：會不會滿、資料會不會不見
 5. ⑤ CPU、連線與帳號：瓶頸在哪、是哪個帳號
+   - ⑤b 看起來沒滿、卻 command timeout：短暫爆滿與主機 / 網路瓶頸
 6. ⑥ 複寫、Failover 與背景存檔（預設收合）
 7. ⑦ 主機資源（node exporter，預設收合）
 
@@ -45,12 +46,24 @@ Redis 一次只執行一個指令；一個 EVAL / EVALSHA / FCALL 從開始到�
 
 | 證據 | 面板 | 怎麼算 |
 |---|---|---|
+| **其他指令要排多久（最直接）** | 其他指令要排多久（exporter 實測） | `redis_exporter_last_scrape_duration_seconds`：exporter 每 15 秒下幾個簡單指令（INFO 等），它們跟其他 client 一樣要排隊。平常幾 ms，被佔住時變成秒級。Redis 沒有「佇列長度」指標，這就是排隊的實測值 |
 | 主執行緒被腳本佔掉多少 | Lua 佔用主執行緒 | `rate(redis_commands_duration_seconds_total{cmd=~"eval.*\|fcall.*"})`：每秒有幾秒在跑腳本（含腳本裡 `redis.call` 的時間）。接近 100% = 其他指令都在排隊 |
 | 每次腳本跑多久 | 單次腳本平均耗時、每次腳本耗時 vs 一般指令 | 腳本 ms～秒級、一般指令 µs 級；一般指令在 Redis 內的時間**不含排隊**，所以它正常但應用程式 timeout = 卡在腳本後面 |
 | 其他指令被拒 | BUSY 錯誤 | `redis_errors_total{err="BUSY"}`，最直接的證據 |
 | 其他指令在排隊 | 指令排隊的跡象 | client 輸入緩衝堆積、新建連線變多（等太久逾時重連） |
 
 要知道是哪支腳本、誰呼叫的：`SLOWLOG GET`（含 client ip:port 與參數）、`CLIENT LIST`（`cmd=evalsha` 的連線）。Redis 沒有依帳號的指令統計。
+
+## 看起來沒滿、卻 command timeout（⑤b）
+
+圖表多半是 15 秒～1 分鐘的平均，Redis 是單執行緒，爆滿幾百毫秒就足以讓 timeout 設得短的 client 逾時；主機的瓶頸也常不在 Redis 指標裡：
+
+- 先看 ③b「其他指令要排多久」：秒級 = Redis 在排隊；一直只有幾 ms = Redis 沒塞，問題在主機、網路或 client。
+- **Redis 主執行緒 CPU 15 秒尖峰**：不被 1 分鐘平均蓋掉。
+- **最忙的那一顆 CPU 核心**（含網路中斷 softirq）：主機 CPU 平均很低、但一顆核心滿了（網路中斷擠同一顆、docker-proxy 轉送）。
+- **網卡使用率 ÷ 網卡速度**、**TCP 重傳率 / 連線佇列溢出 / conntrack**。需要上方選 Redis 主機的 node exporter；虛擬網卡常不回報速度。
+- 都正常時，在 timeout 的那台跑 `redis-cli -h <redis> --latency-history -i 1`：PING 正常 = 問題在 client（連線池、執行緒、GC）。
+- 要看每秒的主執行緒忙碌程度：`redis-cli info stats` 的 `instantaneous_eventloop_cycles_per_sec × instantaneous_eventloop_duration_usec ÷ 10⁶`（redis_exporter v1.74.0 沒輸出這組，只能手動看）。
 
 ## 容器記憶體上限 vs maxmemory（④）
 
