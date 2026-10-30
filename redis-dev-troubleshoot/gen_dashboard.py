@@ -107,6 +107,7 @@ GUIDE = """### 這個 Dashboard 怎麼用
 | 權限錯誤（NOPERM、WRONGPASS） | ③ **權限被拒（依類型）** |
 | 連不上、連線被拒、連線越來越多 | ① 健康總覽 → ⑤ **連線數使用率**、**拒絕連線**、**各帳號連線數** |
 | 想知道是哪個帳號（專案） | ⑤ **各帳號** 開頭的圖表：連線、重連、大回應 |
+| 容器被 OOM kill、Redis 到不了 maxmemory | ④ **實際佔用（RSS）vs 資料用量 vs maxmemory**、**記憶體組成** |
 | 資料不見、讀不到 | ④ **被淘汰的 key**、**命中率**、⑥ 角色變化（failover） |
 | 只有某一台特別忙／特別滿 | ② **每節點 ops**、④ **每個 master 的 key 數**（熱點 key 或 hash tag 集中） |
 
@@ -460,6 +461,76 @@ panels += [
        th=steps(("green", None), ("yellow", 1.5)), th_style="line", legend_calcs=("mean", "max", "lastNotNull")),
 ]
 y += 8
+# 實際佔用 (RSS) vs maxmemory:maxmemory 只比對 used_memory,容器 / 主機看的是 RSS (含碎片、程式開銷)
+RSS = f"redis_memory_used_rss_bytes{{{CI}}}"
+USED = f"redis_memory_used_bytes{{{CI}}}"
+MAXM = f"(redis_memory_max_bytes{{{CI}}} > 0)"
+FULL = f"{MAXM} * {RSS} / {USED}"   # 用滿 maxmemory 時,照現在的碎片率預估實際佔用
+DASH = [{"id": "custom.lineStyle", "value": {"fill": "dash", "dash": [8, 6]}}, {"id": "custom.fillOpacity", "value": 0}]
+panels += [
+    ts("實際佔用（RSS）vs 資料用量 vs maxmemory",
+       desc("**實際佔用** = 作業系統真正給 Redis 的記憶體，Docker / K8s 的記憶體上限、OOM kill 看的是這個。"
+            "**資料用量**（used_memory）= Redis 自己算的，maxmemory 只跟這個比，不含碎片和程式開銷。"
+            "**用滿 maxmemory 時預估實際佔用** = maxmemory × 現在的碎片率。",
+            "「用滿時預估」比容器記憶體上限低一截（至少留 20～30%，有開存檔要留更多）。",
+            "「用滿時預估」超過容器上限 = 資料還沒到 maxmemory 容器就先被 OOM kill，maxmemory 要調低。"
+            "例如上限 32G、maxmemory 30gb、碎片率 1.3 → 用滿時約 39G，資料大概 24G 左右就撞到 32G。"),
+       [tgt(RSS, "{{instance}} 實際佔用", "A"),
+        tgt(USED, "{{instance}} 資料用量", "B"),
+        tgt(f"redis_memory_max_bytes{{{CI}}} > 0", "{{instance}} maxmemory", "C"),
+        tgt(FULL, "{{instance}} 用滿 maxmemory 時預估實際佔用", "D")],
+       gp(0, y, 12, 9), unit="bytes", fill=0,
+       overrides=[{"matcher": {"id": "byRegexp", "options": ".*maxmemory"}, "properties": DASH},
+                  {"matcher": {"id": "byRegexp", "options": ".*預估實際佔用"},
+                   "properties": DASH + [{"id": "color", "value": {"mode": "fixed", "fixedColor": "red"}}]}],
+       legend_calcs=("max", "lastNotNull")),
+    ts("Lua 腳本快取（腳本數 / 佔用記憶體）",
+       desc("Redis 快取了幾支 EVAL 腳本、佔多少記憶體。每個**不同內容**的腳本都會被快取，直到 SCRIPT FLUSH。",
+            "腳本數固定（程式用固定腳本 + EVALSHA）。",
+            "腳本數一直往上加 = 程式每次把參數寫進腳本內容（動態組 EVAL），記憶體會一直長，應改成固定腳本、參數用 KEYS / ARGV 傳。"),
+       [tgt(f"redis_number_of_cached_scripts{{{CI}}}", "{{instance}} 腳本數", "A"),
+        tgt(f"(redis_memory_used_vm_eval_bytes{{{CI}}} or redis_memory_used_lua_bytes{{{CI}}}) + "
+            f"redis_memory_used_scripts_bytes{{{CI}}}", "{{instance}} 佔用記憶體", "B")],
+       gp(12, y, 12, 9), unit="short",
+       overrides=[{"matcher": {"id": "byRegexp", "options": ".*佔用記憶體"},
+                   "properties": [{"id": "unit", "value": "bytes"}, {"id": "custom.axisPlacement", "value": "right"}]}],
+       legend_calcs=("max", "lastNotNull")),
+]
+y += 9
+mem_cols = [
+    ("A", RSS, "實際佔用"), ("B", USED, "資料用量"), ("C", f"redis_memory_max_bytes{{{CI}}}", "maxmemory"),
+    ("D", f"redis_mem_fragmentation_ratio{{{CI}}}", "碎片率"), ("E", FULL, "用滿時預估實際佔用"),
+    ("F", f"max by (instance) (redis_rdb_last_cow_size_bytes{{{CI}}} or redis_aof_last_cow_size_bytes{{{CI}}})", "上次存檔多吃"),
+    ("G", f"redis_memory_used_dataset_bytes{{{CI}}}", "其中：資料"),
+    ("H", f"redis_mem_clients_normal{{{CI}}}", "其中：client 緩衝"),
+    ("I", f"(redis_mem_total_replication_buffers_bytes{{{CI}}} or redis_mem_replication_backlog_bytes{{{CI}}})", "其中：複寫緩衝"),
+    ("J", f"(redis_memory_used_vm_eval_bytes{{{CI}}} or redis_memory_used_lua_bytes{{{CI}}}) + redis_memory_used_scripts_bytes{{{CI}}}",
+     "其中：Lua"),
+]
+panels.append({
+    "id": nid(), "type": "table", "title": "記憶體組成（現在，每個節點）", "datasource": DS, "gridPos": gp(0, y, 24, 7),
+    "description": desc("每個節點的記憶體拆開來看。**上次存檔多吃** = 最近一次背景存檔（RDB / AOF 重寫）期間，因為 fork 後資料被改動而多複製的記憶體（copy-on-write），"
+                        "存檔時實際佔用要再加上這一塊。",
+                        "「用滿時預估實際佔用 + 上次存檔多吃」比容器記憶體上限低。",
+                        "超過容器上限 = 存檔或資料長到某個量時會被 OOM kill；client 緩衝很大 = 有 client 讀大 key 或讀太慢；"
+                        "Lua 腳本很大 = 動態組 EVAL 腳本。"),
+    "targets": [tgt(f"max by (instance) ({e})", ref=r, instant=True, fmt="table") for r, e, _ in mem_cols],
+    "transformations": [
+        {"id": "merge", "options": {}},
+        {"id": "organize", "options": {
+            "excludeByName": {"Time": True},
+            "indexByName": {"instance": 0, **{f"Value #{r}": i + 1 for i, (r, _, _) in enumerate(mem_cols)}},
+            "renameByName": {"instance": "節點", **{f"Value #{r}": n for r, _, n in mem_cols}}}},
+        {"id": "sortBy", "options": {"sort": [{"field": "實際佔用", "desc": True}]}}],
+    "fieldConfig": {"defaults": {"unit": "bytes", "decimals": 1, "custom": {"align": "auto", "minWidth": 90}},
+                    "overrides": [
+                        col("節點", [{"id": "custom.minWidth", "value": 160}]),
+                        col("碎片率", [{"id": "unit", "value": "none"}, {"id": "decimals", "value": 2}]),
+                        col("maxmemory", [{"id": "mappings", "value": vmap({"0": ("未設上限", "orange")})}]),
+                        col("用滿時預估實際佔用", [{"id": "custom.cellOptions", "value": {"type": "color-text"}},
+                                                  {"id": "color", "value": {"mode": "fixed", "fixedColor": "red"}}])]},
+    "options": {"showHeader": True, "cellHeight": "sm", "footer": {"show": False}}})
+y += 7
 panels += [
     ts("每個 master 的 Key 數",
        desc("每個 master 上有幾個 key（不算 replica，避免重複）。", "各 master 差不多。",

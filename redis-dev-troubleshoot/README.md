@@ -52,6 +52,16 @@ Redis 一次只執行一個指令；一個 EVAL / EVALSHA / FCALL 從開始到�
 
 要知道是哪支腳本、誰呼叫的：`SLOWLOG GET`（含 client ip:port 與參數）、`CLIENT LIST`（`cmd=evalsha` 的連線）。Redis 沒有依帳號的指令統計。
 
+## 容器記憶體上限 vs maxmemory（④）
+
+maxmemory 只跟 Redis 自己算的資料用量（`used_memory`）比；Docker / K8s 的記憶體上限、OOM kill 看的是**實際佔用**（RSS），多了碎片和程式開銷：
+
+- **實際佔用 ≈ 資料用量 × 碎片率**（常見 1.1～1.5）。④「用滿 maxmemory 時預估實際佔用」= maxmemory × 現在的碎片率，超過容器上限就代表資料還沒到 maxmemory，容器就先被 OOM kill。
+- **背景存檔（RDB / AOF 重寫）**會 fork，存檔期間被改動的資料要多複製一份（copy-on-write），也算在容器上限裡；④ 表格「上次存檔多吃」就是這一塊。
+- **單位**：Redis `30gb` = 30 GiB（`30g` 才是 30×10⁹）；Docker `32g` = 32 GiB。
+- 一般建議：有開存檔、寫入多時，maxmemory 抓容器上限的 50～75%。
+- **動態組 EVAL 腳本**（每次腳本內容都不一樣）會讓腳本快取一直長，④「Lua 腳本快取」看腳本數是否一直增加。
+
 ## 選用的 exporter / Redis 設定
 
 - **`--export-client-list`**：⑤ 的「各帳號連線數」「帳號×來源主機」等面板需要；沒開會顯示提示。每條連線會產生多個 series，短連線多的環境 series 數會暴增，建議用 `metric_relabel_configs` 只保留 `redis_connected_client_info`。

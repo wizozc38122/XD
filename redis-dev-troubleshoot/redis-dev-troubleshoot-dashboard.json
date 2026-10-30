@@ -141,7 +141,7 @@
       },
       "options": {
         "mode": "markdown",
-        "content": "### 這個 Dashboard 怎麼用\n上方先選 **環境 (Prometheus)** → **Cluster** → **節點**（預設全部）。每個圖表標題旁的 **ⓘ** 都有「看什麼／正常／異常時」說明。\n\n| 症狀 | 先看哪裡 |\n|---|---|\n| 回應變慢、timeout | ② **延遲尖峰**（看類型）、**平均執行時間**、**p99 延遲** → ⑤ **Redis CPU** → ③ **慢查詢** → ⑥ 背景存檔 |\n| 應用程式報錯 | ③ **錯誤回應（依類型）**、**失敗 / 被拒的指令** |\n| 對方說「指令打不進去」、有在用 EVAL / Lua 腳本 | ③b **Lua 佔用主執行緒**、**單次腳本耗時**、**BUSY 錯誤**、**指令排隊的跡象** |\n| 權限錯誤（NOPERM、WRONGPASS） | ③ **權限被拒（依類型）** |\n| 連不上、連線被拒、連線越來越多 | ① 健康總覽 → ⑤ **連線數使用率**、**拒絕連線**、**各帳號連線數** |\n| 想知道是哪個帳號（專案） | ⑤ **各帳號** 開頭的圖表：連線、重連、大回應 |\n| 資料不見、讀不到 | ④ **被淘汰的 key**、**命中率**、⑥ 角色變化（failover） |\n| 只有某一台特別忙／特別滿 | ② **每節點 ops**、④ **每個 master 的 key 數**（熱點 key 或 hash tag 集中） |\n\n**這裡看不到的**：各帳號的指令量、延遲、錯誤；慢查詢是哪個帳號、哪個 key；命中率差是哪個 key / 前綴；各前綴佔多少記憶體（Redis 沒有把這些統計提供給監控系統）。"
+        "content": "### 這個 Dashboard 怎麼用\n上方先選 **環境 (Prometheus)** → **Cluster** → **節點**（預設全部）。每個圖表標題旁的 **ⓘ** 都有「看什麼／正常／異常時」說明。\n\n| 症狀 | 先看哪裡 |\n|---|---|\n| 回應變慢、timeout | ② **延遲尖峰**（看類型）、**平均執行時間**、**p99 延遲** → ⑤ **Redis CPU** → ③ **慢查詢** → ⑥ 背景存檔 |\n| 應用程式報錯 | ③ **錯誤回應（依類型）**、**失敗 / 被拒的指令** |\n| 對方說「指令打不進去」、有在用 EVAL / Lua 腳本 | ③b **Lua 佔用主執行緒**、**單次腳本耗時**、**BUSY 錯誤**、**指令排隊的跡象** |\n| 權限錯誤（NOPERM、WRONGPASS） | ③ **權限被拒（依類型）** |\n| 連不上、連線被拒、連線越來越多 | ① 健康總覽 → ⑤ **連線數使用率**、**拒絕連線**、**各帳號連線數** |\n| 想知道是哪個帳號（專案） | ⑤ **各帳號** 開頭的圖表：連線、重連、大回應 |\n| 容器被 OOM kill、Redis 到不了 maxmemory | ④ **實際佔用（RSS）vs 資料用量 vs maxmemory**、**記憶體組成** |\n| 資料不見、讀不到 | ④ **被淘汰的 key**、**命中率**、⑥ 角色變化（failover） |\n| 只有某一台特別忙／特別滿 | ② **每節點 ops**、④ **每個 master 的 key 數**（熱點 key 或 hash tag 集中） |\n\n**這裡看不到的**：各帳號的指令量、延遲、錯誤；慢查詢是哪個帳號、哪個 key；命中率差是哪個 key / 前綴；各前綴佔多少記憶體（Redis 沒有把這些統計提供給監控系統）。"
       }
     },
     {
@@ -3491,6 +3491,573 @@
     {
       "id": 43,
       "type": "timeseries",
+      "title": "實際佔用（RSS）vs 資料用量 vs maxmemory",
+      "description": "**看什麼**：**實際佔用** = 作業系統真正給 Redis 的記憶體，Docker / K8s 的記憶體上限、OOM kill 看的是這個。**資料用量**（used_memory）= Redis 自己算的，maxmemory 只跟這個比，不含碎片和程式開銷。**用滿 maxmemory 時預估實際佔用** = maxmemory × 現在的碎片率。\n\n**正常**：「用滿時預估」比容器記憶體上限低一截（至少留 20～30%，有開存檔要留更多）。\n\n**異常時**：「用滿時預估」超過容器上限 = 資料還沒到 maxmemory 容器就先被 OOM kill，maxmemory 要調低。例如上限 32G、maxmemory 30gb、碎片率 1.3 → 用滿時約 39G，資料大概 24G 左右就撞到 32G。",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${datasource}"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 100,
+        "w": 12,
+        "h": 9
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "editorMode": "code",
+          "expr": "redis_memory_used_rss_bytes{job=\"$cluster\",instance=~\"$instance\"}",
+          "legendFormat": "{{instance}} 實際佔用",
+          "refId": "A",
+          "range": true,
+          "instant": false
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "editorMode": "code",
+          "expr": "redis_memory_used_bytes{job=\"$cluster\",instance=~\"$instance\"}",
+          "legendFormat": "{{instance}} 資料用量",
+          "refId": "B",
+          "range": true,
+          "instant": false
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "editorMode": "code",
+          "expr": "redis_memory_max_bytes{job=\"$cluster\",instance=~\"$instance\"} > 0",
+          "legendFormat": "{{instance}} maxmemory",
+          "refId": "C",
+          "range": true,
+          "instant": false
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "editorMode": "code",
+          "expr": "(redis_memory_max_bytes{job=\"$cluster\",instance=~\"$instance\"} > 0) * redis_memory_used_rss_bytes{job=\"$cluster\",instance=~\"$instance\"} / redis_memory_used_bytes{job=\"$cluster\",instance=~\"$instance\"}",
+          "legendFormat": "{{instance}} 用滿 maxmemory 時預估實際佔用",
+          "refId": "D",
+          "range": true,
+          "instant": false
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "bytes",
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 1,
+            "fillOpacity": 0,
+            "showPoints": "never",
+            "spanNulls": false,
+            "axisSoftMin": 0,
+            "thresholdsStyle": {
+              "mode": "off"
+            },
+            "stacking": {
+              "mode": "none",
+              "group": "A"
+            }
+          },
+          "color": {
+            "mode": "palette-classic"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": ".*maxmemory"
+            },
+            "properties": [
+              {
+                "id": "custom.lineStyle",
+                "value": {
+                  "fill": "dash",
+                  "dash": [
+                    8,
+                    6
+                  ]
+                }
+              },
+              {
+                "id": "custom.fillOpacity",
+                "value": 0
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": ".*預估實際佔用"
+            },
+            "properties": [
+              {
+                "id": "custom.lineStyle",
+                "value": {
+                  "fill": "dash",
+                  "dash": [
+                    8,
+                    6
+                  ]
+                }
+              },
+              {
+                "id": "custom.fillOpacity",
+                "value": 0
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "red"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "right",
+          "showLegend": true,
+          "calcs": [
+            "max",
+            "lastNotNull"
+          ],
+          "sortBy": "Max",
+          "sortDesc": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      }
+    },
+    {
+      "id": 44,
+      "type": "timeseries",
+      "title": "Lua 腳本快取（腳本數 / 佔用記憶體）",
+      "description": "**看什麼**：Redis 快取了幾支 EVAL 腳本、佔多少記憶體。每個**不同內容**的腳本都會被快取，直到 SCRIPT FLUSH。\n\n**正常**：腳本數固定（程式用固定腳本 + EVALSHA）。\n\n**異常時**：腳本數一直往上加 = 程式每次把參數寫進腳本內容（動態組 EVAL），記憶體會一直長，應改成固定腳本、參數用 KEYS / ARGV 傳。",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${datasource}"
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 100,
+        "w": 12,
+        "h": 9
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "editorMode": "code",
+          "expr": "redis_number_of_cached_scripts{job=\"$cluster\",instance=~\"$instance\"}",
+          "legendFormat": "{{instance}} 腳本數",
+          "refId": "A",
+          "range": true,
+          "instant": false
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "editorMode": "code",
+          "expr": "(redis_memory_used_vm_eval_bytes{job=\"$cluster\",instance=~\"$instance\"} or redis_memory_used_lua_bytes{job=\"$cluster\",instance=~\"$instance\"}) + redis_memory_used_scripts_bytes{job=\"$cluster\",instance=~\"$instance\"}",
+          "legendFormat": "{{instance}} 佔用記憶體",
+          "refId": "B",
+          "range": true,
+          "instant": false
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 1,
+            "fillOpacity": 10,
+            "showPoints": "never",
+            "spanNulls": false,
+            "axisSoftMin": 0,
+            "thresholdsStyle": {
+              "mode": "off"
+            },
+            "stacking": {
+              "mode": "none",
+              "group": "A"
+            }
+          },
+          "color": {
+            "mode": "palette-classic"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": ".*佔用記憶體"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "bytes"
+              },
+              {
+                "id": "custom.axisPlacement",
+                "value": "right"
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "right",
+          "showLegend": true,
+          "calcs": [
+            "max",
+            "lastNotNull"
+          ],
+          "sortBy": "Max",
+          "sortDesc": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      }
+    },
+    {
+      "id": 45,
+      "type": "table",
+      "title": "記憶體組成（現在，每個節點）",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${datasource}"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 109,
+        "w": 24,
+        "h": 7
+      },
+      "description": "**看什麼**：每個節點的記憶體拆開來看。**上次存檔多吃** = 最近一次背景存檔（RDB / AOF 重寫）期間，因為 fork 後資料被改動而多複製的記憶體（copy-on-write），存檔時實際佔用要再加上這一塊。\n\n**正常**：「用滿時預估實際佔用 + 上次存檔多吃」比容器記憶體上限低。\n\n**異常時**：超過容器上限 = 存檔或資料長到某個量時會被 OOM kill；client 緩衝很大 = 有 client 讀大 key 或讀太慢；Lua 腳本很大 = 動態組 EVAL 腳本。",
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "editorMode": "code",
+          "expr": "max by (instance) (redis_memory_used_rss_bytes{job=\"$cluster\",instance=~\"$instance\"})",
+          "legendFormat": "__auto",
+          "refId": "A",
+          "range": false,
+          "instant": true,
+          "format": "table"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "editorMode": "code",
+          "expr": "max by (instance) (redis_memory_used_bytes{job=\"$cluster\",instance=~\"$instance\"})",
+          "legendFormat": "__auto",
+          "refId": "B",
+          "range": false,
+          "instant": true,
+          "format": "table"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "editorMode": "code",
+          "expr": "max by (instance) (redis_memory_max_bytes{job=\"$cluster\",instance=~\"$instance\"})",
+          "legendFormat": "__auto",
+          "refId": "C",
+          "range": false,
+          "instant": true,
+          "format": "table"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "editorMode": "code",
+          "expr": "max by (instance) (redis_mem_fragmentation_ratio{job=\"$cluster\",instance=~\"$instance\"})",
+          "legendFormat": "__auto",
+          "refId": "D",
+          "range": false,
+          "instant": true,
+          "format": "table"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "editorMode": "code",
+          "expr": "max by (instance) ((redis_memory_max_bytes{job=\"$cluster\",instance=~\"$instance\"} > 0) * redis_memory_used_rss_bytes{job=\"$cluster\",instance=~\"$instance\"} / redis_memory_used_bytes{job=\"$cluster\",instance=~\"$instance\"})",
+          "legendFormat": "__auto",
+          "refId": "E",
+          "range": false,
+          "instant": true,
+          "format": "table"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "editorMode": "code",
+          "expr": "max by (instance) (max by (instance) (redis_rdb_last_cow_size_bytes{job=\"$cluster\",instance=~\"$instance\"} or redis_aof_last_cow_size_bytes{job=\"$cluster\",instance=~\"$instance\"}))",
+          "legendFormat": "__auto",
+          "refId": "F",
+          "range": false,
+          "instant": true,
+          "format": "table"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "editorMode": "code",
+          "expr": "max by (instance) (redis_memory_used_dataset_bytes{job=\"$cluster\",instance=~\"$instance\"})",
+          "legendFormat": "__auto",
+          "refId": "G",
+          "range": false,
+          "instant": true,
+          "format": "table"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "editorMode": "code",
+          "expr": "max by (instance) (redis_mem_clients_normal{job=\"$cluster\",instance=~\"$instance\"})",
+          "legendFormat": "__auto",
+          "refId": "H",
+          "range": false,
+          "instant": true,
+          "format": "table"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "editorMode": "code",
+          "expr": "max by (instance) ((redis_mem_total_replication_buffers_bytes{job=\"$cluster\",instance=~\"$instance\"} or redis_mem_replication_backlog_bytes{job=\"$cluster\",instance=~\"$instance\"}))",
+          "legendFormat": "__auto",
+          "refId": "I",
+          "range": false,
+          "instant": true,
+          "format": "table"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "editorMode": "code",
+          "expr": "max by (instance) ((redis_memory_used_vm_eval_bytes{job=\"$cluster\",instance=~\"$instance\"} or redis_memory_used_lua_bytes{job=\"$cluster\",instance=~\"$instance\"}) + redis_memory_used_scripts_bytes{job=\"$cluster\",instance=~\"$instance\"})",
+          "legendFormat": "__auto",
+          "refId": "J",
+          "range": false,
+          "instant": true,
+          "format": "table"
+        }
+      ],
+      "transformations": [
+        {
+          "id": "merge",
+          "options": {}
+        },
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": {
+              "Time": true
+            },
+            "indexByName": {
+              "instance": 0,
+              "Value #A": 1,
+              "Value #B": 2,
+              "Value #C": 3,
+              "Value #D": 4,
+              "Value #E": 5,
+              "Value #F": 6,
+              "Value #G": 7,
+              "Value #H": 8,
+              "Value #I": 9,
+              "Value #J": 10
+            },
+            "renameByName": {
+              "instance": "節點",
+              "Value #A": "實際佔用",
+              "Value #B": "資料用量",
+              "Value #C": "maxmemory",
+              "Value #D": "碎片率",
+              "Value #E": "用滿時預估實際佔用",
+              "Value #F": "上次存檔多吃",
+              "Value #G": "其中：資料",
+              "Value #H": "其中：client 緩衝",
+              "Value #I": "其中：複寫緩衝",
+              "Value #J": "其中：Lua"
+            }
+          }
+        },
+        {
+          "id": "sortBy",
+          "options": {
+            "sort": [
+              {
+                "field": "實際佔用",
+                "desc": true
+              }
+            ]
+          }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "bytes",
+          "decimals": 1,
+          "custom": {
+            "align": "auto",
+            "minWidth": 90
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "節點"
+            },
+            "properties": [
+              {
+                "id": "custom.minWidth",
+                "value": 160
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "碎片率"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "none"
+              },
+              {
+                "id": "decimals",
+                "value": 2
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "maxmemory"
+            },
+            "properties": [
+              {
+                "id": "mappings",
+                "value": [
+                  {
+                    "type": "value",
+                    "options": {
+                      "0": {
+                        "text": "未設上限",
+                        "color": "orange",
+                        "index": 0
+                      }
+                    }
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "用滿時預估實際佔用"
+            },
+            "properties": [
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-text"
+                }
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "red"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm",
+        "footer": {
+          "show": false
+        }
+      }
+    },
+    {
+      "id": 46,
+      "type": "timeseries",
       "title": "每個 master 的 Key 數",
       "description": "**看什麼**：每個 master 上有幾個 key（不算 replica，避免重複）。\n\n**正常**：各 master 差不多。\n\n**異常時**：某台特別多 = hash tag（{...}）讓大量 key 落在同一個 slot。",
       "datasource": {
@@ -3499,7 +4066,7 @@
       },
       "gridPos": {
         "x": 0,
-        "y": 100,
+        "y": 116,
         "w": 8,
         "h": 8
       },
@@ -3570,7 +4137,7 @@
       }
     },
     {
-      "id": 44,
+      "id": 47,
       "type": "timeseries",
       "title": "有設 TTL 的 key 比例",
       "description": "**看什麼**：所有 key 裡有設過期時間的比例（只算 master）。\n\n**正常**：依業務：純快取應接近 100%。\n\n**異常時**：比例很低且記憶體一直漲 → 程式可能忘了設 TTL，資料只增不減。",
@@ -3580,7 +4147,7 @@
       },
       "gridPos": {
         "x": 8,
-        "y": 100,
+        "y": 116,
         "w": 8,
         "h": 8
       },
@@ -3651,7 +4218,7 @@
       }
     },
     {
-      "id": 45,
+      "id": 48,
       "type": "timeseries",
       "title": "過期與被淘汰的 key",
       "description": "**看什麼**：每秒有幾個 key 因 TTL 到期被刪（過期），或因記憶體滿被迫刪掉（淘汰）。只算 master。\n\n**正常**：過期：依業務；**淘汰：0**。\n\n**異常時**：淘汰 > 0 = 記憶體滿了，Redis 在刪還沒過期的資料，應用程式會讀不到 → 加記憶體或清資料。",
@@ -3661,7 +4228,7 @@
       },
       "gridPos": {
         "x": 16,
-        "y": 100,
+        "y": 116,
         "w": 8,
         "h": 8
       },
@@ -3759,7 +4326,7 @@
       }
     },
     {
-      "id": 46,
+      "id": 49,
       "type": "row",
       "title": "⑤ CPU、連線與帳號：瓶頸在哪、是哪個帳號",
       "collapsed": false,
@@ -3767,12 +4334,12 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 108
+        "y": 124
       },
       "panels": []
     },
     {
-      "id": 47,
+      "id": 50,
       "type": "timeseries",
       "title": "Redis CPU（主執行緒）",
       "description": "**看什麼**：Redis 用掉多少 CPU。Redis 指令是單執行緒處理，**100% 就是這台的極限**，加 CPU 核心沒用。紅線 80%。\n\n**正常**：< 80%。\n\n**異常時**：接近 100% → 這台已滿載：把熱點 key 分散到其他節點、減少大 key 操作、或加 master 分擔。",
@@ -3782,7 +4349,7 @@
       },
       "gridPos": {
         "x": 0,
-        "y": 109,
+        "y": 125,
         "w": 12,
         "h": 8
       },
@@ -3859,7 +4426,7 @@
       }
     },
     {
-      "id": 48,
+      "id": 51,
       "type": "timeseries",
       "title": "連線數",
       "description": "**看什麼**：每個節點目前的 client 連線數。\n\n**正常**：穩定在一個值（連線池大小 × 應用程式數量）。\n\n**異常時**：一直往上漲不下來 = 連線洩漏（沒歸還連線池或沒關閉）。",
@@ -3869,7 +4436,7 @@
       },
       "gridPos": {
         "x": 12,
-        "y": 109,
+        "y": 125,
         "w": 12,
         "h": 8
       },
@@ -3940,7 +4507,7 @@
       }
     },
     {
-      "id": 49,
+      "id": 52,
       "type": "timeseries",
       "title": "新建連線（每秒）",
       "description": "**看什麼**：每秒有幾條新連線進來。\n\n**正常**：很低（連線池建好後就重複使用）。\n\n**異常時**：持續很高 = client 沒用連線池、每次請求都重新連線，會拖慢速度並耗 CPU。",
@@ -3950,7 +4517,7 @@
       },
       "gridPos": {
         "x": 0,
-        "y": 117,
+        "y": 133,
         "w": 8,
         "h": 7
       },
@@ -4021,7 +4588,7 @@
       }
     },
     {
-      "id": 50,
+      "id": 53,
       "type": "timeseries",
       "title": "連線數使用率",
       "description": "**看什麼**：connected_clients / maxclients。黃線 70%、紅線 85%。\n\n**正常**：< 70%。\n\n**異常時**：滿了新連線會被拒絕。",
@@ -4031,7 +4598,7 @@
       },
       "gridPos": {
         "x": 8,
-        "y": 117,
+        "y": 133,
         "w": 8,
         "h": 7
       },
@@ -4112,7 +4679,7 @@
       }
     },
     {
-      "id": 51,
+      "id": 54,
       "type": "timeseries",
       "title": "拒絕連線（每秒）",
       "description": "**看什麼**：因為超過 maxclients 被拒絕的連線數。\n\n**正常**：0。\n\n**異常時**：> 0 時應用程式會連不上 → 查連線洩漏或調高 maxclients。",
@@ -4122,7 +4689,7 @@
       },
       "gridPos": {
         "x": 16,
-        "y": 117,
+        "y": 133,
         "w": 8,
         "h": 7
       },
@@ -4192,7 +4759,7 @@
       }
     },
     {
-      "id": 52,
+      "id": 55,
       "type": "timeseries",
       "title": "各帳號連線數",
       "description": "**看什麼**：依 ACL 帳號分的連線數（不含 replica 複寫連線與 exporter 自己）。帳號通常對應一個專案。\n\n**正常**：每個帳號穩定在自己的連線池大小。\n\n**異常時**：某個帳號一直往上漲 = 那個專案連線洩漏；突然歸零 = 那個專案斷線或密碼錯。",
@@ -4202,7 +4769,7 @@
       },
       "gridPos": {
         "x": 0,
-        "y": 124,
+        "y": 140,
         "w": 12,
         "h": 8
       },
@@ -4274,7 +4841,7 @@
       }
     },
     {
-      "id": 53,
+      "id": 56,
       "type": "timeseries",
       "title": "各帳號新建連線（每分鐘）",
       "description": "**看什麼**：每個帳號最近 1 分鐘新開了幾條連線。抓取間隔內開了又關的連線看不到，實際只會更多。\n\n**正常**：接近 0（連線池建好後重複使用）。\n\n**異常時**：持續有值 = 那個專案沒用連線池、每次請求都重新連線，會拖慢速度、耗 Redis CPU。",
@@ -4284,7 +4851,7 @@
       },
       "gridPos": {
         "x": 12,
-        "y": 124,
+        "y": 140,
         "w": 12,
         "h": 8
       },
@@ -4356,7 +4923,7 @@
       }
     },
     {
-      "id": 54,
+      "id": 57,
       "type": "timeseries",
       "title": "各帳號最大單次回應（大 key 線索）",
       "description": "**看什麼**：每個帳號的連線當下積壓在 Redis 的回應大小（輸出緩衝），取每個帳號最大的一條。這是抓取瞬間的取樣，回應很快送完的可能抓不到。\n\n**正常**：幾 KB 以內。\n\n**異常時**：某個帳號常出現 MB 級 = 那個專案在一次讀大 key（HGETALL、SMEMBERS、LRANGE 0 -1 等）。",
@@ -4366,7 +4933,7 @@
       },
       "gridPos": {
         "x": 0,
-        "y": 132,
+        "y": 148,
         "w": 12,
         "h": 8
       },
@@ -4437,7 +5004,7 @@
       }
     },
     {
-      "id": 55,
+      "id": 58,
       "type": "table",
       "title": "各帳號 × 來源主機（現在）",
       "datasource": {
@@ -4446,7 +5013,7 @@
       },
       "gridPos": {
         "x": 12,
-        "y": 132,
+        "y": 148,
         "w": 12,
         "h": 8
       },
@@ -4579,7 +5146,7 @@
       }
     },
     {
-      "id": 60,
+      "id": 63,
       "type": "row",
       "title": "⑥ 複寫、Failover 與背景存檔（點開）",
       "collapsed": true,
@@ -4587,11 +5154,11 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 140
+        "y": 156
       },
       "panels": [
         {
-          "id": 56,
+          "id": 59,
           "type": "state-timeline",
           "title": "角色變化（failover 時間軸）",
           "description": "**看什麼**：每個節點在這段時間是 master 還是 replica。\n\n**正常**：整段不變。\n\n**異常時**：顏色切換的時間點 = 發生 failover；對照應用程式錯誤的時間。",
@@ -4601,7 +5168,7 @@
           },
           "gridPos": {
             "x": 0,
-            "y": 141,
+            "y": 157,
             "w": 12,
             "h": 7
           },
@@ -4662,7 +5229,7 @@
           }
         },
         {
-          "id": 57,
+          "id": 60,
           "type": "state-timeline",
           "title": "背景存檔中（RDB / AOF 重寫）",
           "description": "**看什麼**：節點是否正在做背景存檔。存檔會 fork 行程，fork 那一下主執行緒會停住。\n\n**正常**：偶爾出現、很短。\n\n**異常時**：延遲突刺剛好對上這裡 = 存檔造成；資料量大時 fork 更久，見右下「fork 耗時」。",
@@ -4672,7 +5239,7 @@
           },
           "gridPos": {
             "x": 12,
-            "y": 141,
+            "y": 157,
             "w": 12,
             "h": 7
           },
@@ -4733,7 +5300,7 @@
           }
         },
         {
-          "id": 58,
+          "id": 61,
           "type": "timeseries",
           "title": "複寫延遲（replica 落後多少資料）",
           "description": "**看什麼**：master 已寫入、但 replica 還沒收到的資料量。\n\n**正常**：接近 0。\n\n**異常時**：持續上升 = replica 跟不上寫入速度；此時 failover 會遺失這段資料。",
@@ -4743,7 +5310,7 @@
           },
           "gridPos": {
             "x": 0,
-            "y": 148,
+            "y": 164,
             "w": 12,
             "h": 7
           },
@@ -4814,7 +5381,7 @@
           }
         },
         {
-          "id": 59,
+          "id": 62,
           "type": "timeseries",
           "title": "fork 耗時（最近一次）",
           "description": "**看什麼**：最近一次背景存檔 fork 花多久，這段時間 Redis 完全停住。\n\n**正常**：幾 ms ～ 幾十 ms。\n\n**異常時**：> 100ms 會造成明顯延遲突刺；記憶體越大越久。",
@@ -4824,7 +5391,7 @@
           },
           "gridPos": {
             "x": 12,
-            "y": 148,
+            "y": 164,
             "w": 12,
             "h": 7
           },
@@ -4896,7 +5463,7 @@
       ]
     },
     {
-      "id": 65,
+      "id": 68,
       "type": "row",
       "title": "⑦ 主機資源（node exporter，點開）",
       "collapsed": true,
@@ -4904,11 +5471,11 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 141
+        "y": 157
       },
       "panels": [
         {
-          "id": 61,
+          "id": 64,
           "type": "timeseries",
           "title": "主機 CPU 使用率",
           "description": "**看什麼**：Redis 所在主機的整體 CPU（所有核心平均）。紅線 80%。\n\n**正常**：< 80%。\n\n**異常時**：主機 CPU 很高但 ⑤ Redis CPU 不高 = 被同主機的其他程式搶資源。",
@@ -4918,7 +5485,7 @@
           },
           "gridPos": {
             "x": 0,
-            "y": 142,
+            "y": 158,
             "w": 12,
             "h": 7
           },
@@ -4995,7 +5562,7 @@
           }
         },
         {
-          "id": 62,
+          "id": 65,
           "type": "timeseries",
           "title": "主機記憶體使用率",
           "description": "**看什麼**：主機記憶體使用率。黃線 70%、紅線 85%。\n\n**正常**：< 70%。\n\n**異常時**：Redis 背景存檔時最多可能需要接近兩倍記憶體；太滿會被系統 OOM kill 或用到 swap 變很慢。",
@@ -5005,7 +5572,7 @@
           },
           "gridPos": {
             "x": 12,
-            "y": 142,
+            "y": 158,
             "w": 12,
             "h": 7
           },
@@ -5086,7 +5653,7 @@
           }
         },
         {
-          "id": 63,
+          "id": 66,
           "type": "timeseries",
           "title": "主機網路（正值收、負值送）",
           "description": "**看什麼**：主機網卡每秒收送量（不含 lo、docker、veth 等虛擬網卡）。\n\n**正常**：遠低於網卡上限。\n\n**異常時**：接近上限（例如 1Gbps ≈ 125MB/s）就會變慢。",
@@ -5096,7 +5663,7 @@
           },
           "gridPos": {
             "x": 0,
-            "y": 149,
+            "y": 165,
             "w": 12,
             "h": 7
           },
@@ -5179,7 +5746,7 @@
           }
         },
         {
-          "id": 64,
+          "id": 67,
           "type": "timeseries",
           "title": "主機磁碟 IOPS（正值讀、負值寫）",
           "description": "**看什麼**：每秒磁碟讀寫次數。Redis 平常幾乎不碰磁碟，存檔（RDB / AOF）時才會。\n\n**正常**：平時很低，存檔時短暫升高。\n\n**異常時**：AOF 開啟且寫入 IOPS 長時間很高 → 磁碟可能拖慢寫入（appendfsync always / everysec）。",
@@ -5189,7 +5756,7 @@
           },
           "gridPos": {
             "x": 12,
-            "y": 149,
+            "y": 165,
             "w": 12,
             "h": 7
           },
