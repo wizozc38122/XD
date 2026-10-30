@@ -32,10 +32,25 @@ python gen_dashboard.py redis-dev-troubleshoot-dashboard.json "Prometheus-.*"
 1. ① 健康總覽：有沒有東西壞掉
 2. ② 流量與延遲：變慢先看這裡
 3. ③ 錯誤與慢查詢：程式有沒有出錯
+   - ③b Lua 腳本（EVAL / FCALL）：是不是腳本佔住 Redis、卡住其他指令
 4. ④ 記憶體與 Key：會不會滿、資料會不會不見
 5. ⑤ CPU、連線與帳號：瓶頸在哪、是哪個帳號
 6. ⑥ 複寫、Failover 與背景存檔（預設收合）
 7. ⑦ 主機資源（node exporter，預設收合）
+
+## 證明「Lua 腳本卡住 Redis」（③b）
+
+Redis 一次只執行一個指令；一個 EVAL / EVALSHA / FCALL 從開始到結束，其他 client 的指令都只能排隊（不是被丟掉）。
+腳本跑超過 `busy-reply-threshold`（舊名 `lua-time-limit`，預設 5 秒）時，其他指令會直接收到 `BUSY` 錯誤。
+
+| 證據 | 面板 | 怎麼算 |
+|---|---|---|
+| 主執行緒被腳本佔掉多少 | Lua 佔用主執行緒 | `rate(redis_commands_duration_seconds_total{cmd=~"eval.*\|fcall.*"})`：每秒有幾秒在跑腳本（含腳本裡 `redis.call` 的時間）。接近 100% = 其他指令都在排隊 |
+| 每次腳本跑多久 | 單次腳本平均耗時、每次腳本耗時 vs 一般指令 | 腳本 ms～秒級、一般指令 µs 級；一般指令在 Redis 內的時間**不含排隊**，所以它正常但應用程式 timeout = 卡在腳本後面 |
+| 其他指令被拒 | BUSY 錯誤 | `redis_errors_total{err="BUSY"}`，最直接的證據 |
+| 其他指令在排隊 | 指令排隊的跡象 | client 輸入緩衝堆積、新建連線變多（等太久逾時重連） |
+
+要知道是哪支腳本、誰呼叫的：`SLOWLOG GET`（含 client ip:port 與參數）、`CLIENT LIST`（`cmd=evalsha` 的連線）。Redis 沒有依帳號的指令統計。
 
 ## 選用的 exporter / Redis 設定
 

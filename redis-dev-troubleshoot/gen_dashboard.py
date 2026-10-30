@@ -7,6 +7,11 @@ CI = 'job="$cluster",instance=~"$instance"'
 RI = "$__rate_interval"
 EXCL = 'cmd!~"info|ping|auth|hello|select|echo|replconf|psync|sync|command.*|(config|cluster|latency|slowlog|client|memory|module|acl|object|debug)[|].*"'
 CIX = CI + "," + EXCL
+# 錯誤這種很少發生的計數器,Redis 第一次發生時才會出現,一出現就是 N;rate / increase 會把第一個值當起點,漏掉這 N 次。
+# 這段時間之前不存在的 series,整個值都算在這段時間裡。
+def new_counts(sel, window):
+    return f"clamp_min(({sel} - {sel} offset {window}) or {sel}, 0)"
+
 # 只算 master (replica 的 key / 過期數跟 master 重複)
 MASTER = 'and on(instance) redis_instance_info{job="$cluster",role="master"}'
 
@@ -98,6 +103,7 @@ GUIDE = """### 這個 Dashboard 怎麼用
 |---|---|
 | 回應變慢、timeout | ② **延遲尖峰**（看類型）、**平均執行時間**、**p99 延遲** → ⑤ **Redis CPU** → ③ **慢查詢** → ⑥ 背景存檔 |
 | 應用程式報錯 | ③ **錯誤回應（依類型）**、**失敗 / 被拒的指令** |
+| 對方說「指令打不進去」、有在用 EVAL / Lua 腳本 | ③b **Lua 佔用主執行緒**、**單次腳本耗時**、**BUSY 錯誤**、**指令排隊的跡象** |
 | 權限錯誤（NOPERM、WRONGPASS） | ③ **權限被拒（依類型）** |
 | 連不上、連線被拒、連線越來越多 | ① 健康總覽 → ⑤ **連線數使用率**、**拒絕連線**、**各帳號連線數** |
 | 想知道是哪個帳號（專案） | ⑤ **各帳號** 開頭的圖表：連線、重連、大回應 |
@@ -108,9 +114,9 @@ GUIDE = """### 這個 Dashboard 怎麼用
 
 panels = []
 y = 0
-panels.append({"id": nid(), "type": "text", "title": "", "gridPos": gp(0, y, 24, 10),
+panels.append({"id": nid(), "type": "text", "title": "", "gridPos": gp(0, y, 24, 11),
                "options": {"mode": "markdown", "content": GUIDE}})
-y += 10
+y += 11
 
 # ① 健康總覽
 panels.append(row("① 健康總覽：有沒有東西壞掉", y)); y += 1
@@ -301,12 +307,12 @@ y += 8
 panels.append(row("③ 錯誤與慢查詢：程式有沒有出錯", y)); y += 1
 panels += [
     ts("錯誤回應（依類型）",
-       desc("Redis 回給 client 的錯誤，每秒幾次（Redis 6.2+）。",
+       desc("Redis 回給 client 的錯誤，每分鐘幾次（Redis 6.2+）。某種錯誤第一次出現也算得到。",
             "接近 0。",
             "**OOM** 記憶體滿　**MOVED / ASK** client 沒用 cluster 模式或 slot 搬移中　"
             "**NOPERM / WRONGPASS** 帳號權限或密碼　**WRONGTYPE** 程式對錯的資料型別下指令　"
             "**BUSY** Lua / Function 跑太久　**LOADING** 節點剛重啟還在載入資料"),
-       [tgt(f"sum by (err) (rate(redis_errors_total{{{CI}}}[{RI}]))", "{{err}}")],
+       [tgt(f"sum by (err) ({new_counts(f'redis_errors_total{{{CI}}}', '1m')})", "{{err}}")],
        gp(0, y, 6, 8), unit="short", legend_calcs=("max", "lastNotNull")),
     ts("失敗 / 被拒的指令（Redis 7+）",
        desc("依指令列出執行失敗（failed）與執行前就被拒（rejected，例如權限、OOM、參數錯）的次數／秒。",
@@ -328,6 +334,109 @@ panels += [
         tgt(f"sum(rate(redis_acl_access_denied_key_total{{{CI}}}[{RI}]))", "key 不在權限內", "C"),
         tgt(f"sum(rate(redis_acl_access_denied_channel_total{{{CI}}}[{RI}]))", "channel 無權限", "D")],
        gp(18, y, 6, 8), unit="short", legend_calcs=("max", "lastNotNull")),
+]
+y += 8
+
+# ③b Lua 腳本:是不是腳本佔住 Redis
+SCRIPT = 'cmd=~"eval|evalsha|eval_ro|evalsha_ro|fcall|fcall_ro"'
+CIS = CI + "," + SCRIPT
+# 每秒有幾秒在跑腳本 = 主執行緒被腳本佔住的比例 (Redis 一次只跑一個指令;腳本裡 redis.call 的時間也算在腳本裡)
+LUA_SHARE = f"sum by (instance) (rate(redis_commands_duration_seconds_total{{{CIS}}}[{RI}]))"
+LUA_SHARE_1M = f"sum by (instance) (rate(redis_commands_duration_seconds_total{{{CIS}}}[1m]))"
+LUA_AVG_1M = (f"sum by (instance) (rate(redis_commands_duration_seconds_total{{{CIS}}}[1m])) / "
+              f"(sum by (instance) (rate(redis_commands_total{{{CIS}}}[1m])) > 0)")
+NOLUA = "這段時間沒有 EVAL / EVALSHA / FCALL"
+LUA_GUIDE = """**怎麼證明是 Lua 腳本卡住**：Redis 一次只跑一個指令，腳本跑完之前，其他人的指令都在排隊（不是被丟掉，是等）。
+
+1. **Lua 佔用主執行緒**接近 100% → 那段時間 Redis 幾乎都在跑腳本，其他指令只能等。
+2. **單次腳本耗時**是 ms～秒級，一般指令是 µs 級 → 每跑一次腳本，後面的指令就多等那麼久。
+3. 一般指令在 Redis 內的執行時間仍然很短，但應用程式 timeout → 時間花在**排隊**，不是指令本身慢。
+4. 加強證據：**BUSY 錯誤**（腳本跑超過 busy-reply-threshold，預設 5 秒，其他指令直接被拒）、client 輸入緩衝堆積、重連變多、`SLOWLOG GET` 幾乎都是 EVAL / EVALSHA。"""
+panels.append(row("③b Lua 腳本（EVAL / FCALL）：是不是腳本佔住 Redis、卡住其他指令", y)); y += 1
+panels.append({"id": nid(), "type": "text", "title": "", "gridPos": gp(0, y, 12, 8),
+               "options": {"mode": "markdown", "content": LUA_GUIDE}})
+SH = 4
+panels += [
+    stat("Lua 佔用主執行緒（這段時間最高）",
+         desc("時間範圍內，腳本佔掉主執行緒時間的最高比例（每分鐘看一次，取最忙的節點）。",
+              "< 30%。", "> 80% = 那一分鐘 Redis 幾乎都在跑腳本，其他指令都在排隊。"),
+         f"max(max_over_time(({LUA_SHARE_1M})[$__range:1m]))", gp(12, y, 6, SH), unit="percentunit",
+         th=steps(("green", None), ("yellow", 0.3), ("red", 0.8)), no_value=NOLUA, decimals=0),
+    stat("單次腳本平均耗時（這段時間最高）",
+         desc("時間範圍內，每次 EVAL / EVALSHA / FCALL 平均跑多久的最高值（每分鐘看一次）。",
+              "1 ms 以內。", "幾十 ms 以上 = 每次腳本都讓其他指令等那麼久；> 5 秒會讓其他指令收到 BUSY。"),
+         f"max(max_over_time(({LUA_AVG_1M})[$__range:1m]))", gp(18, y, 6, SH), unit="s",
+         th=steps(("green", None), ("yellow", 0.01), ("red", 0.1)), no_value=NOLUA),
+]
+panels += [
+    stat("腳本呼叫次數（這段時間）",
+         desc("時間範圍內 EVAL / EVALSHA / FCALL 總共被呼叫幾次。", "依業務。",
+              "次數不多但左邊佔用很高 = 單一腳本很重（一次處理很多 key / 大迴圈）。"),
+         f"sum(increase(redis_commands_total{{{CIS}}}[$__range]))", gp(12, y + SH, 6, SH), unit="short",
+         no_value=NOLUA, decimals=0),
+    stat("BUSY 錯誤（這段時間）",
+         desc("其他指令因為腳本跑太久被 Redis 直接拒絕（BUSY Redis is busy running a script）的次數。",
+              "0。", "> 0 = 有腳本跑超過 busy-reply-threshold（預設 5 秒），這段時間其他指令全部失敗。"),
+         f"sum({new_counts(f'redis_errors_total{{{CI},err=\"BUSY\"}}', '$__range')}) or vector(0)", gp(18, y + SH, 6, SH),
+         unit="short", th=ALERT_COUNT, decimals=0),
+]
+y += 8
+panels += [
+    ts("主執行緒被 Lua 佔掉多少（每秒有幾成在跑腳本）",
+       desc("每秒有多少時間在執行腳本（含腳本裡 redis.call 的時間）。虛線是主執行緒 CPU。紅線 80%。",
+            "低於 30%。",
+            "Lua 的線貼近 CPU 線、接近 100% = Redis 的忙碌幾乎都是腳本造成，這段時間其他指令只能排隊。"),
+       [tgt(LUA_SHARE, "{{instance}} Lua", "A"),
+        tgt(f"sum by (instance) (rate(redis_cpu_sys_main_thread_seconds_total{{{CI}}}[{RI}]) + "
+            f"rate(redis_cpu_user_main_thread_seconds_total{{{CI}}}[{RI}])) or "
+            f"sum by (instance) (rate(redis_cpu_sys_seconds_total{{{CI}}}[{RI}]) + "
+            f"rate(redis_cpu_user_seconds_total{{{CI}}}[{RI}]))", "{{instance}} 主執行緒 CPU", "B")],
+       gp(0, y, 12, 8), unit="percentunit", th=steps(("green", None), ("red", 0.8)), th_style="line", min_=0, max_=1,
+       overrides=[{"matcher": {"id": "byRegexp", "options": ".*主執行緒 CPU"},
+                   "properties": [{"id": "custom.lineStyle", "value": {"fill": "dash", "dash": [8, 6]}},
+                                  {"id": "custom.fillOpacity", "value": 0}]}],
+       no_value=NOLUA),
+    ts("每次腳本耗時 vs 一般指令",
+       desc("腳本（依指令）每次平均跑多久，和一般指令（GET / SET / HGET… 其他所有指令）的平均。Redis 7+ 另有腳本的 p99。"
+            "一般指令只算在 Redis 裡執行的時間，**不含排隊**。",
+            "都在 1 ms 以內。",
+            "腳本是 ms～秒級、一般指令還是 µs 級，但應用程式 timeout = 一般指令卡在腳本後面排隊。"),
+       [tgt(f"sum by (cmd) (rate(redis_commands_duration_seconds_total{{{CIS}}}[{RI}])) / "
+            f"(sum by (cmd) (rate(redis_commands_total{{{CIS}}}[{RI}])) > 0)", "{{cmd}} 平均", "A"),
+        tgt(f"histogram_quantile(0.99, sum by (le, cmd) (rate(redis_commands_latencies_usec_bucket{{{CIS}}}[{RI}]))) / 1e6",
+            "{{cmd}} p99", "B"),
+        tgt(f"sum(rate(redis_commands_duration_seconds_total{{{CIX},cmd!~\"eval|evalsha|eval_ro|evalsha_ro|fcall|fcall_ro\"}}[{RI}])) / "
+            f"(sum(rate(redis_commands_total{{{CIX},cmd!~\"eval|evalsha|eval_ro|evalsha_ro|fcall|fcall_ro\"}}[{RI}])) > 0)",
+            "一般指令 平均", "C")],
+       gp(12, y, 12, 8), unit="s", no_value=NOLUA, legend_calcs=("mean", "max", "lastNotNull")),
+]
+y += 8
+panels += [
+    ts("指令排隊的跡象（client 端）",
+       desc("Redis 忙著跑腳本時，其他 client 送來的指令會堆在輸入緩衝等著；等太久的 client 會逾時、斷線再重連。",
+            "輸入緩衝幾 KB 以內；新建連線很低。",
+            "跟左上 Lua 佔用同時升高 = 指令在排隊等腳本跑完（對方說「指令打不進去」就是這個）。"),
+       [tgt(f"max by (instance) (redis_client_recent_max_input_buffer_bytes{{{CI}}})", "{{instance}} 輸入緩衝最大", "A"),
+        tgt(f"sum by (instance) (rate(redis_connections_received_total{{{CI}}}[{RI}]))", "{{instance}} 新建連線 / 秒", "B")],
+       gp(0, y, 8, 8), unit="short",
+       overrides=[{"matcher": {"id": "byRegexp", "options": ".*輸入緩衝最大"},
+                   "properties": [{"id": "unit", "value": "bytes"}, {"id": "custom.axisPlacement", "value": "right"}]}],
+       legend_calcs=("max", "lastNotNull")),
+    ts("腳本呼叫次數 vs 全部指令（每秒）",
+       desc("每秒有幾次腳本呼叫，和 Redis 每秒處理的全部指令數（含腳本裡的 redis.call）。",
+            "腳本佔全部的一小部分。",
+            "腳本次數不多、但左上 Lua 佔用很高 = 每個腳本都很重；全部指令數掉下去 = 其他人的指令被擠掉了。"),
+       [tgt(f"sum by (instance) (rate(redis_commands_total{{{CIS}}}[{RI}]))", "{{instance}} 腳本", "A"),
+        tgt(f"sum by (instance) (rate(redis_commands_processed_total{{{CI}}}[{RI}]))", "{{instance}} 全部指令", "B")],
+       gp(8, y, 8, 8), unit="ops", no_value=NOLUA),
+    ts("BUSY 與腳本錯誤（每分鐘次數）",
+       desc("**BUSY** 其他指令因腳本跑太久被拒　**NOSCRIPT** EVALSHA 找不到腳本（節點重啟 / failover 後要重新 SCRIPT LOAD）　"
+            "**UNKILLABLE** 腳本已經寫入資料、不能用 SCRIPT KILL 停（只能 SHUTDOWN NOSAVE）。另列腳本本身執行失敗的次數。",
+            "全部 0。",
+            "BUSY > 0 是腳本卡住 Redis 最直接的證據：那段時間所有其他指令都被拒絕。"),
+       [tgt(f"sum by (err) ({new_counts(f'redis_errors_total{{{CI},err=~\"BUSY|NOSCRIPT|UNKILLABLE\"}}', '1m')})", "{{err}}", "A"),
+        tgt(f"sum by (cmd) ({new_counts(f'redis_commands_failed_calls_total{{{CIS}}}', '1m')}) > 0", "{{cmd}} 執行失敗", "B")],
+       gp(16, y, 8, 8), unit="short", legend_calcs=("max", "lastNotNull"), no_value="0"),
 ]
 y += 8
 
