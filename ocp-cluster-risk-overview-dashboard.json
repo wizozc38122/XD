@@ -9,7 +9,7 @@
   ],
   "timezone": "browser",
   "schemaVersion": 39,
-  "version": 4,
+  "version": 5,
   "editable": true,
   "graphTooltip": 1,
   "refresh": "1m",
@@ -70,6 +70,41 @@
           "value": "openshift.*|kube-.*"
         },
         "hide": 0
+      },
+      {
+        "type": "custom",
+        "name": "waste_window",
+        "label": "浪費分析平均區間（第 5 區）",
+        "query": "1d,7d,14d,30d",
+        "current": {
+          "text": "7d",
+          "value": "7d"
+        },
+        "options": [
+          {
+            "text": "1d",
+            "value": "1d",
+            "selected": false
+          },
+          {
+            "text": "7d",
+            "value": "7d",
+            "selected": true
+          },
+          {
+            "text": "14d",
+            "value": "14d",
+            "selected": false
+          },
+          {
+            "text": "30d",
+            "value": "30d",
+            "selected": false
+          }
+        ],
+        "multi": false,
+        "includeAll": false,
+        "hide": 0
       }
     ]
   },
@@ -96,10 +131,10 @@
       "title": "",
       "options": {
         "mode": "markdown",
-        "content": "**叢集風險總覽**：先找出嫌疑的 Node 與 Workload，再點 workload 名稱進細節 Dashboard 查證。上方切換資料來源 = 切換叢集。\n\n1. **哪台 Node 吃緊** → 第 1 區\n2. **哪個 Workload 用量大、快碰到 Limit、Pod 之間不平均** → 第 2 區（點表頭排序、名稱欄的漏斗篩選，紅 / 黃格要注意）\n3. **是什麼時候飆起來的** → 第 3、4 區 Top 10 趨勢\n\n表格是時間範圍**結束前 5 分鐘**的值；百分比都是 **用量 ÷ 欄名寫的分母**；預設排除 `openshift*`、`kube-*` namespace。"
+        "content": "**叢集風險總覽**：先找出嫌疑的 Node 與 Workload，再點 workload 名稱進細節 Dashboard 查證。上方切換資料來源 = 切換叢集。\n\n1. **哪台 Node 吃緊** → 第 1 區\n2. **哪個 Workload 用量大、快碰到 Limit、Pod 之間不平均** → 第 2 區（點表頭排序、名稱欄的漏斗篩選，紅 / 黃格要注意）\n3. **是什麼時候飆起來的** → 第 3、4 區 Top 10 趨勢\n4. **誰長期用很少、Request 卻設很高（浪費）** → 第 5 區，上方「浪費分析平均區間」選幾天（預設 7 天）\n\n表格是時間範圍**結束前 5 分鐘**的值（第 5 區是結束前 N 天的平均）；百分比都是 **用量 ÷ 欄名寫的分母**；預設排除 `openshift*`、`kube-*` namespace。"
       },
       "gridPos": {
-        "h": 6,
+        "h": 7,
         "w": 24,
         "x": 0,
         "y": 0
@@ -114,7 +149,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 6
+        "y": 7
       },
       "panels": []
     },
@@ -979,7 +1014,7 @@
         "h": 10,
         "w": 24,
         "x": 0,
-        "y": 7
+        "y": 8
       }
     },
     {
@@ -1037,7 +1072,7 @@
         "h": 8,
         "w": 8,
         "x": 0,
-        "y": 17
+        "y": 18
       }
     },
     {
@@ -1095,7 +1130,7 @@
         "h": 8,
         "w": 8,
         "x": 8,
-        "y": 17
+        "y": 18
       }
     },
     {
@@ -1153,7 +1188,7 @@
         "h": 8,
         "w": 8,
         "x": 16,
-        "y": 17
+        "y": 18
       }
     },
     {
@@ -1211,7 +1246,7 @@
         "h": 8,
         "w": 8,
         "x": 0,
-        "y": 25
+        "y": 26
       }
     },
     {
@@ -1269,7 +1304,7 @@
         "h": 8,
         "w": 8,
         "x": 8,
-        "y": 25
+        "y": 26
       }
     },
     {
@@ -1327,7 +1362,7 @@
         "h": 8,
         "w": 8,
         "x": 16,
-        "y": 25
+        "y": 26
       }
     },
     {
@@ -1339,7 +1374,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 33
+        "y": 34
       },
       "panels": []
     },
@@ -2042,7 +2077,7 @@
         "h": 10,
         "w": 24,
         "x": 0,
-        "y": 34
+        "y": 35
       }
     },
     {
@@ -2662,7 +2697,7 @@
         "h": 10,
         "w": 24,
         "x": 0,
-        "y": 44
+        "y": 45
       }
     },
     {
@@ -3264,7 +3299,7 @@
         "h": 8,
         "w": 24,
         "x": 0,
-        "y": 54
+        "y": 55
       }
     },
     {
@@ -3775,7 +3810,7 @@
         "h": 8,
         "w": 24,
         "x": 0,
-        "y": 62
+        "y": 63
       }
     },
     {
@@ -4249,7 +4284,7 @@
         "h": 10,
         "w": 24,
         "x": 0,
-        "y": 70
+        "y": 71
       }
     },
     {
@@ -4261,7 +4296,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 80
+        "y": 81
       },
       "panels": []
     },
@@ -4320,7 +4355,7 @@
         "h": 8,
         "w": 12,
         "x": 0,
-        "y": 81
+        "y": 82
       }
     },
     {
@@ -4378,7 +4413,7 @@
         "h": 8,
         "w": 12,
         "x": 12,
-        "y": 81
+        "y": 82
       }
     },
     {
@@ -4436,7 +4471,7 @@
         "h": 8,
         "w": 12,
         "x": 0,
-        "y": 89
+        "y": 90
       }
     },
     {
@@ -4494,7 +4529,7 @@
         "h": 8,
         "w": 12,
         "x": 12,
-        "y": 89
+        "y": 90
       }
     },
     {
@@ -4506,7 +4541,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 97
+        "y": 98
       },
       "panels": []
     },
@@ -4565,7 +4600,7 @@
         "h": 8,
         "w": 12,
         "x": 0,
-        "y": 98
+        "y": 99
       }
     },
     {
@@ -4623,7 +4658,7 @@
         "h": 8,
         "w": 12,
         "x": 12,
-        "y": 98
+        "y": 99
       }
     },
     {
@@ -4681,7 +4716,7 @@
         "h": 8,
         "w": 12,
         "x": 0,
-        "y": 106
+        "y": 107
       }
     },
     {
@@ -4739,7 +4774,7 @@
         "h": 8,
         "w": 12,
         "x": 12,
-        "y": 106
+        "y": 107
       }
     },
     {
@@ -4797,7 +4832,7 @@
         "h": 8,
         "w": 12,
         "x": 0,
-        "y": 114
+        "y": 115
       }
     },
     {
@@ -4855,7 +4890,1934 @@
         "h": 8,
         "w": 12,
         "x": 12,
-        "y": 114
+        "y": 115
+      }
+    },
+    {
+      "id": 28,
+      "type": "row",
+      "title": "5. 【浪費】長期用量遠低於 Request：Request 佔住 Node，別人排不進來（過去 $waste_window 平均）",
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 123
+      },
+      "panels": []
+    },
+    {
+      "id": 29,
+      "type": "table",
+      "title": "【Node】Request 佔住多少 vs 過去 $waste_window 平均實際用多少",
+      "description": "**視角**：叢集內每一台 Node（所有 namespace 的 Pod 都算，不受上方 namespace 篩選影響）\n\n**這是什麼**：排程器只看 Request：Request ÷ 可分配滿了，新的 Pod 就排不進這台 Node，就算機器其實很閒。**Request ÷ 可分配** = 這台 Node 上還在跑（Pending / Running）的 Pod 的 Request 加總 ÷ 可分配量（目前）；**平均用量 ÷ 可分配** = 整台 Node 過去 $waste_window 的平均用量（CPU：非 idle 時間；記憶體：總量 − 可用）÷ 可分配量；**佔住沒用** = 兩者相減：被 Request 保留起來、卻沒有在用的比例。\n\n**怎麼看**：Request ÷ 可分配是紅 / 黃、佔住沒用也很高 → 這台 Node 是被「Request 設太高」塞滿，不是真的忙；到下方兩張表找是哪些容器，把 Request 調低就能空出位置。",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${datasource}"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "expr": "((max by (instance) (label_replace(kube_node_status_allocatable{resource=\"cpu\"}, \"instance\", \"$1\", \"node\", \"(.*)\"))) and on (instance) (max by (instance) (node_memory_MemTotal_bytes) * 0)) or (max by (instance) (node_memory_MemTotal_bytes) * 0 - 1)",
+          "legendFormat": "",
+          "range": false,
+          "instant": true,
+          "format": "table"
+        },
+        {
+          "refId": "B",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "expr": "(((sum by (instance) ((max by (namespace, pod, container) (kube_pod_container_resource_requests{resource=\"cpu\"}) and on (namespace, pod) (max by (namespace, pod) (kube_pod_status_phase{phase=~\"Pending|Running\"}) == 1)) * on (namespace, pod) group_left (instance) label_replace(max by (namespace, pod, node) (kube_pod_info{node!=\"\"}), \"instance\", \"$1\", \"node\", \"(.*)\"))) / (max by (instance) (label_replace(kube_node_status_allocatable{resource=\"cpu\"}, \"instance\", \"$1\", \"node\", \"(.*)\")))) and on (instance) (max by (instance) (node_memory_MemTotal_bytes) * 0)) or (max by (instance) (node_memory_MemTotal_bytes) * 0 - 1)",
+          "legendFormat": "",
+          "range": false,
+          "instant": true,
+          "format": "table"
+        },
+        {
+          "refId": "C",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "expr": "((((count by (instance) (node_cpu_seconds_total{mode=\"idle\"})) * (1 - avg by (instance) (rate(node_cpu_seconds_total{mode=\"idle\"}[$waste_window])))) / (max by (instance) (label_replace(kube_node_status_allocatable{resource=\"cpu\"}, \"instance\", \"$1\", \"node\", \"(.*)\")))) and on (instance) (max by (instance) (node_memory_MemTotal_bytes) * 0)) or (max by (instance) (node_memory_MemTotal_bytes) * 0 - 1)",
+          "legendFormat": "",
+          "range": false,
+          "instant": true,
+          "format": "table"
+        },
+        {
+          "refId": "D",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "expr": "((clamp_min((sum by (instance) ((max by (namespace, pod, container) (kube_pod_container_resource_requests{resource=\"cpu\"}) and on (namespace, pod) (max by (namespace, pod) (kube_pod_status_phase{phase=~\"Pending|Running\"}) == 1)) * on (namespace, pod) group_left (instance) label_replace(max by (namespace, pod, node) (kube_pod_info{node!=\"\"}), \"instance\", \"$1\", \"node\", \"(.*)\"))) / (max by (instance) (label_replace(kube_node_status_allocatable{resource=\"cpu\"}, \"instance\", \"$1\", \"node\", \"(.*)\"))) - ((count by (instance) (node_cpu_seconds_total{mode=\"idle\"})) * (1 - avg by (instance) (rate(node_cpu_seconds_total{mode=\"idle\"}[$waste_window])))) / (max by (instance) (label_replace(kube_node_status_allocatable{resource=\"cpu\"}, \"instance\", \"$1\", \"node\", \"(.*)\"))), 0)) and on (instance) (max by (instance) (node_memory_MemTotal_bytes) * 0)) or (max by (instance) (node_memory_MemTotal_bytes) * 0 - 1)",
+          "legendFormat": "",
+          "range": false,
+          "instant": true,
+          "format": "table"
+        },
+        {
+          "refId": "E",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "expr": "((max by (instance) (label_replace(kube_node_status_allocatable{resource=\"memory\"}, \"instance\", \"$1\", \"node\", \"(.*)\"))) and on (instance) (max by (instance) (node_memory_MemTotal_bytes) * 0)) or (max by (instance) (node_memory_MemTotal_bytes) * 0 - 1)",
+          "legendFormat": "",
+          "range": false,
+          "instant": true,
+          "format": "table"
+        },
+        {
+          "refId": "F",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "expr": "(((sum by (instance) ((max by (namespace, pod, container) (kube_pod_container_resource_requests{resource=\"memory\"}) and on (namespace, pod) (max by (namespace, pod) (kube_pod_status_phase{phase=~\"Pending|Running\"}) == 1)) * on (namespace, pod) group_left (instance) label_replace(max by (namespace, pod, node) (kube_pod_info{node!=\"\"}), \"instance\", \"$1\", \"node\", \"(.*)\"))) / (max by (instance) (label_replace(kube_node_status_allocatable{resource=\"memory\"}, \"instance\", \"$1\", \"node\", \"(.*)\")))) and on (instance) (max by (instance) (node_memory_MemTotal_bytes) * 0)) or (max by (instance) (node_memory_MemTotal_bytes) * 0 - 1)",
+          "legendFormat": "",
+          "range": false,
+          "instant": true,
+          "format": "table"
+        },
+        {
+          "refId": "G",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "expr": "(((max by (instance) (avg_over_time(node_memory_MemTotal_bytes[$waste_window]) - avg_over_time(node_memory_MemAvailable_bytes[$waste_window]))) / (max by (instance) (label_replace(kube_node_status_allocatable{resource=\"memory\"}, \"instance\", \"$1\", \"node\", \"(.*)\")))) and on (instance) (max by (instance) (node_memory_MemTotal_bytes) * 0)) or (max by (instance) (node_memory_MemTotal_bytes) * 0 - 1)",
+          "legendFormat": "",
+          "range": false,
+          "instant": true,
+          "format": "table"
+        },
+        {
+          "refId": "H",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "expr": "((clamp_min((sum by (instance) ((max by (namespace, pod, container) (kube_pod_container_resource_requests{resource=\"memory\"}) and on (namespace, pod) (max by (namespace, pod) (kube_pod_status_phase{phase=~\"Pending|Running\"}) == 1)) * on (namespace, pod) group_left (instance) label_replace(max by (namespace, pod, node) (kube_pod_info{node!=\"\"}), \"instance\", \"$1\", \"node\", \"(.*)\"))) / (max by (instance) (label_replace(kube_node_status_allocatable{resource=\"memory\"}, \"instance\", \"$1\", \"node\", \"(.*)\"))) - (max by (instance) (avg_over_time(node_memory_MemTotal_bytes[$waste_window]) - avg_over_time(node_memory_MemAvailable_bytes[$waste_window]))) / (max by (instance) (label_replace(kube_node_status_allocatable{resource=\"memory\"}, \"instance\", \"$1\", \"node\", \"(.*)\"))), 0)) and on (instance) (max by (instance) (node_memory_MemTotal_bytes) * 0)) or (max by (instance) (node_memory_MemTotal_bytes) * 0 - 1)",
+          "legendFormat": "",
+          "range": false,
+          "instant": true,
+          "format": "table"
+        }
+      ],
+      "transformations": [
+        {
+          "id": "merge",
+          "options": {}
+        },
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": {
+              "Time": true
+            },
+            "renameByName": {
+              "Value #A": "CPU 可分配（核）",
+              "Value #B": "CPU Request ÷ 可分配",
+              "Value #C": "CPU 平均用量 ÷ 可分配",
+              "Value #D": "CPU 佔住沒用",
+              "Value #E": "記憶體可分配",
+              "Value #F": "記憶體 Request ÷ 可分配",
+              "Value #G": "記憶體平均用量 ÷ 可分配",
+              "Value #H": "記憶體佔住沒用",
+              "instance": "Node"
+            },
+            "indexByName": {
+              "instance": 0,
+              "Value #A": 1,
+              "Value #B": 2,
+              "Value #C": 3,
+              "Value #D": 4,
+              "Value #E": 5,
+              "Value #F": 6,
+              "Value #G": 7,
+              "Value #H": 8
+            }
+          }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "filterable": false,
+            "align": "auto",
+            "minWidth": 80,
+            "wrapHeaderText": true
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "CPU 可分配（核）"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "none"
+              },
+              {
+                "id": "decimals",
+                "value": 1
+              },
+              {
+                "id": "mappings",
+                "value": [
+                  {
+                    "type": "value",
+                    "options": {
+                      "-1": {
+                        "text": "—",
+                        "color": "#8e8e8e",
+                        "index": 99
+                      }
+                    }
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "CPU Request ÷ 可分配"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "percentunit"
+              },
+              {
+                "id": "decimals",
+                "value": 0
+              },
+              {
+                "id": "thresholds",
+                "value": {
+                  "mode": "absolute",
+                  "steps": [
+                    {
+                      "color": "green",
+                      "value": null
+                    },
+                    {
+                      "color": "yellow",
+                      "value": 0.8
+                    },
+                    {
+                      "color": "red",
+                      "value": 0.9
+                    }
+                  ]
+                }
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "thresholds"
+                }
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-background",
+                  "mode": "basic"
+                }
+              },
+              {
+                "id": "custom.displayMode",
+                "value": "color-background"
+              },
+              {
+                "id": "mappings",
+                "value": [
+                  {
+                    "type": "value",
+                    "options": {
+                      "-1": {
+                        "text": "—",
+                        "color": "#8e8e8e",
+                        "index": 99
+                      }
+                    }
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "CPU 平均用量 ÷ 可分配"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "percentunit"
+              },
+              {
+                "id": "decimals",
+                "value": 0
+              },
+              {
+                "id": "mappings",
+                "value": [
+                  {
+                    "type": "value",
+                    "options": {
+                      "-1": {
+                        "text": "—",
+                        "color": "#8e8e8e",
+                        "index": 99
+                      }
+                    }
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "CPU 佔住沒用"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "percentunit"
+              },
+              {
+                "id": "decimals",
+                "value": 0
+              },
+              {
+                "id": "thresholds",
+                "value": {
+                  "mode": "absolute",
+                  "steps": [
+                    {
+                      "color": "green",
+                      "value": null
+                    },
+                    {
+                      "color": "yellow",
+                      "value": 0.3
+                    },
+                    {
+                      "color": "red",
+                      "value": 0.5
+                    }
+                  ]
+                }
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "thresholds"
+                }
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-background",
+                  "mode": "basic"
+                }
+              },
+              {
+                "id": "custom.displayMode",
+                "value": "color-background"
+              },
+              {
+                "id": "mappings",
+                "value": [
+                  {
+                    "type": "value",
+                    "options": {
+                      "-1": {
+                        "text": "—",
+                        "color": "#8e8e8e",
+                        "index": 99
+                      }
+                    }
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "記憶體可分配"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "bytes"
+              },
+              {
+                "id": "decimals",
+                "value": 1
+              },
+              {
+                "id": "mappings",
+                "value": [
+                  {
+                    "type": "value",
+                    "options": {
+                      "-1": {
+                        "text": "—",
+                        "color": "#8e8e8e",
+                        "index": 99
+                      }
+                    }
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "記憶體 Request ÷ 可分配"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "percentunit"
+              },
+              {
+                "id": "decimals",
+                "value": 0
+              },
+              {
+                "id": "thresholds",
+                "value": {
+                  "mode": "absolute",
+                  "steps": [
+                    {
+                      "color": "green",
+                      "value": null
+                    },
+                    {
+                      "color": "yellow",
+                      "value": 0.8
+                    },
+                    {
+                      "color": "red",
+                      "value": 0.9
+                    }
+                  ]
+                }
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "thresholds"
+                }
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-background",
+                  "mode": "basic"
+                }
+              },
+              {
+                "id": "custom.displayMode",
+                "value": "color-background"
+              },
+              {
+                "id": "mappings",
+                "value": [
+                  {
+                    "type": "value",
+                    "options": {
+                      "-1": {
+                        "text": "—",
+                        "color": "#8e8e8e",
+                        "index": 99
+                      }
+                    }
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "記憶體平均用量 ÷ 可分配"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "percentunit"
+              },
+              {
+                "id": "decimals",
+                "value": 0
+              },
+              {
+                "id": "mappings",
+                "value": [
+                  {
+                    "type": "value",
+                    "options": {
+                      "-1": {
+                        "text": "—",
+                        "color": "#8e8e8e",
+                        "index": 99
+                      }
+                    }
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "記憶體佔住沒用"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "percentunit"
+              },
+              {
+                "id": "decimals",
+                "value": 0
+              },
+              {
+                "id": "thresholds",
+                "value": {
+                  "mode": "absolute",
+                  "steps": [
+                    {
+                      "color": "green",
+                      "value": null
+                    },
+                    {
+                      "color": "yellow",
+                      "value": 0.3
+                    },
+                    {
+                      "color": "red",
+                      "value": 0.5
+                    }
+                  ]
+                }
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "thresholds"
+                }
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-background",
+                  "mode": "basic"
+                }
+              },
+              {
+                "id": "custom.displayMode",
+                "value": "color-background"
+              },
+              {
+                "id": "mappings",
+                "value": [
+                  {
+                    "type": "value",
+                    "options": {
+                      "-1": {
+                        "text": "—",
+                        "color": "#8e8e8e",
+                        "index": 99
+                      }
+                    }
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Node"
+            },
+            "properties": [
+              {
+                "id": "custom.filterable",
+                "value": true
+              },
+              {
+                "id": "custom.width",
+                "value": 140
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "showHeader": true,
+        "sortBy": [
+          {
+            "displayName": "記憶體佔住沒用",
+            "desc": true
+          }
+        ],
+        "footer": {
+          "show": false
+        }
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 24,
+        "x": 0,
+        "y": 124
+      }
+    },
+    {
+      "id": 30,
+      "type": "table",
+      "title": "【Workload】CPU：長期用量遠低於 Request（過去 $waste_window 平均）",
+      "description": "**視角**：叢集內每一個 Workload 的每個容器（同一個 Workload 的 Pod 共用一份設定，容器只列一次）\n\n**這是什麼**：只列**過去 $waste_window 平均用量不到 Request 一半**的容器。**平均用量／Pod** = 這段期間每個 Pod 的平均用量，再取所有 Pod 的平均（rollout 換掉的舊 Pod 也算）；**尖峰／Pod** = 最高的那個 Pod 在這段期間的最高值（每 5 分鐘的平均）；**Request／Pod** = 目前每個 Pod 設的 Request；**沒用到的 Request** = (Request − 平均用量) × 目前 Pod 數，就是可以還給 Node 的量。新上線不滿 $waste_window 的 Pod 只算它活著的時間。\n\n**怎麼看**：依「沒用到的 Request」排序，越上面浪費越多。尖峰 ÷ Request 也很低（紅）→ 連最忙的時候都用不到，可以放心把 Request 調到尖峰附近；尖峰 ÷ Request 接近或超過 100% → 平常閒、偶爾會衝，Request 可以調到平均附近，靠 Limit 讓它衝（CPU 不夠只會變慢，不會被殺）。",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${datasource}"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "expr": "((count by (namespace, workload, workload_type, container) (max by (namespace, pod, container) (rate(container_cpu_usage_seconds_total{container!=\"\", container!=\"POD\", namespace=~\"$namespace\", namespace!~\"$exclude\"}[5m])) * on (namespace, pod) group_left (workload, workload_type) max by (namespace, pod, workload, workload_type) (label_replace(label_replace(label_replace(kube_pod_owner{owner_kind=\"ReplicaSet\", namespace=~\"$namespace\", namespace!~\"$exclude\"}, \"replicaset\", \"$1\", \"owner_name\", \"(.*)\") * on (namespace, replicaset) group_left (owner_deploy) max by (namespace, replicaset, owner_deploy) (label_replace(kube_replicaset_owner{owner_kind=\"Deployment\", namespace=~\"$namespace\", namespace!~\"$exclude\"}, \"owner_deploy\", \"$1\", \"owner_name\", \"(.*)\")), \"workload\", \"$1\", \"owner_deploy\", \"(.*)\"), \"workload_type\", \"Deployment\", \"namespace\", \".*\") or label_replace(label_replace(kube_pod_owner{owner_kind=~\"StatefulSet|DaemonSet\", namespace=~\"$namespace\", namespace!~\"$exclude\"}, \"workload\", \"$1\", \"owner_name\", \"(.*)\"), \"workload_type\", \"$1\", \"owner_kind\", \"(.*)\")))) and on (namespace, workload, workload_type, container) ((((avg by (namespace, workload, workload_type, container) ((max by (namespace, pod, container) (avg_over_time(rate(container_cpu_usage_seconds_total{container!=\"\", container!=\"POD\", namespace=~\"$namespace\", namespace!~\"$exclude\"}[5m])[$waste_window:5m]))) * on (namespace, pod) group_left (workload, workload_type) max by (namespace, pod, workload, workload_type) (label_replace(label_replace(label_replace(max_over_time(kube_pod_owner{owner_kind=\"ReplicaSet\", namespace=~\"$namespace\", namespace!~\"$exclude\"}[$waste_window]), \"replicaset\", \"$1\", \"owner_name\", \"(.*)\") * on (namespace, replicaset) group_left (owner_deploy) max by (namespace, replicaset, owner_deploy) (label_replace(max_over_time(kube_replicaset_owner{owner_kind=\"Deployment\", namespace=~\"$namespace\", namespace!~\"$exclude\"}[$waste_window]), \"owner_deploy\", \"$1\", \"owner_name\", \"(.*)\")), \"workload\", \"$1\", \"owner_deploy\", \"(.*)\"), \"workload_type\", \"Deployment\", \"namespace\", \".*\") or label_replace(label_replace(max_over_time(kube_pod_owner{owner_kind=~\"StatefulSet|DaemonSet\", namespace=~\"$namespace\", namespace!~\"$exclude\"}[$waste_window]), \"workload\", \"$1\", \"owner_name\", \"(.*)\"), \"workload_type\", \"$1\", \"owner_kind\", \"(.*)\")))) / (max by (namespace, workload, workload_type, container) ((max by (namespace, pod, container) (kube_pod_container_resource_requests{resource=\"cpu\", namespace=~\"$namespace\", namespace!~\"$exclude\"} > 0)) * on (namespace, pod) group_left (workload, workload_type) max by (namespace, pod, workload, workload_type) (label_replace(label_replace(label_replace(kube_pod_owner{owner_kind=\"ReplicaSet\", namespace=~\"$namespace\", namespace!~\"$exclude\"}, \"replicaset\", \"$1\", \"owner_name\", \"(.*)\") * on (namespace, replicaset) group_left (owner_deploy) max by (namespace, replicaset, owner_deploy) (label_replace(kube_replicaset_owner{owner_kind=\"Deployment\", namespace=~\"$namespace\", namespace!~\"$exclude\"}, \"owner_deploy\", \"$1\", \"owner_name\", \"(.*)\")), \"workload\", \"$1\", \"owner_deploy\", \"(.*)\"), \"workload_type\", \"Deployment\", \"namespace\", \".*\") or label_replace(label_replace(kube_pod_owner{owner_kind=~\"StatefulSet|DaemonSet\", namespace=~\"$namespace\", namespace!~\"$exclude\"}, \"workload\", \"$1\", \"owner_name\", \"(.*)\"), \"workload_type\", \"$1\", \"owner_kind\", \"(.*)\"))))) < 0.5) * 0)) or ((((avg by (namespace, workload, workload_type, container) ((max by (namespace, pod, container) (avg_over_time(rate(container_cpu_usage_seconds_total{container!=\"\", container!=\"POD\", namespace=~\"$namespace\", namespace!~\"$exclude\"}[5m])[$waste_window:5m]))) * on (namespace, pod) group_left (workload, workload_type) max by (namespace, pod, workload, workload_type) (label_replace(label_replace(label_replace(max_over_time(kube_pod_owner{owner_kind=\"ReplicaSet\", namespace=~\"$namespace\", namespace!~\"$exclude\"}[$waste_window]), \"replicaset\", \"$1\", \"owner_name\", \"(.*)\") * on (namespace, replicaset) group_left (owner_deploy) max by (namespace, replicaset, owner_deploy) (label_replace(max_over_time(kube_replicaset_owner{owner_kind=\"Deployment\", namespace=~\"$namespace\", namespace!~\"$exclude\"}[$waste_window]), \"owner_deploy\", \"$1\", \"owner_name\", \"(.*)\")), \"workload\", \"$1\", \"owner_deploy\", \"(.*)\"), \"workload_type\", \"Deployment\", \"namespace\", \".*\") or label_replace(label_replace(max_over_time(kube_pod_owner{owner_kind=~\"StatefulSet|DaemonSet\", namespace=~\"$namespace\", namespace!~\"$exclude\"}[$waste_window]), \"workload\", \"$1\", \"owner_name\", \"(.*)\"), \"workload_type\", \"$1\", \"owner_kind\", \"(.*)\")))) / (max by (namespace, workload, workload_type, container) ((max by (namespace, pod, container) (kube_pod_container_resource_requests{resource=\"cpu\", namespace=~\"$namespace\", namespace!~\"$exclude\"} > 0)) * on (namespace, pod) group_left (workload, workload_type) max by (namespace, pod, workload, workload_type) (label_replace(label_replace(label_replace(kube_pod_owner{owner_kind=\"ReplicaSet\", namespace=~\"$namespace\", namespace!~\"$exclude\"}, \"replicaset\", \"$1\", \"owner_name\", \"(.*)\") * on (namespace, replicaset) group_left (owner_deploy) max by (namespace, replicaset, owner_deploy) (label_replace(kube_replicaset_owner{owner_kind=\"Deployment\", namespace=~\"$namespace\", namespace!~\"$exclude\"}, \"owner_deploy\", \"$1\", \"owner_name\", \"(.*)\")), \"workload\", \"$1\", \"owner_deploy\", \"(.*)\"), \"workload_type\", \"Deployment\", \"namespace\", \".*\") or label_replace(label_replace(kube_pod_owner{owner_kind=~\"StatefulSet|DaemonSet\", namespace=~\"$namespace\", namespace!~\"$exclude\"}, \"workload\", \"$1\", \"owner_name\", \"(.*)\"), \"workload_type\", \"$1\", \"owner_kind\", \"(.*)\"))))) < 0.5) * 0 - 1)",
+          "legendFormat": "",
+          "range": false,
+          "instant": true,
+          "format": "table"
+        },
+        {
+          "refId": "B",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "expr": "((avg by (namespace, workload, workload_type, container) ((max by (namespace, pod, container) (avg_over_time(rate(container_cpu_usage_seconds_total{container!=\"\", container!=\"POD\", namespace=~\"$namespace\", namespace!~\"$exclude\"}[5m])[$waste_window:5m]))) * on (namespace, pod) group_left (workload, workload_type) max by (namespace, pod, workload, workload_type) (label_replace(label_replace(label_replace(max_over_time(kube_pod_owner{owner_kind=\"ReplicaSet\", namespace=~\"$namespace\", namespace!~\"$exclude\"}[$waste_window]), \"replicaset\", \"$1\", \"owner_name\", \"(.*)\") * on (namespace, replicaset) group_left (owner_deploy) max by (namespace, replicaset, owner_deploy) (label_replace(max_over_time(kube_replicaset_owner{owner_kind=\"Deployment\", namespace=~\"$namespace\", namespace!~\"$exclude\"}[$waste_window]), \"owner_deploy\", \"$1\", \"owner_name\", \"(.*)\")), \"workload\", \"$1\", \"owner_deploy\", \"(.*)\"), \"workload_type\", \"Deployment\", \"namespace\", \".*\") or label_replace(label_replace(max_over_time(kube_pod_owner{owner_kind=~\"StatefulSet|DaemonSet\", namespace=~\"$namespace\", namespace!~\"$exclude\"}[$waste_window]), \"workload\", \"$1\", \"owner_name\", \"(.*)\"), \"workload_type\", \"$1\", \"owner_kind\", \"(.*)\")))) and on (namespace, workload, workload_type, container) ((((avg by (namespace, workload, workload_type, container) ((max by (namespace, pod, container) (avg_over_time(rate(container_cpu_usage_seconds_total{container!=\"\", container!=\"POD\", namespace=~\"$namespace\", namespace!~\"$exclude\"}[5m])[$waste_window:5m]))) * on (namespace, pod) group_left (workload, workload_type) max by (namespace, pod, workload, workload_type) (label_replace(label_replace(label_replace(max_over_time(kube_pod_owner{owner_kind=\"ReplicaSet\", namespace=~\"$namespace\", namespace!~\"$exclude\"}[$waste_window]), \"replicaset\", \"$1\", \"owner_name\", \"(.*)\") * on (namespace, replicaset) group_left (owner_deploy) max by (namespace, replicaset, owner_deploy) (label_replace(max_over_time(kube_replicaset_owner{owner_kind=\"Deployment\", namespace=~\"$namespace\", namespace!~\"$exclude\"}[$waste_window]), \"owner_deploy\", \"$1\", \"owner_name\", \"(.*)\")), \"workload\", \"$1\", \"owner_deploy\", \"(.*)\"), \"workload_type\", \"Deployment\", \"namespace\", \".*\") or label_replace(label_replace(max_over_time(kube_pod_owner{owner_kind=~\"StatefulSet|DaemonSet\", namespace=~\"$namespace\", namespace!~\"$exclude\"}[$waste_window]), \"workload\", \"$1\", \"owner_name\", \"(.*)\"), \"workload_type\", \"$1\", \"owner_kind\", \"(.*)\")))) / (max by (namespace, workload, workload_type, container) ((max by (namespace, pod, container) (kube_pod_container_resource_requests{resource=\"cpu\", namespace=~\"$namespace\", namespace!~\"$exclude\"} > 0)) * on (namespace, pod) group_left (workload, workload_type) max by (namespace, pod, workload, workload_type) (label_replace(label_replace(label_replace(kube_pod_owner{owner_kind=\"ReplicaSet\", namespace=~\"$namespace\", namespace!~\"$exclude\"}, \"replicaset\", \"$1\", \"owner_name\", \"(.*)\") * on (namespace, replicaset) group_left (owner_deploy) max by (namespace, replicaset, owner_deploy) (label_replace(kube_replicaset_owner{owner_kind=\"Deployment\", namespace=~\"$namespace\", namespace!~\"$exclude\"}, \"owner_deploy\", \"$1\", \"owner_name\", \"(.*)\")), \"workload\", \"$1\", \"owner_deploy\", \"(.*)\"), \"workload_type\", \"Deployment\", \"namespace\", \".*\") or label_replace(label_replace(kube_pod_owner{owner_kind=~\"StatefulSet|DaemonSet\", namespace=~\"$namespace\", namespace!~\"$exclude\"}, \"workload\", \"$1\", \"owner_name\", \"(.*)\"), \"workload_type\", \"$1\", \"owner_kind\", \"(.*)\"))))) < 0.5) * 0)) or ((((avg by (namespace, workload, workload_type, container) ((max by (namespace, pod, container) (avg_over_time(rate(container_cpu_usage_seconds_total{container!=\"\", container!=\"POD\", namespace=~\"$namespace\", namespace!~\"$exclude\"}[5m])[$waste_window:5m]))) * on (namespace, pod) group_left (workload, workload_type) max by (namespace, pod, workload, workload_type) (label_replace(label_replace(label_replace(max_over_time(kube_pod_owner{owner_kind=\"ReplicaSet\", namespace=~\"$namespace\", namespace!~\"$exclude\"}[$waste_window]), \"replicaset\", \"$1\", \"owner_name\", \"(.*)\") * on (namespace, replicaset) group_left (owner_deploy) max by (namespace, replicaset, owner_deploy) (label_replace(max_over_time(kube_replicaset_owner{owner_kind=\"Deployment\", namespace=~\"$namespace\", namespace!~\"$exclude\"}[$waste_window]), \"owner_deploy\", \"$1\", \"owner_name\", \"(.*)\")), \"workload\", \"$1\", \"owner_deploy\", \"(.*)\"), \"workload_type\", \"Deployment\", \"namespace\", \".*\") or label_replace(label_replace(max_over_time(kube_pod_owner{owner_kind=~\"StatefulSet|DaemonSet\", namespace=~\"$namespace\", namespace!~\"$exclude\"}[$waste_window]), \"workload\", \"$1\", \"owner_name\", \"(.*)\"), \"workload_type\", \"$1\", \"owner_kind\", \"(.*)\")))) / (max by (namespace, workload, workload_type, container) ((max by (namespace, pod, container) (kube_pod_container_resource_requests{resource=\"cpu\", namespace=~\"$namespace\", namespace!~\"$exclude\"} > 0)) * on (namespace, pod) group_left (workload, workload_type) max by (namespace, pod, workload, workload_type) (label_replace(label_replace(label_replace(kube_pod_owner{owner_kind=\"ReplicaSet\", namespace=~\"$namespace\", namespace!~\"$exclude\"}, \"replicaset\", \"$1\", \"owner_name\", \"(.*)\") * on (namespace, replicaset) group_left (owner_deploy) max by (namespace, replicaset, owner_deploy) (label_replace(kube_replicaset_owner{owner_kind=\"Deployment\", namespace=~\"$namespace\", namespace!~\"$exclude\"}, \"owner_deploy\", \"$1\", \"owner_name\", \"(.*)\")), \"workload\", \"$1\", \"owner_deploy\", \"(.*)\"), \"workload_type\", \"Deployment\", \"namespace\", \".*\") or label_replace(label_replace(kube_pod_owner{owner_kind=~\"StatefulSet|DaemonSet\", namespace=~\"$namespace\", namespace!~\"$exclude\"}, \"workload\", \"$1\", \"owner_name\", \"(.*)\"), \"workload_type\", \"$1\", \"owner_kind\", \"(.*)\"))))) < 0.5) * 0 - 1)",
+          "legendFormat": "",
+          "range": false,
+          "instant": true,
+          "format": "table"
+        },
+        {
+          "refId": "C",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "expr": "((max by (namespace, workload, workload_type, container) ((max by (namespace, pod, container) (max_over_time(rate(container_cpu_usage_seconds_total{container!=\"\", container!=\"POD\", namespace=~\"$namespace\", namespace!~\"$exclude\"}[5m])[$waste_window:5m]))) * on (namespace, pod) group_left (workload, workload_type) max by (namespace, pod, workload, workload_type) (label_replace(label_replace(label_replace(max_over_time(kube_pod_owner{owner_kind=\"ReplicaSet\", namespace=~\"$namespace\", namespace!~\"$exclude\"}[$waste_window]), \"replicaset\", \"$1\", \"owner_name\", \"(.*)\") * on (namespace, replicaset) group_left (owner_deploy) max by (namespace, replicaset, owner_deploy) (label_replace(max_over_time(kube_replicaset_owner{owner_kind=\"Deployment\", namespace=~\"$namespace\", namespace!~\"$exclude\"}[$waste_window]), \"owner_deploy\", \"$1\", \"owner_name\", \"(.*)\")), \"workload\", \"$1\", \"owner_deploy\", \"(.*)\"), \"workload_type\", \"Deployment\", \"namespace\", \".*\") or label_replace(label_replace(max_over_time(kube_pod_owner{owner_kind=~\"StatefulSet|DaemonSet\", namespace=~\"$namespace\", namespace!~\"$exclude\"}[$waste_window]), \"workload\", \"$1\", \"owner_name\", \"(.*)\"), \"workload_type\", \"$1\", \"owner_kind\", \"(.*)\")))) and on (namespace, workload, workload_type, container) ((((avg by (namespace, workload, workload_type, container) ((max by (namespace, pod, container) (avg_over_time(rate(container_cpu_usage_seconds_total{container!=\"\", container!=\"POD\", namespace=~\"$namespace\", namespace!~\"$exclude\"}[5m])[$waste_window:5m]))) * on (namespace, pod) group_left (workload, workload_type) max by (namespace, pod, workload, workload_type) (label_replace(label_replace(label_replace(max_over_time(kube_pod_owner{owner_kind=\"ReplicaSet\", namespace=~\"$namespace\", namespace!~\"$exclude\"}[$waste_window]), \"replicaset\", \"$1\", \"owner_name\", \"(.*)\") * on (namespace, replicaset) group_left (owner_deploy) max by (namespace, replicaset, owner_deploy) (label_replace(max_over_time(kube_replicaset_owner{owner_kind=\"Deployment\", namespace=~\"$namespace\", namespace!~\"$exclude\"}[$waste_window]), \"owner_deploy\", \"$1\", \"owner_name\", \"(.*)\")), \"workload\", \"$1\", \"owner_deploy\", \"(.*)\"), \"workload_type\", \"Deployment\", \"namespace\", \".*\") or label_replace(label_replace(max_over_time(kube_pod_owner{owner_kind=~\"StatefulSet|DaemonSet\", namespace=~\"$namespace\", namespace!~\"$exclude\"}[$waste_window]), \"workload\", \"$1\", \"owner_name\", \"(.*)\"), \"workload_type\", \"$1\", \"owner_kind\", \"(.*)\")))) / (max by (namespace, workload, workload_type, container) ((max by (namespace, pod, container) (kube_pod_container_resource_requests{resource=\"cpu\", namespace=~\"$namespace\", namespace!~\"$exclude\"} > 0)) * on (namespace, pod) group_left (workload, workload_type) max by (namespace, pod, workload, workload_type) (label_replace(label_replace(label_replace(kube_pod_owner{owner_kind=\"ReplicaSet\", namespace=~\"$namespace\", namespace!~\"$exclude\"}, \"replicaset\", \"$1\", \"owner_name\", \"(.*)\") * on (namespace, replicaset) group_left (owner_deploy) max by (namespace, replicaset, owner_deploy) (label_replace(kube_replicaset_owner{owner_kind=\"Deployment\", namespace=~\"$namespace\", namespace!~\"$exclude\"}, \"owner_deploy\", \"$1\", \"owner_name\", \"(.*)\")), \"workload\", \"$1\", \"owner_deploy\", \"(.*)\"), \"workload_type\", \"Deployment\", \"namespace\", \".*\") or label_replace(label_replace(kube_pod_owner{owner_kind=~\"StatefulSet|DaemonSet\", namespace=~\"$namespace\", namespace!~\"$exclude\"}, \"workload\", \"$1\", \"owner_name\", \"(.*)\"), \"workload_type\", \"$1\", \"owner_kind\", \"(.*)\"))))) < 0.5) * 0)) or ((((avg by (namespace, workload, workload_type, container) ((max by (namespace, pod, container) (avg_over_time(rate(container_cpu_usage_seconds_total{container!=\"\", container!=\"POD\", namespace=~\"$namespace\", namespace!~\"$exclude\"}[5m])[$waste_window:5m]))) * on (namespace, pod) group_left (workload, workload_type) max by (namespace, pod, workload, workload_type) (label_replace(label_replace(label_replace(max_over_time(kube_pod_owner{owner_kind=\"ReplicaSet\", namespace=~\"$namespace\", namespace!~\"$exclude\"}[$waste_window]), \"replicaset\", \"$1\", \"owner_name\", \"(.*)\") * on (namespace, replicaset) group_left (owner_deploy) max by (namespace, replicaset, owner_deploy) (label_replace(max_over_time(kube_replicaset_owner{owner_kind=\"Deployment\", namespace=~\"$namespace\", namespace!~\"$exclude\"}[$waste_window]), \"owner_deploy\", \"$1\", \"owner_name\", \"(.*)\")), \"workload\", \"$1\", \"owner_deploy\", \"(.*)\"), \"workload_type\", \"Deployment\", \"namespace\", \".*\") or label_replace(label_replace(max_over_time(kube_pod_owner{owner_kind=~\"StatefulSet|DaemonSet\", namespace=~\"$namespace\", namespace!~\"$exclude\"}[$waste_window]), \"workload\", \"$1\", \"owner_name\", \"(.*)\"), \"workload_type\", \"$1\", \"owner_kind\", \"(.*)\")))) / (max by (namespace, workload, workload_type, container) ((max by (namespace, pod, container) (kube_pod_container_resource_requests{resource=\"cpu\", namespace=~\"$namespace\", namespace!~\"$exclude\"} > 0)) * on (namespace, pod) group_left (workload, workload_type) max by (namespace, pod, workload, workload_type) (label_replace(label_replace(label_replace(kube_pod_owner{owner_kind=\"ReplicaSet\", namespace=~\"$namespace\", namespace!~\"$exclude\"}, \"replicaset\", \"$1\", \"owner_name\", \"(.*)\") * on (namespace, replicaset) group_left (owner_deploy) max by (namespace, replicaset, owner_deploy) (label_replace(kube_replicaset_owner{owner_kind=\"Deployment\", namespace=~\"$namespace\", namespace!~\"$exclude\"}, \"owner_deploy\", \"$1\", \"owner_name\", \"(.*)\")), \"workload\", \"$1\", \"owner_deploy\", \"(.*)\"), \"workload_type\", \"Deployment\", \"namespace\", \".*\") or label_replace(label_replace(kube_pod_owner{owner_kind=~\"StatefulSet|DaemonSet\", namespace=~\"$namespace\", namespace!~\"$exclude\"}, \"workload\", \"$1\", \"owner_name\", \"(.*)\"), \"workload_type\", \"$1\", \"owner_kind\", \"(.*)\"))))) < 0.5) * 0 - 1)",
+          "legendFormat": "",
+          "range": false,
+          "instant": true,
+          "format": "table"
+        },
+        {
+          "refId": "D",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "expr": "((max by (namespace, workload, workload_type, container) ((max by (namespace, pod, container) (kube_pod_container_resource_requests{resource=\"cpu\", namespace=~\"$namespace\", namespace!~\"$exclude\"} > 0)) * on (namespace, pod) group_left (workload, workload_type) max by (namespace, pod, workload, workload_type) (label_replace(label_replace(label_replace(kube_pod_owner{owner_kind=\"ReplicaSet\", namespace=~\"$namespace\", namespace!~\"$exclude\"}, \"replicaset\", \"$1\", \"owner_name\", \"(.*)\") * on (namespace, replicaset) group_left (owner_deploy) max by (namespace, replicaset, owner_deploy) (label_replace(kube_replicaset_owner{owner_kind=\"Deployment\", namespace=~\"$namespace\", namespace!~\"$exclude\"}, \"owner_deploy\", \"$1\", \"owner_name\", \"(.*)\")), \"workload\", \"$1\", \"owner_deploy\", \"(.*)\"), \"workload_type\", \"Deployment\", \"namespace\", \".*\") or label_replace(label_replace(kube_pod_owner{owner_kind=~\"StatefulSet|DaemonSet\", namespace=~\"$namespace\", namespace!~\"$exclude\"}, \"workload\", \"$1\", \"owner_name\", \"(.*)\"), \"workload_type\", \"$1\", \"owner_kind\", \"(.*)\")))) and on (namespace, workload, workload_type, container) ((((avg by (namespace, workload, workload_type, container) ((max by (namespace, pod, container) (avg_over_time(rate(container_cpu_usage_seconds_total{container!=\"\", container!=\"POD\", namespace=~\"$namespace\", namespace!~\"$exclude\"}[5m])[$waste_window:5m]))) * on (namespace, pod) group_left (workload, workload_type) max by (namespace, pod, workload, workload_type) (label_replace(label_replace(label_replace(max_over_time(kube_pod_owner{owner_kind=\"ReplicaSet\", namespace=~\"$namespace\", namespace!~\"$exclude\"}[$waste_window]), \"replicaset\", \"$1\", \"owner_name\", \"(.*)\") * on (namespace, replicaset) group_left (owner_deploy) max by (namespace, replicaset, owner_deploy) (label_replace(max_over_time(kube_replicaset_owner{owner_kind=\"Deployment\", namespace=~\"$namespace\", namespace!~\"$exclude\"}[$waste_window]), \"owner_deploy\", \"$1\", \"owner_name\", \"(.*)\")), \"workload\", \"$1\", \"owner_deploy\", \"(.*)\"), \"workload_type\", \"Deployment\", \"namespace\", \".*\") or label_replace(label_replace(max_over_time(kube_pod_owner{owner_kind=~\"StatefulSet|DaemonSet\", namespace=~\"$namespace\", namespace!~\"$exclude\"}[$waste_window]), \"workload\", \"$1\", \"owner_name\", \"(.*)\"), \"workload_type\", \"$1\", \"owner_kind\", \"(.*)\")))) / (max by (namespace, workload, workload_type, container) ((max by (namespace, pod, container) (kube_pod_container_resource_requests{resource=\"cpu\", namespace=~\"$namespace\", namespace!~\"$exclude\"} > 0)) * on (namespace, pod) group_left (workload, workload_type) max by (namespace, pod, workload, workload_type) (label_replace(label_replace(label_replace(kube_pod_owner{owner_kind=\"ReplicaSet\", namespace=~\"$namespace\", namespace!~\"$exclude\"}, \"replicaset\", \"$1\", \"owner_name\", \"(.*)\") * on (namespace, replicaset) group_left (owner_deploy) max by (namespace, replicaset, owner_deploy) (label_replace(kube_replicaset_owner{owner_kind=\"Deployment\", namespace=~\"$namespace\", namespace!~\"$exclude\"}, \"owner_deploy\", \"$1\", \"owner_name\", \"(.*)\")), \"workload\", \"$1\", \"owner_deploy\", \"(.*)\"), \"workload_type\", \"Deployment\", \"namespace\", \".*\") or label_replace(label_replace(kube_pod_owner{owner_kind=~\"StatefulSet|DaemonSet\", namespace=~\"$namespace\", namespace!~\"$exclude\"}, \"workload\", \"$1\", \"owner_name\", \"(.*)\"), \"workload_type\", \"$1\", \"owner_kind\", \"(.*)\"))))) < 0.5) * 0)) or ((((avg by (namespace, workload, workload_type, container) ((max by (namespace, pod, container) (avg_over_time(rate(container_cpu_usage_seconds_total{container!=\"\", container!=\"POD\", namespace=~\"$namespace\", namespace!~\"$exclude\"}[5m])[$waste_window:5m]))) * on (namespace, pod) group_left (workload, workload_type) max by (namespace, pod, workload, workload_type) (label_replace(label_replace(label_replace(max_over_time(kube_pod_owner{owner_kind=\"ReplicaSet\", namespace=~\"$namespace\", namespace!~\"$exclude\"}[$waste_window]), \"replicaset\", \"$1\", \"owner_name\", \"(.*)\") * on (namespace, replicaset) group_left (owner_deploy) max by (namespace, replicaset, owner_deploy) (label_replace(max_over_time(kube_replicaset_owner{owner_kind=\"Deployment\", namespace=~\"$namespace\", namespace!~\"$exclude\"}[$waste_window]), \"owner_deploy\", \"$1\", \"owner_name\", \"(.*)\")), \"workload\", \"$1\", \"owner_deploy\", \"(.*)\"), \"workload_type\", \"Deployment\", \"namespace\", \".*\") or label_replace(label_replace(max_over_time(kube_pod_owner{owner_kind=~\"StatefulSet|DaemonSet\", namespace=~\"$namespace\", namespace!~\"$exclude\"}[$waste_window]), \"workload\", \"$1\", \"owner_name\", \"(.*)\"), \"workload_type\", \"$1\", \"owner_kind\", \"(.*)\")))) / (max by (namespace, workload, workload_type, container) ((max by (namespace, pod, container) (kube_pod_container_resource_requests{resource=\"cpu\", namespace=~\"$namespace\", namespace!~\"$exclude\"} > 0)) * on (namespace, pod) group_left (workload, workload_type) max by (namespace, pod, workload, workload_type) (label_replace(label_replace(label_replace(kube_pod_owner{owner_kind=\"ReplicaSet\", namespace=~\"$namespace\", namespace!~\"$exclude\"}, \"replicaset\", \"$1\", \"owner_name\", \"(.*)\") * on (namespace, replicaset) group_left (owner_deploy) max by (namespace, replicaset, owner_deploy) (label_replace(kube_replicaset_owner{owner_kind=\"Deployment\", namespace=~\"$namespace\", namespace!~\"$exclude\"}, \"owner_deploy\", \"$1\", \"owner_name\", \"(.*)\")), \"workload\", \"$1\", \"owner_deploy\", \"(.*)\"), \"workload_type\", \"Deployment\", \"namespace\", \".*\") or label_replace(label_replace(kube_pod_owner{owner_kind=~\"StatefulSet|DaemonSet\", namespace=~\"$namespace\", namespace!~\"$exclude\"}, \"workload\", \"$1\", \"owner_name\", \"(.*)\"), \"workload_type\", \"$1\", \"owner_kind\", \"(.*)\"))))) < 0.5) * 0 - 1)",
+          "legendFormat": "",
+          "range": false,
+          "instant": true,
+          "format": "table"
+        },
+        {
+          "refId": "E",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "expr": "(((avg by (namespace, workload, workload_type, container) ((max by (namespace, pod, container) (avg_over_time(rate(container_cpu_usage_seconds_total{container!=\"\", container!=\"POD\", namespace=~\"$namespace\", namespace!~\"$exclude\"}[5m])[$waste_window:5m]))) * on (namespace, pod) group_left (workload, workload_type) max by (namespace, pod, workload, workload_type) (label_replace(label_replace(label_replace(max_over_time(kube_pod_owner{owner_kind=\"ReplicaSet\", namespace=~\"$namespace\", namespace!~\"$exclude\"}[$waste_window]), \"replicaset\", \"$1\", \"owner_name\", \"(.*)\") * on (namespace, replicaset) group_left (owner_deploy) max by (namespace, replicaset, owner_deploy) (label_replace(max_over_time(kube_replicaset_owner{owner_kind=\"Deployment\", namespace=~\"$namespace\", namespace!~\"$exclude\"}[$waste_window]), \"owner_deploy\", \"$1\", \"owner_name\", \"(.*)\")), \"workload\", \"$1\", \"owner_deploy\", \"(.*)\"), \"workload_type\", \"Deployment\", \"namespace\", \".*\") or label_replace(label_replace(max_over_time(kube_pod_owner{owner_kind=~\"StatefulSet|DaemonSet\", namespace=~\"$namespace\", namespace!~\"$exclude\"}[$waste_window]), \"workload\", \"$1\", \"owner_name\", \"(.*)\"), \"workload_type\", \"$1\", \"owner_kind\", \"(.*)\")))) / (max by (namespace, workload, workload_type, container) ((max by (namespace, pod, container) (kube_pod_container_resource_requests{resource=\"cpu\", namespace=~\"$namespace\", namespace!~\"$exclude\"} > 0)) * on (namespace, pod) group_left (workload, workload_type) max by (namespace, pod, workload, workload_type) (label_replace(label_replace(label_replace(kube_pod_owner{owner_kind=\"ReplicaSet\", namespace=~\"$namespace\", namespace!~\"$exclude\"}, \"replicaset\", \"$1\", \"owner_name\", \"(.*)\") * on (namespace, replicaset) group_left (owner_deploy) max by (namespace, replicaset, owner_deploy) (label_replace(kube_replicaset_owner{owner_kind=\"Deployment\", namespace=~\"$namespace\", namespace!~\"$exclude\"}, \"owner_deploy\", \"$1\", \"owner_name\", \"(.*)\")), \"workload\", \"$1\", \"owner_deploy\", \"(.*)\"), \"workload_type\", \"Deployment\", \"namespace\", \".*\") or label_replace(label_replace(kube_pod_owner{owner_kind=~\"StatefulSet|DaemonSet\", namespace=~\"$namespace\", namespace!~\"$exclude\"}, \"workload\", \"$1\", \"owner_name\", \"(.*)\"), \"workload_type\", \"$1\", \"owner_kind\", \"(.*)\"))))) and on (namespace, workload, workload_type, container) ((((avg by (namespace, workload, workload_type, container) ((max by (namespace, pod, container) (avg_over_time(rate(container_cpu_usage_seconds_total{container!=\"\", container!=\"POD\", namespace=~\"$namespace\", namespace!~\"$exclude\"}[5m])[$waste_window:5m]))) * on (namespace, pod) group_left (workload, workload_type) max by (namespace, pod, workload, workload_type) (label_replace(label_replace(label_replace(max_over_time(kube_pod_owner{owner_kind=\"ReplicaSet\", namespace=~\"$namespace\", namespace!~\"$exclude\"}[$waste_window]), \"replicaset\", \"$1\", \"owner_name\", \"(.*)\") * on (namespace, replicaset) group_left (owner_deploy) max by (namespace, replicaset, owner_deploy) (label_replace(max_over_time(kube_replicaset_owner{owner_kind=\"Deployment\", namespace=~\"$namespace\", namespace!~\"$exclude\"}[$waste_window]), \"owner_deploy\", \"$1\", \"owner_name\", \"(.*)\")), \"workload\", \"$1\", \"owner_deploy\", \"(.*)\"), \"workload_type\", \"Deployment\", \"namespace\", \".*\") or label_replace(label_replace(max_over_time(kube_pod_owner{owner_kind=~\"StatefulSet|DaemonSet\", namespace=~\"$namespace\", namespace!~\"$exclude\"}[$waste_window]), \"workload\", \"$1\", \"owner_name\", \"(.*)\"), \"workload_type\", \"$1\", \"owner_kind\", \"(.*)\")))) / (max by (namespace, workload, workload_type, container) ((max by (namespace, pod, container) (kube_pod_container_resource_requests{resource=\"cpu\", namespace=~\"$namespace\", namespace!~\"$exclude\"} > 0)) * on (namespace, pod) group_left (workload, workload_type) max by (namespace, pod, workload, workload_type) (label_replace(label_replace(label_replace(kube_pod_owner{owner_kind=\"ReplicaSet\", namespace=~\"$namespace\", namespace!~\"$exclude\"}, \"replicaset\", \"$1\", \"owner_name\", \"(.*)\") * on (namespace, replicaset) group_left (owner_deploy) max by (namespace, replicaset, owner_deploy) (label_replace(kube_replicaset_owner{owner_kind=\"Deployment\", namespace=~\"$namespace\", namespace!~\"$exclude\"}, \"owner_deploy\", \"$1\", \"owner_name\", \"(.*)\")), \"workload\", \"$1\", \"owner_deploy\", \"(.*)\"), \"workload_type\", \"Deployment\", \"namespace\", \".*\") or label_replace(label_replace(kube_pod_owner{owner_kind=~\"StatefulSet|DaemonSet\", namespace=~\"$namespace\", namespace!~\"$exclude\"}, \"workload\", \"$1\", \"owner_name\", \"(.*)\"), \"workload_type\", \"$1\", \"owner_kind\", \"(.*)\"))))) < 0.5) * 0)) or ((((avg by (namespace, workload, workload_type, container) ((max by (namespace, pod, container) (avg_over_time(rate(container_cpu_usage_seconds_total{container!=\"\", container!=\"POD\", namespace=~\"$namespace\", namespace!~\"$exclude\"}[5m])[$waste_window:5m]))) * on (namespace, pod) group_left (workload, workload_type) max by (namespace, pod, workload, workload_type) (label_replace(label_replace(label_replace(max_over_time(kube_pod_owner{owner_kind=\"ReplicaSet\", namespace=~\"$namespace\", namespace!~\"$exclude\"}[$waste_window]), \"replicaset\", \"$1\", \"owner_name\", \"(.*)\") * on (namespace, replicaset) group_left (owner_deploy) max by (namespace, replicaset, owner_deploy) (label_replace(max_over_time(kube_replicaset_owner{owner_kind=\"Deployment\", namespace=~\"$namespace\", namespace!~\"$exclude\"}[$waste_window]), \"owner_deploy\", \"$1\", \"owner_name\", \"(.*)\")), \"workload\", \"$1\", \"owner_deploy\", \"(.*)\"), \"workload_type\", \"Deployment\", \"namespace\", \".*\") or label_replace(label_replace(max_over_time(kube_pod_owner{owner_kind=~\"StatefulSet|DaemonSet\", namespace=~\"$namespace\", namespace!~\"$exclude\"}[$waste_window]), \"workload\", \"$1\", \"owner_name\", \"(.*)\"), \"workload_type\", \"$1\", \"owner_kind\", \"(.*)\")))) / (max by (namespace, workload, workload_type, container) ((max by (namespace, pod, container) (kube_pod_container_resource_requests{resource=\"cpu\", namespace=~\"$namespace\", namespace!~\"$exclude\"} > 0)) * on (namespace, pod) group_left (workload, workload_type) max by (namespace, pod, workload, workload_type) (label_replace(label_replace(label_replace(kube_pod_owner{owner_kind=\"ReplicaSet\", namespace=~\"$namespace\", namespace!~\"$exclude\"}, \"replicaset\", \"$1\", \"owner_name\", \"(.*)\") * on (namespace, replicaset) group_left (owner_deploy) max by (namespace, replicaset, owner_deploy) (label_replace(kube_replicaset_owner{owner_kind=\"Deployment\", namespace=~\"$namespace\", namespace!~\"$exclude\"}, \"owner_deploy\", \"$1\", \"owner_name\", \"(.*)\")), \"workload\", \"$1\", \"owner_deploy\", \"(.*)\"), \"workload_type\", \"Deployment\", \"namespace\", \".*\") or label_replace(label_replace(kube_pod_owner{owner_kind=~\"StatefulSet|DaemonSet\", namespace=~\"$namespace\", namespace!~\"$exclude\"}, \"workload\", \"$1\", \"owner_name\", \"(.*)\"), \"workload_type\", \"$1\", \"owner_kind\", \"(.*)\"))))) < 0.5) * 0 - 1)",
+          "legendFormat": "",
+          "range": false,
+          "instant": true,
+          "format": "table"
+        },
+        {
+          "refId": "F",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "expr": "(((max by (namespace, workload, workload_type, container) ((max by (namespace, pod, container) (max_over_time(rate(container_cpu_usage_seconds_total{container!=\"\", container!=\"POD\", namespace=~\"$namespace\", namespace!~\"$exclude\"}[5m])[$waste_window:5m]))) * on (namespace, pod) group_left (workload, workload_type) max by (namespace, pod, workload, workload_type) (label_replace(label_replace(label_replace(max_over_time(kube_pod_owner{owner_kind=\"ReplicaSet\", namespace=~\"$namespace\", namespace!~\"$exclude\"}[$waste_window]), \"replicaset\", \"$1\", \"owner_name\", \"(.*)\") * on (namespace, replicaset) group_left (owner_deploy) max by (namespace, replicaset, owner_deploy) (label_replace(max_over_time(kube_replicaset_owner{owner_kind=\"Deployment\", namespace=~\"$namespace\", namespace!~\"$exclude\"}[$waste_window]), \"owner_deploy\", \"$1\", \"owner_name\", \"(.*)\")), \"workload\", \"$1\", \"owner_deploy\", \"(.*)\"), \"workload_type\", \"Deployment\", \"namespace\", \".*\") or label_replace(label_replace(max_over_time(kube_pod_owner{owner_kind=~\"StatefulSet|DaemonSet\", namespace=~\"$namespace\", namespace!~\"$exclude\"}[$waste_window]), \"workload\", \"$1\", \"owner_name\", \"(.*)\"), \"workload_type\", \"$1\", \"owner_kind\", \"(.*)\")))) / (max by (namespace, workload, workload_type, container) ((max by (namespace, pod, container) (kube_pod_container_resource_requests{resource=\"cpu\", namespace=~\"$namespace\", namespace!~\"$exclude\"} > 0)) * on (namespace, pod) group_left (workload, workload_type) max by (namespace, pod, workload, workload_type) (label_replace(label_replace(label_replace(kube_pod_owner{owner_kind=\"ReplicaSet\", namespace=~\"$namespace\", namespace!~\"$exclude\"}, \"replicaset\", \"$1\", \"owner_name\", \"(.*)\") * on (namespace, replicaset) group_left (owner_deploy) max by (namespace, replicaset, owner_deploy) (label_replace(kube_replicaset_owner{owner_kind=\"Deployment\", namespace=~\"$namespace\", namespace!~\"$exclude\"}, \"owner_deploy\", \"$1\", \"owner_name\", \"(.*)\")), \"workload\", \"$1\", \"owner_deploy\", \"(.*)\"), \"workload_type\", \"Deployment\", \"namespace\", \".*\") or label_replace(label_replace(kube_pod_owner{owner_kind=~\"StatefulSet|DaemonSet\", namespace=~\"$namespace\", namespace!~\"$exclude\"}, \"workload\", \"$1\", \"owner_name\", \"(.*)\"), \"workload_type\", \"$1\", \"owner_kind\", \"(.*)\"))))) and on (namespace, workload, workload_type, container) ((((avg by (namespace, workload, workload_type, container) ((max by (namespace, pod, container) (avg_over_time(rate(container_cpu_usage_seconds_total{container!=\"\", container!=\"POD\", namespace=~\"$namespace\", namespace!~\"$exclude\"}[5m])[$waste_window:5m]))) * on (namespace, pod) group_left (workload, workload_type) max by (namespace, pod, workload, workload_type) (label_replace(label_replace(label_replace(max_over_time(kube_pod_owner{owner_kind=\"ReplicaSet\", namespace=~\"$namespace\", namespace!~\"$exclude\"}[$waste_window]), \"replicaset\", \"$1\", \"owner_name\", \"(.*)\") * on (namespace, replicaset) group_left (owner_deploy) max by (namespace, replicaset, owner_deploy) (label_replace(max_over_time(kube_replicaset_owner{owner_kind=\"Deployment\", namespace=~\"$namespace\", namespace!~\"$exclude\"}[$waste_window]), \"owner_deploy\", \"$1\", \"owner_name\", \"(.*)\")), \"workload\", \"$1\", \"owner_deploy\", \"(.*)\"), \"workload_type\", \"Deployment\", \"namespace\", \".*\") or label_replace(label_replace(max_over_time(kube_pod_owner{owner_kind=~\"StatefulSet|DaemonSet\", namespace=~\"$namespace\", namespace!~\"$exclude\"}[$waste_window]), \"workload\", \"$1\", \"owner_name\", \"(.*)\"), \"workload_type\", \"$1\", \"owner_kind\", \"(.*)\")))) / (max by (namespace, workload, workload_type, container) ((max by (namespace, pod, container) (kube_pod_container_resource_requests{resource=\"cpu\", namespace=~\"$namespace\", namespace!~\"$exclude\"} > 0)) * on (namespace, pod) group_left (workload, workload_type) max by (namespace, pod, workload, workload_type) (label_replace(label_replace(label_replace(kube_pod_owner{owner_kind=\"ReplicaSet\", namespace=~\"$namespace\", namespace!~\"$exclude\"}, \"replicaset\", \"$1\", \"owner_name\", \"(.*)\") * on (namespace, replicaset) group_left (owner_deploy) max by (namespace, replicaset, owner_deploy) (label_replace(kube_replicaset_owner{owner_kind=\"Deployment\", namespace=~\"$namespace\", namespace!~\"$exclude\"}, \"owner_deploy\", \"$1\", \"owner_name\", \"(.*)\")), \"workload\", \"$1\", \"owner_deploy\", \"(.*)\"), \"workload_type\", \"Deployment\", \"namespace\", \".*\") or label_replace(label_replace(kube_pod_owner{owner_kind=~\"StatefulSet|DaemonSet\", namespace=~\"$namespace\", namespace!~\"$exclude\"}, \"workload\", \"$1\", \"owner_name\", \"(.*)\"), \"workload_type\", \"$1\", \"owner_kind\", \"(.*)\"))))) < 0.5) * 0)) or ((((avg by (namespace, workload, workload_type, container) ((max by (namespace, pod, container) (avg_over_time(rate(container_cpu_usage_seconds_total{container!=\"\", container!=\"POD\", namespace=~\"$namespace\", namespace!~\"$exclude\"}[5m])[$waste_window:5m]))) * on (namespace, pod) group_left (workload, workload_type) max by (namespace, pod, workload, workload_type) (label_replace(label_replace(label_replace(max_over_time(kube_pod_owner{owner_kind=\"ReplicaSet\", namespace=~\"$namespace\", namespace!~\"$exclude\"}[$waste_window]), \"replicaset\", \"$1\", \"owner_name\", \"(.*)\") * on (namespace, replicaset) group_left (owner_deploy) max by (namespace, replicaset, owner_deploy) (label_replace(max_over_time(kube_replicaset_owner{owner_kind=\"Deployment\", namespace=~\"$namespace\", namespace!~\"$exclude\"}[$waste_window]), \"owner_deploy\", \"$1\", \"owner_name\", \"(.*)\")), \"workload\", \"$1\", \"owner_deploy\", \"(.*)\"), \"workload_type\", \"Deployment\", \"namespace\", \".*\") or label_replace(label_replace(max_over_time(kube_pod_owner{owner_kind=~\"StatefulSet|DaemonSet\", namespace=~\"$namespace\", namespace!~\"$exclude\"}[$waste_window]), \"workload\", \"$1\", \"owner_name\", \"(.*)\"), \"workload_type\", \"$1\", \"owner_kind\", \"(.*)\")))) / (max by (namespace, workload, workload_type, container) ((max by (namespace, pod, container) (kube_pod_container_resource_requests{resource=\"cpu\", namespace=~\"$namespace\", namespace!~\"$exclude\"} > 0)) * on (namespace, pod) group_left (workload, workload_type) max by (namespace, pod, workload, workload_type) (label_replace(label_replace(label_replace(kube_pod_owner{owner_kind=\"ReplicaSet\", namespace=~\"$namespace\", namespace!~\"$exclude\"}, \"replicaset\", \"$1\", \"owner_name\", \"(.*)\") * on (namespace, replicaset) group_left (owner_deploy) max by (namespace, replicaset, owner_deploy) (label_replace(kube_replicaset_owner{owner_kind=\"Deployment\", namespace=~\"$namespace\", namespace!~\"$exclude\"}, \"owner_deploy\", \"$1\", \"owner_name\", \"(.*)\")), \"workload\", \"$1\", \"owner_deploy\", \"(.*)\"), \"workload_type\", \"Deployment\", \"namespace\", \".*\") or label_replace(label_replace(kube_pod_owner{owner_kind=~\"StatefulSet|DaemonSet\", namespace=~\"$namespace\", namespace!~\"$exclude\"}, \"workload\", \"$1\", \"owner_name\", \"(.*)\"), \"workload_type\", \"$1\", \"owner_kind\", \"(.*)\"))))) < 0.5) * 0 - 1)",
+          "legendFormat": "",
+          "range": false,
+          "instant": true,
+          "format": "table"
+        },
+        {
+          "refId": "G",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "expr": "((clamp_min((max by (namespace, workload, workload_type, container) ((max by (namespace, pod, container) (kube_pod_container_resource_requests{resource=\"cpu\", namespace=~\"$namespace\", namespace!~\"$exclude\"} > 0)) * on (namespace, pod) group_left (workload, workload_type) max by (namespace, pod, workload, workload_type) (label_replace(label_replace(label_replace(kube_pod_owner{owner_kind=\"ReplicaSet\", namespace=~\"$namespace\", namespace!~\"$exclude\"}, \"replicaset\", \"$1\", \"owner_name\", \"(.*)\") * on (namespace, replicaset) group_left (owner_deploy) max by (namespace, replicaset, owner_deploy) (label_replace(kube_replicaset_owner{owner_kind=\"Deployment\", namespace=~\"$namespace\", namespace!~\"$exclude\"}, \"owner_deploy\", \"$1\", \"owner_name\", \"(.*)\")), \"workload\", \"$1\", \"owner_deploy\", \"(.*)\"), \"workload_type\", \"Deployment\", \"namespace\", \".*\") or label_replace(label_replace(kube_pod_owner{owner_kind=~\"StatefulSet|DaemonSet\", namespace=~\"$namespace\", namespace!~\"$exclude\"}, \"workload\", \"$1\", \"owner_name\", \"(.*)\"), \"workload_type\", \"$1\", \"owner_kind\", \"(.*)\")))) - (avg by (namespace, workload, workload_type, container) ((max by (namespace, pod, container) (avg_over_time(rate(container_cpu_usage_seconds_total{container!=\"\", container!=\"POD\", namespace=~\"$namespace\", namespace!~\"$exclude\"}[5m])[$waste_window:5m]))) * on (namespace, pod) group_left (workload, workload_type) max by (namespace, pod, workload, workload_type) (label_replace(label_replace(label_replace(max_over_time(kube_pod_owner{owner_kind=\"ReplicaSet\", namespace=~\"$namespace\", namespace!~\"$exclude\"}[$waste_window]), \"replicaset\", \"$1\", \"owner_name\", \"(.*)\") * on (namespace, replicaset) group_left (owner_deploy) max by (namespace, replicaset, owner_deploy) (label_replace(max_over_time(kube_replicaset_owner{owner_kind=\"Deployment\", namespace=~\"$namespace\", namespace!~\"$exclude\"}[$waste_window]), \"owner_deploy\", \"$1\", \"owner_name\", \"(.*)\")), \"workload\", \"$1\", \"owner_deploy\", \"(.*)\"), \"workload_type\", \"Deployment\", \"namespace\", \".*\") or label_replace(label_replace(max_over_time(kube_pod_owner{owner_kind=~\"StatefulSet|DaemonSet\", namespace=~\"$namespace\", namespace!~\"$exclude\"}[$waste_window]), \"workload\", \"$1\", \"owner_name\", \"(.*)\"), \"workload_type\", \"$1\", \"owner_kind\", \"(.*)\")))), 0) * count by (namespace, workload, workload_type, container) (max by (namespace, pod, container) (rate(container_cpu_usage_seconds_total{container!=\"\", container!=\"POD\", namespace=~\"$namespace\", namespace!~\"$exclude\"}[5m])) * on (namespace, pod) group_left (workload, workload_type) max by (namespace, pod, workload, workload_type) (label_replace(label_replace(label_replace(kube_pod_owner{owner_kind=\"ReplicaSet\", namespace=~\"$namespace\", namespace!~\"$exclude\"}, \"replicaset\", \"$1\", \"owner_name\", \"(.*)\") * on (namespace, replicaset) group_left (owner_deploy) max by (namespace, replicaset, owner_deploy) (label_replace(kube_replicaset_owner{owner_kind=\"Deployment\", namespace=~\"$namespace\", namespace!~\"$exclude\"}, \"owner_deploy\", \"$1\", \"owner_name\", \"(.*)\")), \"workload\", \"$1\", \"owner_deploy\", \"(.*)\"), \"workload_type\", \"Deployment\", \"namespace\", \".*\") or label_replace(label_replace(kube_pod_owner{owner_kind=~\"StatefulSet|DaemonSet\", namespace=~\"$namespace\", namespace!~\"$exclude\"}, \"workload\", \"$1\", \"owner_name\", \"(.*)\"), \"workload_type\", \"$1\", \"owner_kind\", \"(.*)\")))) and on (namespace, workload, workload_type, container) ((((avg by (namespace, workload, workload_type, container) ((max by (namespace, pod, container) (avg_over_time(rate(container_cpu_usage_seconds_total{container!=\"\", container!=\"POD\", namespace=~\"$namespace\", namespace!~\"$exclude\"}[5m])[$waste_window:5m]))) * on (namespace, pod) group_left (workload, workload_type) max by (namespace, pod, workload, workload_type) (label_replace(label_replace(label_replace(max_over_time(kube_pod_owner{owner_kind=\"ReplicaSet\", namespace=~\"$namespace\", namespace!~\"$exclude\"}[$waste_window]), \"replicaset\", \"$1\", \"owner_name\", \"(.*)\") * on (namespace, replicaset) group_left (owner_deploy) max by (namespace, replicaset, owner_deploy) (label_replace(max_over_time(kube_replicaset_owner{owner_kind=\"Deployment\", namespace=~\"$namespace\", namespace!~\"$exclude\"}[$waste_window]), \"owner_deploy\", \"$1\", \"owner_name\", \"(.*)\")), \"workload\", \"$1\", \"owner_deploy\", \"(.*)\"), \"workload_type\", \"Deployment\", \"namespace\", \".*\") or label_replace(label_replace(max_over_time(kube_pod_owner{owner_kind=~\"StatefulSet|DaemonSet\", namespace=~\"$namespace\", namespace!~\"$exclude\"}[$waste_window]), \"workload\", \"$1\", \"owner_name\", \"(.*)\"), \"workload_type\", \"$1\", \"owner_kind\", \"(.*)\")))) / (max by (namespace, workload, workload_type, container) ((max by (namespace, pod, container) (kube_pod_container_resource_requests{resource=\"cpu\", namespace=~\"$namespace\", namespace!~\"$exclude\"} > 0)) * on (namespace, pod) group_left (workload, workload_type) max by (namespace, pod, workload, workload_type) (label_replace(label_replace(label_replace(kube_pod_owner{owner_kind=\"ReplicaSet\", namespace=~\"$namespace\", namespace!~\"$exclude\"}, \"replicaset\", \"$1\", \"owner_name\", \"(.*)\") * on (namespace, replicaset) group_left (owner_deploy) max by (namespace, replicaset, owner_deploy) (label_replace(kube_replicaset_owner{owner_kind=\"Deployment\", namespace=~\"$namespace\", namespace!~\"$exclude\"}, \"owner_deploy\", \"$1\", \"owner_name\", \"(.*)\")), \"workload\", \"$1\", \"owner_deploy\", \"(.*)\"), \"workload_type\", \"Deployment\", \"namespace\", \".*\") or label_replace(label_replace(kube_pod_owner{owner_kind=~\"StatefulSet|DaemonSet\", namespace=~\"$namespace\", namespace!~\"$exclude\"}, \"workload\", \"$1\", \"owner_name\", \"(.*)\"), \"workload_type\", \"$1\", \"owner_kind\", \"(.*)\"))))) < 0.5) * 0)) or ((((avg by (namespace, workload, workload_type, container) ((max by (namespace, pod, container) (avg_over_time(rate(container_cpu_usage_seconds_total{container!=\"\", container!=\"POD\", namespace=~\"$namespace\", namespace!~\"$exclude\"}[5m])[$waste_window:5m]))) * on (namespace, pod) group_left (workload, workload_type) max by (namespace, pod, workload, workload_type) (label_replace(label_replace(label_replace(max_over_time(kube_pod_owner{owner_kind=\"ReplicaSet\", namespace=~\"$namespace\", namespace!~\"$exclude\"}[$waste_window]), \"replicaset\", \"$1\", \"owner_name\", \"(.*)\") * on (namespace, replicaset) group_left (owner_deploy) max by (namespace, replicaset, owner_deploy) (label_replace(max_over_time(kube_replicaset_owner{owner_kind=\"Deployment\", namespace=~\"$namespace\", namespace!~\"$exclude\"}[$waste_window]), \"owner_deploy\", \"$1\", \"owner_name\", \"(.*)\")), \"workload\", \"$1\", \"owner_deploy\", \"(.*)\"), \"workload_type\", \"Deployment\", \"namespace\", \".*\") or label_replace(label_replace(max_over_time(kube_pod_owner{owner_kind=~\"StatefulSet|DaemonSet\", namespace=~\"$namespace\", namespace!~\"$exclude\"}[$waste_window]), \"workload\", \"$1\", \"owner_name\", \"(.*)\"), \"workload_type\", \"$1\", \"owner_kind\", \"(.*)\")))) / (max by (namespace, workload, workload_type, container) ((max by (namespace, pod, container) (kube_pod_container_resource_requests{resource=\"cpu\", namespace=~\"$namespace\", namespace!~\"$exclude\"} > 0)) * on (namespace, pod) group_left (workload, workload_type) max by (namespace, pod, workload, workload_type) (label_replace(label_replace(label_replace(kube_pod_owner{owner_kind=\"ReplicaSet\", namespace=~\"$namespace\", namespace!~\"$exclude\"}, \"replicaset\", \"$1\", \"owner_name\", \"(.*)\") * on (namespace, replicaset) group_left (owner_deploy) max by (namespace, replicaset, owner_deploy) (label_replace(kube_replicaset_owner{owner_kind=\"Deployment\", namespace=~\"$namespace\", namespace!~\"$exclude\"}, \"owner_deploy\", \"$1\", \"owner_name\", \"(.*)\")), \"workload\", \"$1\", \"owner_deploy\", \"(.*)\"), \"workload_type\", \"Deployment\", \"namespace\", \".*\") or label_replace(label_replace(kube_pod_owner{owner_kind=~\"StatefulSet|DaemonSet\", namespace=~\"$namespace\", namespace!~\"$exclude\"}, \"workload\", \"$1\", \"owner_name\", \"(.*)\"), \"workload_type\", \"$1\", \"owner_kind\", \"(.*)\"))))) < 0.5) * 0 - 1)",
+          "legendFormat": "",
+          "range": false,
+          "instant": true,
+          "format": "table"
+        }
+      ],
+      "transformations": [
+        {
+          "id": "merge",
+          "options": {}
+        },
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": {
+              "Time": true,
+              "workload_type": true
+            },
+            "renameByName": {
+              "Value #A": "Pod 數",
+              "Value #B": "平均用量／Pod（核）",
+              "Value #C": "尖峰／Pod（核）",
+              "Value #D": "Request／Pod（核）",
+              "Value #E": "平均 ÷ Request",
+              "Value #F": "尖峰 ÷ Request",
+              "Value #G": "沒用到的 Request（全部 Pod）（核）",
+              "workload_type": "類型",
+              "container": "容器"
+            },
+            "indexByName": {
+              "namespace": 0,
+              "workload": 1,
+              "workload_type": 2,
+              "container": 3,
+              "Value #A": 4,
+              "Value #B": 5,
+              "Value #C": 6,
+              "Value #D": 7,
+              "Value #E": 8,
+              "Value #F": 9,
+              "Value #G": 10
+            }
+          }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "filterable": false,
+            "align": "auto",
+            "minWidth": 80,
+            "wrapHeaderText": true
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Pod 數"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "none"
+              },
+              {
+                "id": "decimals",
+                "value": 0
+              },
+              {
+                "id": "mappings",
+                "value": [
+                  {
+                    "type": "value",
+                    "options": {
+                      "-1": {
+                        "text": "—",
+                        "color": "#8e8e8e",
+                        "index": 99
+                      }
+                    }
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "平均用量／Pod（核）"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "none"
+              },
+              {
+                "id": "decimals",
+                "value": 3
+              },
+              {
+                "id": "mappings",
+                "value": [
+                  {
+                    "type": "value",
+                    "options": {
+                      "-1": {
+                        "text": "—",
+                        "color": "#8e8e8e",
+                        "index": 99
+                      }
+                    }
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "尖峰／Pod（核）"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "none"
+              },
+              {
+                "id": "decimals",
+                "value": 2
+              },
+              {
+                "id": "mappings",
+                "value": [
+                  {
+                    "type": "value",
+                    "options": {
+                      "-1": {
+                        "text": "—",
+                        "color": "#8e8e8e",
+                        "index": 99
+                      }
+                    }
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Request／Pod（核）"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "none"
+              },
+              {
+                "id": "decimals",
+                "value": 2
+              },
+              {
+                "id": "mappings",
+                "value": [
+                  {
+                    "type": "value",
+                    "options": {
+                      "-1": {
+                        "text": "—",
+                        "color": "#8e8e8e",
+                        "index": 99
+                      }
+                    }
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "平均 ÷ Request"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "percentunit"
+              },
+              {
+                "id": "decimals",
+                "value": 0
+              },
+              {
+                "id": "thresholds",
+                "value": {
+                  "mode": "absolute",
+                  "steps": [
+                    {
+                      "color": "red",
+                      "value": null
+                    },
+                    {
+                      "color": "yellow",
+                      "value": 0.2
+                    },
+                    {
+                      "color": "green",
+                      "value": 0.5
+                    }
+                  ]
+                }
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "thresholds"
+                }
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-background",
+                  "mode": "basic"
+                }
+              },
+              {
+                "id": "custom.displayMode",
+                "value": "color-background"
+              },
+              {
+                "id": "mappings",
+                "value": [
+                  {
+                    "type": "value",
+                    "options": {
+                      "-1": {
+                        "text": "—",
+                        "color": "#8e8e8e",
+                        "index": 99
+                      }
+                    }
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "尖峰 ÷ Request"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "percentunit"
+              },
+              {
+                "id": "decimals",
+                "value": 0
+              },
+              {
+                "id": "thresholds",
+                "value": {
+                  "mode": "absolute",
+                  "steps": [
+                    {
+                      "color": "red",
+                      "value": null
+                    },
+                    {
+                      "color": "yellow",
+                      "value": 0.5
+                    },
+                    {
+                      "color": "green",
+                      "value": 1.0
+                    }
+                  ]
+                }
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "thresholds"
+                }
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-background",
+                  "mode": "basic"
+                }
+              },
+              {
+                "id": "custom.displayMode",
+                "value": "color-background"
+              },
+              {
+                "id": "mappings",
+                "value": [
+                  {
+                    "type": "value",
+                    "options": {
+                      "-1": {
+                        "text": "—",
+                        "color": "#8e8e8e",
+                        "index": 99
+                      }
+                    }
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "沒用到的 Request（全部 Pod）（核）"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "none"
+              },
+              {
+                "id": "decimals",
+                "value": 2
+              },
+              {
+                "id": "mappings",
+                "value": [
+                  {
+                    "type": "value",
+                    "options": {
+                      "-1": {
+                        "text": "—",
+                        "color": "#8e8e8e",
+                        "index": 99
+                      }
+                    }
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "workload"
+            },
+            "properties": [
+              {
+                "id": "links",
+                "value": [
+                  {
+                    "title": "開啟此 Workload 的細節 Dashboard",
+                    "url": "/d/ocp-loadtest-impact/?var-datasource=${datasource}&var-namespace=${__data.fields.namespace}&var-workload=${__data.fields.workload}&${__url_time_range}"
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "namespace"
+            },
+            "properties": [
+              {
+                "id": "custom.filterable",
+                "value": true
+              },
+              {
+                "id": "custom.width",
+                "value": 120
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "workload"
+            },
+            "properties": [
+              {
+                "id": "custom.filterable",
+                "value": true
+              },
+              {
+                "id": "custom.width",
+                "value": 150
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "類型"
+            },
+            "properties": [
+              {
+                "id": "custom.filterable",
+                "value": true
+              },
+              {
+                "id": "custom.width",
+                "value": 100
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "容器"
+            },
+            "properties": [
+              {
+                "id": "custom.filterable",
+                "value": true
+              },
+              {
+                "id": "custom.width",
+                "value": 130
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "showHeader": true,
+        "sortBy": [
+          {
+            "displayName": "沒用到的 Request（全部 Pod）（核）",
+            "desc": true
+          }
+        ],
+        "footer": {
+          "show": false
+        }
+      },
+      "gridPos": {
+        "h": 10,
+        "w": 24,
+        "x": 0,
+        "y": 132
+      }
+    },
+    {
+      "id": 31,
+      "type": "table",
+      "title": "【Workload】記憶體：長期用量遠低於 Request（過去 $waste_window 平均）",
+      "description": "**視角**：叢集內每一個 Workload 的每個容器（同一個 Workload 的 Pod 共用一份設定，容器只列一次）\n\n**這是什麼**：只列**過去 $waste_window 平均用量不到 Request 一半**的容器。**平均用量／Pod** = 這段期間每個 Pod 的平均用量，再取所有 Pod 的平均（rollout 換掉的舊 Pod 也算）；**尖峰／Pod** = 最高的那個 Pod 在這段期間的最高值；**Request／Pod** = 目前每個 Pod 設的 Request；**沒用到的 Request** = (Request − 平均用量) × 目前 Pod 數，就是可以還給 Node 的量。新上線不滿 $waste_window 的 Pod 只算它活著的時間。\n\n**怎麼看**：依「沒用到的 Request」排序，越上面浪費越多。記憶體不像 CPU 可以借：Request 建議調到**尖峰**附近再留一點餘裕，不要調到平均，否則 Node 記憶體不夠時會先被驅逐；尖峰 ÷ Request 也很低（紅）→ 可以放心調低。",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${datasource}"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "expr": "((count by (namespace, workload, workload_type, container) (max by (namespace, pod, container) (rate(container_cpu_usage_seconds_total{container!=\"\", container!=\"POD\", namespace=~\"$namespace\", namespace!~\"$exclude\"}[5m])) * on (namespace, pod) group_left (workload, workload_type) max by (namespace, pod, workload, workload_type) (label_replace(label_replace(label_replace(kube_pod_owner{owner_kind=\"ReplicaSet\", namespace=~\"$namespace\", namespace!~\"$exclude\"}, \"replicaset\", \"$1\", \"owner_name\", \"(.*)\") * on (namespace, replicaset) group_left (owner_deploy) max by (namespace, replicaset, owner_deploy) (label_replace(kube_replicaset_owner{owner_kind=\"Deployment\", namespace=~\"$namespace\", namespace!~\"$exclude\"}, \"owner_deploy\", \"$1\", \"owner_name\", \"(.*)\")), \"workload\", \"$1\", \"owner_deploy\", \"(.*)\"), \"workload_type\", \"Deployment\", \"namespace\", \".*\") or label_replace(label_replace(kube_pod_owner{owner_kind=~\"StatefulSet|DaemonSet\", namespace=~\"$namespace\", namespace!~\"$exclude\"}, \"workload\", \"$1\", \"owner_name\", \"(.*)\"), \"workload_type\", \"$1\", \"owner_kind\", \"(.*)\")))) and on (namespace, workload, workload_type, container) ((((avg by (namespace, workload, workload_type, container) ((max by (namespace, pod, container) (avg_over_time(container_memory_working_set_bytes{container!=\"\", container!=\"POD\", namespace=~\"$namespace\", namespace!~\"$exclude\"}[$waste_window]))) * on (namespace, pod) group_left (workload, workload_type) max by (namespace, pod, workload, workload_type) (label_replace(label_replace(label_replace(max_over_time(kube_pod_owner{owner_kind=\"ReplicaSet\", namespace=~\"$namespace\", namespace!~\"$exclude\"}[$waste_window]), \"replicaset\", \"$1\", \"owner_name\", \"(.*)\") * on (namespace, replicaset) group_left (owner_deploy) max by (namespace, replicaset, owner_deploy) (label_replace(max_over_time(kube_replicaset_owner{owner_kind=\"Deployment\", namespace=~\"$namespace\", namespace!~\"$exclude\"}[$waste_window]), \"owner_deploy\", \"$1\", \"owner_name\", \"(.*)\")), \"workload\", \"$1\", \"owner_deploy\", \"(.*)\"), \"workload_type\", \"Deployment\", \"namespace\", \".*\") or label_replace(label_replace(max_over_time(kube_pod_owner{owner_kind=~\"StatefulSet|DaemonSet\", namespace=~\"$namespace\", namespace!~\"$exclude\"}[$waste_window]), \"workload\", \"$1\", \"owner_name\", \"(.*)\"), \"workload_type\", \"$1\", \"owner_kind\", \"(.*)\")))) / (max by (namespace, workload, workload_type, container) ((max by (namespace, pod, container) (kube_pod_container_resource_requests{resource=\"memory\", namespace=~\"$namespace\", namespace!~\"$exclude\"} > 0)) * on (namespace, pod) group_left (workload, workload_type) max by (namespace, pod, workload, workload_type) (label_replace(label_replace(label_replace(kube_pod_owner{owner_kind=\"ReplicaSet\", namespace=~\"$namespace\", namespace!~\"$exclude\"}, \"replicaset\", \"$1\", \"owner_name\", \"(.*)\") * on (namespace, replicaset) group_left (owner_deploy) max by (namespace, replicaset, owner_deploy) (label_replace(kube_replicaset_owner{owner_kind=\"Deployment\", namespace=~\"$namespace\", namespace!~\"$exclude\"}, \"owner_deploy\", \"$1\", \"owner_name\", \"(.*)\")), \"workload\", \"$1\", \"owner_deploy\", \"(.*)\"), \"workload_type\", \"Deployment\", \"namespace\", \".*\") or label_replace(label_replace(kube_pod_owner{owner_kind=~\"StatefulSet|DaemonSet\", namespace=~\"$namespace\", namespace!~\"$exclude\"}, \"workload\", \"$1\", \"owner_name\", \"(.*)\"), \"workload_type\", \"$1\", \"owner_kind\", \"(.*)\"))))) < 0.5) * 0)) or ((((avg by (namespace, workload, workload_type, container) ((max by (namespace, pod, container) (avg_over_time(container_memory_working_set_bytes{container!=\"\", container!=\"POD\", namespace=~\"$namespace\", namespace!~\"$exclude\"}[$waste_window]))) * on (namespace, pod) group_left (workload, workload_type) max by (namespace, pod, workload, workload_type) (label_replace(label_replace(label_replace(max_over_time(kube_pod_owner{owner_kind=\"ReplicaSet\", namespace=~\"$namespace\", namespace!~\"$exclude\"}[$waste_window]), \"replicaset\", \"$1\", \"owner_name\", \"(.*)\") * on (namespace, replicaset) group_left (owner_deploy) max by (namespace, replicaset, owner_deploy) (label_replace(max_over_time(kube_replicaset_owner{owner_kind=\"Deployment\", namespace=~\"$namespace\", namespace!~\"$exclude\"}[$waste_window]), \"owner_deploy\", \"$1\", \"owner_name\", \"(.*)\")), \"workload\", \"$1\", \"owner_deploy\", \"(.*)\"), \"workload_type\", \"Deployment\", \"namespace\", \".*\") or label_replace(label_replace(max_over_time(kube_pod_owner{owner_kind=~\"StatefulSet|DaemonSet\", namespace=~\"$namespace\", namespace!~\"$exclude\"}[$waste_window]), \"workload\", \"$1\", \"owner_name\", \"(.*)\"), \"workload_type\", \"$1\", \"owner_kind\", \"(.*)\")))) / (max by (namespace, workload, workload_type, container) ((max by (namespace, pod, container) (kube_pod_container_resource_requests{resource=\"memory\", namespace=~\"$namespace\", namespace!~\"$exclude\"} > 0)) * on (namespace, pod) group_left (workload, workload_type) max by (namespace, pod, workload, workload_type) (label_replace(label_replace(label_replace(kube_pod_owner{owner_kind=\"ReplicaSet\", namespace=~\"$namespace\", namespace!~\"$exclude\"}, \"replicaset\", \"$1\", \"owner_name\", \"(.*)\") * on (namespace, replicaset) group_left (owner_deploy) max by (namespace, replicaset, owner_deploy) (label_replace(kube_replicaset_owner{owner_kind=\"Deployment\", namespace=~\"$namespace\", namespace!~\"$exclude\"}, \"owner_deploy\", \"$1\", \"owner_name\", \"(.*)\")), \"workload\", \"$1\", \"owner_deploy\", \"(.*)\"), \"workload_type\", \"Deployment\", \"namespace\", \".*\") or label_replace(label_replace(kube_pod_owner{owner_kind=~\"StatefulSet|DaemonSet\", namespace=~\"$namespace\", namespace!~\"$exclude\"}, \"workload\", \"$1\", \"owner_name\", \"(.*)\"), \"workload_type\", \"$1\", \"owner_kind\", \"(.*)\"))))) < 0.5) * 0 - 1)",
+          "legendFormat": "",
+          "range": false,
+          "instant": true,
+          "format": "table"
+        },
+        {
+          "refId": "B",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "expr": "((avg by (namespace, workload, workload_type, container) ((max by (namespace, pod, container) (avg_over_time(container_memory_working_set_bytes{container!=\"\", container!=\"POD\", namespace=~\"$namespace\", namespace!~\"$exclude\"}[$waste_window]))) * on (namespace, pod) group_left (workload, workload_type) max by (namespace, pod, workload, workload_type) (label_replace(label_replace(label_replace(max_over_time(kube_pod_owner{owner_kind=\"ReplicaSet\", namespace=~\"$namespace\", namespace!~\"$exclude\"}[$waste_window]), \"replicaset\", \"$1\", \"owner_name\", \"(.*)\") * on (namespace, replicaset) group_left (owner_deploy) max by (namespace, replicaset, owner_deploy) (label_replace(max_over_time(kube_replicaset_owner{owner_kind=\"Deployment\", namespace=~\"$namespace\", namespace!~\"$exclude\"}[$waste_window]), \"owner_deploy\", \"$1\", \"owner_name\", \"(.*)\")), \"workload\", \"$1\", \"owner_deploy\", \"(.*)\"), \"workload_type\", \"Deployment\", \"namespace\", \".*\") or label_replace(label_replace(max_over_time(kube_pod_owner{owner_kind=~\"StatefulSet|DaemonSet\", namespace=~\"$namespace\", namespace!~\"$exclude\"}[$waste_window]), \"workload\", \"$1\", \"owner_name\", \"(.*)\"), \"workload_type\", \"$1\", \"owner_kind\", \"(.*)\")))) and on (namespace, workload, workload_type, container) ((((avg by (namespace, workload, workload_type, container) ((max by (namespace, pod, container) (avg_over_time(container_memory_working_set_bytes{container!=\"\", container!=\"POD\", namespace=~\"$namespace\", namespace!~\"$exclude\"}[$waste_window]))) * on (namespace, pod) group_left (workload, workload_type) max by (namespace, pod, workload, workload_type) (label_replace(label_replace(label_replace(max_over_time(kube_pod_owner{owner_kind=\"ReplicaSet\", namespace=~\"$namespace\", namespace!~\"$exclude\"}[$waste_window]), \"replicaset\", \"$1\", \"owner_name\", \"(.*)\") * on (namespace, replicaset) group_left (owner_deploy) max by (namespace, replicaset, owner_deploy) (label_replace(max_over_time(kube_replicaset_owner{owner_kind=\"Deployment\", namespace=~\"$namespace\", namespace!~\"$exclude\"}[$waste_window]), \"owner_deploy\", \"$1\", \"owner_name\", \"(.*)\")), \"workload\", \"$1\", \"owner_deploy\", \"(.*)\"), \"workload_type\", \"Deployment\", \"namespace\", \".*\") or label_replace(label_replace(max_over_time(kube_pod_owner{owner_kind=~\"StatefulSet|DaemonSet\", namespace=~\"$namespace\", namespace!~\"$exclude\"}[$waste_window]), \"workload\", \"$1\", \"owner_name\", \"(.*)\"), \"workload_type\", \"$1\", \"owner_kind\", \"(.*)\")))) / (max by (namespace, workload, workload_type, container) ((max by (namespace, pod, container) (kube_pod_container_resource_requests{resource=\"memory\", namespace=~\"$namespace\", namespace!~\"$exclude\"} > 0)) * on (namespace, pod) group_left (workload, workload_type) max by (namespace, pod, workload, workload_type) (label_replace(label_replace(label_replace(kube_pod_owner{owner_kind=\"ReplicaSet\", namespace=~\"$namespace\", namespace!~\"$exclude\"}, \"replicaset\", \"$1\", \"owner_name\", \"(.*)\") * on (namespace, replicaset) group_left (owner_deploy) max by (namespace, replicaset, owner_deploy) (label_replace(kube_replicaset_owner{owner_kind=\"Deployment\", namespace=~\"$namespace\", namespace!~\"$exclude\"}, \"owner_deploy\", \"$1\", \"owner_name\", \"(.*)\")), \"workload\", \"$1\", \"owner_deploy\", \"(.*)\"), \"workload_type\", \"Deployment\", \"namespace\", \".*\") or label_replace(label_replace(kube_pod_owner{owner_kind=~\"StatefulSet|DaemonSet\", namespace=~\"$namespace\", namespace!~\"$exclude\"}, \"workload\", \"$1\", \"owner_name\", \"(.*)\"), \"workload_type\", \"$1\", \"owner_kind\", \"(.*)\"))))) < 0.5) * 0)) or ((((avg by (namespace, workload, workload_type, container) ((max by (namespace, pod, container) (avg_over_time(container_memory_working_set_bytes{container!=\"\", container!=\"POD\", namespace=~\"$namespace\", namespace!~\"$exclude\"}[$waste_window]))) * on (namespace, pod) group_left (workload, workload_type) max by (namespace, pod, workload, workload_type) (label_replace(label_replace(label_replace(max_over_time(kube_pod_owner{owner_kind=\"ReplicaSet\", namespace=~\"$namespace\", namespace!~\"$exclude\"}[$waste_window]), \"replicaset\", \"$1\", \"owner_name\", \"(.*)\") * on (namespace, replicaset) group_left (owner_deploy) max by (namespace, replicaset, owner_deploy) (label_replace(max_over_time(kube_replicaset_owner{owner_kind=\"Deployment\", namespace=~\"$namespace\", namespace!~\"$exclude\"}[$waste_window]), \"owner_deploy\", \"$1\", \"owner_name\", \"(.*)\")), \"workload\", \"$1\", \"owner_deploy\", \"(.*)\"), \"workload_type\", \"Deployment\", \"namespace\", \".*\") or label_replace(label_replace(max_over_time(kube_pod_owner{owner_kind=~\"StatefulSet|DaemonSet\", namespace=~\"$namespace\", namespace!~\"$exclude\"}[$waste_window]), \"workload\", \"$1\", \"owner_name\", \"(.*)\"), \"workload_type\", \"$1\", \"owner_kind\", \"(.*)\")))) / (max by (namespace, workload, workload_type, container) ((max by (namespace, pod, container) (kube_pod_container_resource_requests{resource=\"memory\", namespace=~\"$namespace\", namespace!~\"$exclude\"} > 0)) * on (namespace, pod) group_left (workload, workload_type) max by (namespace, pod, workload, workload_type) (label_replace(label_replace(label_replace(kube_pod_owner{owner_kind=\"ReplicaSet\", namespace=~\"$namespace\", namespace!~\"$exclude\"}, \"replicaset\", \"$1\", \"owner_name\", \"(.*)\") * on (namespace, replicaset) group_left (owner_deploy) max by (namespace, replicaset, owner_deploy) (label_replace(kube_replicaset_owner{owner_kind=\"Deployment\", namespace=~\"$namespace\", namespace!~\"$exclude\"}, \"owner_deploy\", \"$1\", \"owner_name\", \"(.*)\")), \"workload\", \"$1\", \"owner_deploy\", \"(.*)\"), \"workload_type\", \"Deployment\", \"namespace\", \".*\") or label_replace(label_replace(kube_pod_owner{owner_kind=~\"StatefulSet|DaemonSet\", namespace=~\"$namespace\", namespace!~\"$exclude\"}, \"workload\", \"$1\", \"owner_name\", \"(.*)\"), \"workload_type\", \"$1\", \"owner_kind\", \"(.*)\"))))) < 0.5) * 0 - 1)",
+          "legendFormat": "",
+          "range": false,
+          "instant": true,
+          "format": "table"
+        },
+        {
+          "refId": "C",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "expr": "((max by (namespace, workload, workload_type, container) ((max by (namespace, pod, container) (max_over_time(container_memory_working_set_bytes{container!=\"\", container!=\"POD\", namespace=~\"$namespace\", namespace!~\"$exclude\"}[$waste_window]))) * on (namespace, pod) group_left (workload, workload_type) max by (namespace, pod, workload, workload_type) (label_replace(label_replace(label_replace(max_over_time(kube_pod_owner{owner_kind=\"ReplicaSet\", namespace=~\"$namespace\", namespace!~\"$exclude\"}[$waste_window]), \"replicaset\", \"$1\", \"owner_name\", \"(.*)\") * on (namespace, replicaset) group_left (owner_deploy) max by (namespace, replicaset, owner_deploy) (label_replace(max_over_time(kube_replicaset_owner{owner_kind=\"Deployment\", namespace=~\"$namespace\", namespace!~\"$exclude\"}[$waste_window]), \"owner_deploy\", \"$1\", \"owner_name\", \"(.*)\")), \"workload\", \"$1\", \"owner_deploy\", \"(.*)\"), \"workload_type\", \"Deployment\", \"namespace\", \".*\") or label_replace(label_replace(max_over_time(kube_pod_owner{owner_kind=~\"StatefulSet|DaemonSet\", namespace=~\"$namespace\", namespace!~\"$exclude\"}[$waste_window]), \"workload\", \"$1\", \"owner_name\", \"(.*)\"), \"workload_type\", \"$1\", \"owner_kind\", \"(.*)\")))) and on (namespace, workload, workload_type, container) ((((avg by (namespace, workload, workload_type, container) ((max by (namespace, pod, container) (avg_over_time(container_memory_working_set_bytes{container!=\"\", container!=\"POD\", namespace=~\"$namespace\", namespace!~\"$exclude\"}[$waste_window]))) * on (namespace, pod) group_left (workload, workload_type) max by (namespace, pod, workload, workload_type) (label_replace(label_replace(label_replace(max_over_time(kube_pod_owner{owner_kind=\"ReplicaSet\", namespace=~\"$namespace\", namespace!~\"$exclude\"}[$waste_window]), \"replicaset\", \"$1\", \"owner_name\", \"(.*)\") * on (namespace, replicaset) group_left (owner_deploy) max by (namespace, replicaset, owner_deploy) (label_replace(max_over_time(kube_replicaset_owner{owner_kind=\"Deployment\", namespace=~\"$namespace\", namespace!~\"$exclude\"}[$waste_window]), \"owner_deploy\", \"$1\", \"owner_name\", \"(.*)\")), \"workload\", \"$1\", \"owner_deploy\", \"(.*)\"), \"workload_type\", \"Deployment\", \"namespace\", \".*\") or label_replace(label_replace(max_over_time(kube_pod_owner{owner_kind=~\"StatefulSet|DaemonSet\", namespace=~\"$namespace\", namespace!~\"$exclude\"}[$waste_window]), \"workload\", \"$1\", \"owner_name\", \"(.*)\"), \"workload_type\", \"$1\", \"owner_kind\", \"(.*)\")))) / (max by (namespace, workload, workload_type, container) ((max by (namespace, pod, container) (kube_pod_container_resource_requests{resource=\"memory\", namespace=~\"$namespace\", namespace!~\"$exclude\"} > 0)) * on (namespace, pod) group_left (workload, workload_type) max by (namespace, pod, workload, workload_type) (label_replace(label_replace(label_replace(kube_pod_owner{owner_kind=\"ReplicaSet\", namespace=~\"$namespace\", namespace!~\"$exclude\"}, \"replicaset\", \"$1\", \"owner_name\", \"(.*)\") * on (namespace, replicaset) group_left (owner_deploy) max by (namespace, replicaset, owner_deploy) (label_replace(kube_replicaset_owner{owner_kind=\"Deployment\", namespace=~\"$namespace\", namespace!~\"$exclude\"}, \"owner_deploy\", \"$1\", \"owner_name\", \"(.*)\")), \"workload\", \"$1\", \"owner_deploy\", \"(.*)\"), \"workload_type\", \"Deployment\", \"namespace\", \".*\") or label_replace(label_replace(kube_pod_owner{owner_kind=~\"StatefulSet|DaemonSet\", namespace=~\"$namespace\", namespace!~\"$exclude\"}, \"workload\", \"$1\", \"owner_name\", \"(.*)\"), \"workload_type\", \"$1\", \"owner_kind\", \"(.*)\"))))) < 0.5) * 0)) or ((((avg by (namespace, workload, workload_type, container) ((max by (namespace, pod, container) (avg_over_time(container_memory_working_set_bytes{container!=\"\", container!=\"POD\", namespace=~\"$namespace\", namespace!~\"$exclude\"}[$waste_window]))) * on (namespace, pod) group_left (workload, workload_type) max by (namespace, pod, workload, workload_type) (label_replace(label_replace(label_replace(max_over_time(kube_pod_owner{owner_kind=\"ReplicaSet\", namespace=~\"$namespace\", namespace!~\"$exclude\"}[$waste_window]), \"replicaset\", \"$1\", \"owner_name\", \"(.*)\") * on (namespace, replicaset) group_left (owner_deploy) max by (namespace, replicaset, owner_deploy) (label_replace(max_over_time(kube_replicaset_owner{owner_kind=\"Deployment\", namespace=~\"$namespace\", namespace!~\"$exclude\"}[$waste_window]), \"owner_deploy\", \"$1\", \"owner_name\", \"(.*)\")), \"workload\", \"$1\", \"owner_deploy\", \"(.*)\"), \"workload_type\", \"Deployment\", \"namespace\", \".*\") or label_replace(label_replace(max_over_time(kube_pod_owner{owner_kind=~\"StatefulSet|DaemonSet\", namespace=~\"$namespace\", namespace!~\"$exclude\"}[$waste_window]), \"workload\", \"$1\", \"owner_name\", \"(.*)\"), \"workload_type\", \"$1\", \"owner_kind\", \"(.*)\")))) / (max by (namespace, workload, workload_type, container) ((max by (namespace, pod, container) (kube_pod_container_resource_requests{resource=\"memory\", namespace=~\"$namespace\", namespace!~\"$exclude\"} > 0)) * on (namespace, pod) group_left (workload, workload_type) max by (namespace, pod, workload, workload_type) (label_replace(label_replace(label_replace(kube_pod_owner{owner_kind=\"ReplicaSet\", namespace=~\"$namespace\", namespace!~\"$exclude\"}, \"replicaset\", \"$1\", \"owner_name\", \"(.*)\") * on (namespace, replicaset) group_left (owner_deploy) max by (namespace, replicaset, owner_deploy) (label_replace(kube_replicaset_owner{owner_kind=\"Deployment\", namespace=~\"$namespace\", namespace!~\"$exclude\"}, \"owner_deploy\", \"$1\", \"owner_name\", \"(.*)\")), \"workload\", \"$1\", \"owner_deploy\", \"(.*)\"), \"workload_type\", \"Deployment\", \"namespace\", \".*\") or label_replace(label_replace(kube_pod_owner{owner_kind=~\"StatefulSet|DaemonSet\", namespace=~\"$namespace\", namespace!~\"$exclude\"}, \"workload\", \"$1\", \"owner_name\", \"(.*)\"), \"workload_type\", \"$1\", \"owner_kind\", \"(.*)\"))))) < 0.5) * 0 - 1)",
+          "legendFormat": "",
+          "range": false,
+          "instant": true,
+          "format": "table"
+        },
+        {
+          "refId": "D",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "expr": "((max by (namespace, workload, workload_type, container) ((max by (namespace, pod, container) (kube_pod_container_resource_requests{resource=\"memory\", namespace=~\"$namespace\", namespace!~\"$exclude\"} > 0)) * on (namespace, pod) group_left (workload, workload_type) max by (namespace, pod, workload, workload_type) (label_replace(label_replace(label_replace(kube_pod_owner{owner_kind=\"ReplicaSet\", namespace=~\"$namespace\", namespace!~\"$exclude\"}, \"replicaset\", \"$1\", \"owner_name\", \"(.*)\") * on (namespace, replicaset) group_left (owner_deploy) max by (namespace, replicaset, owner_deploy) (label_replace(kube_replicaset_owner{owner_kind=\"Deployment\", namespace=~\"$namespace\", namespace!~\"$exclude\"}, \"owner_deploy\", \"$1\", \"owner_name\", \"(.*)\")), \"workload\", \"$1\", \"owner_deploy\", \"(.*)\"), \"workload_type\", \"Deployment\", \"namespace\", \".*\") or label_replace(label_replace(kube_pod_owner{owner_kind=~\"StatefulSet|DaemonSet\", namespace=~\"$namespace\", namespace!~\"$exclude\"}, \"workload\", \"$1\", \"owner_name\", \"(.*)\"), \"workload_type\", \"$1\", \"owner_kind\", \"(.*)\")))) and on (namespace, workload, workload_type, container) ((((avg by (namespace, workload, workload_type, container) ((max by (namespace, pod, container) (avg_over_time(container_memory_working_set_bytes{container!=\"\", container!=\"POD\", namespace=~\"$namespace\", namespace!~\"$exclude\"}[$waste_window]))) * on (namespace, pod) group_left (workload, workload_type) max by (namespace, pod, workload, workload_type) (label_replace(label_replace(label_replace(max_over_time(kube_pod_owner{owner_kind=\"ReplicaSet\", namespace=~\"$namespace\", namespace!~\"$exclude\"}[$waste_window]), \"replicaset\", \"$1\", \"owner_name\", \"(.*)\") * on (namespace, replicaset) group_left (owner_deploy) max by (namespace, replicaset, owner_deploy) (label_replace(max_over_time(kube_replicaset_owner{owner_kind=\"Deployment\", namespace=~\"$namespace\", namespace!~\"$exclude\"}[$waste_window]), \"owner_deploy\", \"$1\", \"owner_name\", \"(.*)\")), \"workload\", \"$1\", \"owner_deploy\", \"(.*)\"), \"workload_type\", \"Deployment\", \"namespace\", \".*\") or label_replace(label_replace(max_over_time(kube_pod_owner{owner_kind=~\"StatefulSet|DaemonSet\", namespace=~\"$namespace\", namespace!~\"$exclude\"}[$waste_window]), \"workload\", \"$1\", \"owner_name\", \"(.*)\"), \"workload_type\", \"$1\", \"owner_kind\", \"(.*)\")))) / (max by (namespace, workload, workload_type, container) ((max by (namespace, pod, container) (kube_pod_container_resource_requests{resource=\"memory\", namespace=~\"$namespace\", namespace!~\"$exclude\"} > 0)) * on (namespace, pod) group_left (workload, workload_type) max by (namespace, pod, workload, workload_type) (label_replace(label_replace(label_replace(kube_pod_owner{owner_kind=\"ReplicaSet\", namespace=~\"$namespace\", namespace!~\"$exclude\"}, \"replicaset\", \"$1\", \"owner_name\", \"(.*)\") * on (namespace, replicaset) group_left (owner_deploy) max by (namespace, replicaset, owner_deploy) (label_replace(kube_replicaset_owner{owner_kind=\"Deployment\", namespace=~\"$namespace\", namespace!~\"$exclude\"}, \"owner_deploy\", \"$1\", \"owner_name\", \"(.*)\")), \"workload\", \"$1\", \"owner_deploy\", \"(.*)\"), \"workload_type\", \"Deployment\", \"namespace\", \".*\") or label_replace(label_replace(kube_pod_owner{owner_kind=~\"StatefulSet|DaemonSet\", namespace=~\"$namespace\", namespace!~\"$exclude\"}, \"workload\", \"$1\", \"owner_name\", \"(.*)\"), \"workload_type\", \"$1\", \"owner_kind\", \"(.*)\"))))) < 0.5) * 0)) or ((((avg by (namespace, workload, workload_type, container) ((max by (namespace, pod, container) (avg_over_time(container_memory_working_set_bytes{container!=\"\", container!=\"POD\", namespace=~\"$namespace\", namespace!~\"$exclude\"}[$waste_window]))) * on (namespace, pod) group_left (workload, workload_type) max by (namespace, pod, workload, workload_type) (label_replace(label_replace(label_replace(max_over_time(kube_pod_owner{owner_kind=\"ReplicaSet\", namespace=~\"$namespace\", namespace!~\"$exclude\"}[$waste_window]), \"replicaset\", \"$1\", \"owner_name\", \"(.*)\") * on (namespace, replicaset) group_left (owner_deploy) max by (namespace, replicaset, owner_deploy) (label_replace(max_over_time(kube_replicaset_owner{owner_kind=\"Deployment\", namespace=~\"$namespace\", namespace!~\"$exclude\"}[$waste_window]), \"owner_deploy\", \"$1\", \"owner_name\", \"(.*)\")), \"workload\", \"$1\", \"owner_deploy\", \"(.*)\"), \"workload_type\", \"Deployment\", \"namespace\", \".*\") or label_replace(label_replace(max_over_time(kube_pod_owner{owner_kind=~\"StatefulSet|DaemonSet\", namespace=~\"$namespace\", namespace!~\"$exclude\"}[$waste_window]), \"workload\", \"$1\", \"owner_name\", \"(.*)\"), \"workload_type\", \"$1\", \"owner_kind\", \"(.*)\")))) / (max by (namespace, workload, workload_type, container) ((max by (namespace, pod, container) (kube_pod_container_resource_requests{resource=\"memory\", namespace=~\"$namespace\", namespace!~\"$exclude\"} > 0)) * on (namespace, pod) group_left (workload, workload_type) max by (namespace, pod, workload, workload_type) (label_replace(label_replace(label_replace(kube_pod_owner{owner_kind=\"ReplicaSet\", namespace=~\"$namespace\", namespace!~\"$exclude\"}, \"replicaset\", \"$1\", \"owner_name\", \"(.*)\") * on (namespace, replicaset) group_left (owner_deploy) max by (namespace, replicaset, owner_deploy) (label_replace(kube_replicaset_owner{owner_kind=\"Deployment\", namespace=~\"$namespace\", namespace!~\"$exclude\"}, \"owner_deploy\", \"$1\", \"owner_name\", \"(.*)\")), \"workload\", \"$1\", \"owner_deploy\", \"(.*)\"), \"workload_type\", \"Deployment\", \"namespace\", \".*\") or label_replace(label_replace(kube_pod_owner{owner_kind=~\"StatefulSet|DaemonSet\", namespace=~\"$namespace\", namespace!~\"$exclude\"}, \"workload\", \"$1\", \"owner_name\", \"(.*)\"), \"workload_type\", \"$1\", \"owner_kind\", \"(.*)\"))))) < 0.5) * 0 - 1)",
+          "legendFormat": "",
+          "range": false,
+          "instant": true,
+          "format": "table"
+        },
+        {
+          "refId": "E",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "expr": "(((avg by (namespace, workload, workload_type, container) ((max by (namespace, pod, container) (avg_over_time(container_memory_working_set_bytes{container!=\"\", container!=\"POD\", namespace=~\"$namespace\", namespace!~\"$exclude\"}[$waste_window]))) * on (namespace, pod) group_left (workload, workload_type) max by (namespace, pod, workload, workload_type) (label_replace(label_replace(label_replace(max_over_time(kube_pod_owner{owner_kind=\"ReplicaSet\", namespace=~\"$namespace\", namespace!~\"$exclude\"}[$waste_window]), \"replicaset\", \"$1\", \"owner_name\", \"(.*)\") * on (namespace, replicaset) group_left (owner_deploy) max by (namespace, replicaset, owner_deploy) (label_replace(max_over_time(kube_replicaset_owner{owner_kind=\"Deployment\", namespace=~\"$namespace\", namespace!~\"$exclude\"}[$waste_window]), \"owner_deploy\", \"$1\", \"owner_name\", \"(.*)\")), \"workload\", \"$1\", \"owner_deploy\", \"(.*)\"), \"workload_type\", \"Deployment\", \"namespace\", \".*\") or label_replace(label_replace(max_over_time(kube_pod_owner{owner_kind=~\"StatefulSet|DaemonSet\", namespace=~\"$namespace\", namespace!~\"$exclude\"}[$waste_window]), \"workload\", \"$1\", \"owner_name\", \"(.*)\"), \"workload_type\", \"$1\", \"owner_kind\", \"(.*)\")))) / (max by (namespace, workload, workload_type, container) ((max by (namespace, pod, container) (kube_pod_container_resource_requests{resource=\"memory\", namespace=~\"$namespace\", namespace!~\"$exclude\"} > 0)) * on (namespace, pod) group_left (workload, workload_type) max by (namespace, pod, workload, workload_type) (label_replace(label_replace(label_replace(kube_pod_owner{owner_kind=\"ReplicaSet\", namespace=~\"$namespace\", namespace!~\"$exclude\"}, \"replicaset\", \"$1\", \"owner_name\", \"(.*)\") * on (namespace, replicaset) group_left (owner_deploy) max by (namespace, replicaset, owner_deploy) (label_replace(kube_replicaset_owner{owner_kind=\"Deployment\", namespace=~\"$namespace\", namespace!~\"$exclude\"}, \"owner_deploy\", \"$1\", \"owner_name\", \"(.*)\")), \"workload\", \"$1\", \"owner_deploy\", \"(.*)\"), \"workload_type\", \"Deployment\", \"namespace\", \".*\") or label_replace(label_replace(kube_pod_owner{owner_kind=~\"StatefulSet|DaemonSet\", namespace=~\"$namespace\", namespace!~\"$exclude\"}, \"workload\", \"$1\", \"owner_name\", \"(.*)\"), \"workload_type\", \"$1\", \"owner_kind\", \"(.*)\"))))) and on (namespace, workload, workload_type, container) ((((avg by (namespace, workload, workload_type, container) ((max by (namespace, pod, container) (avg_over_time(container_memory_working_set_bytes{container!=\"\", container!=\"POD\", namespace=~\"$namespace\", namespace!~\"$exclude\"}[$waste_window]))) * on (namespace, pod) group_left (workload, workload_type) max by (namespace, pod, workload, workload_type) (label_replace(label_replace(label_replace(max_over_time(kube_pod_owner{owner_kind=\"ReplicaSet\", namespace=~\"$namespace\", namespace!~\"$exclude\"}[$waste_window]), \"replicaset\", \"$1\", \"owner_name\", \"(.*)\") * on (namespace, replicaset) group_left (owner_deploy) max by (namespace, replicaset, owner_deploy) (label_replace(max_over_time(kube_replicaset_owner{owner_kind=\"Deployment\", namespace=~\"$namespace\", namespace!~\"$exclude\"}[$waste_window]), \"owner_deploy\", \"$1\", \"owner_name\", \"(.*)\")), \"workload\", \"$1\", \"owner_deploy\", \"(.*)\"), \"workload_type\", \"Deployment\", \"namespace\", \".*\") or label_replace(label_replace(max_over_time(kube_pod_owner{owner_kind=~\"StatefulSet|DaemonSet\", namespace=~\"$namespace\", namespace!~\"$exclude\"}[$waste_window]), \"workload\", \"$1\", \"owner_name\", \"(.*)\"), \"workload_type\", \"$1\", \"owner_kind\", \"(.*)\")))) / (max by (namespace, workload, workload_type, container) ((max by (namespace, pod, container) (kube_pod_container_resource_requests{resource=\"memory\", namespace=~\"$namespace\", namespace!~\"$exclude\"} > 0)) * on (namespace, pod) group_left (workload, workload_type) max by (namespace, pod, workload, workload_type) (label_replace(label_replace(label_replace(kube_pod_owner{owner_kind=\"ReplicaSet\", namespace=~\"$namespace\", namespace!~\"$exclude\"}, \"replicaset\", \"$1\", \"owner_name\", \"(.*)\") * on (namespace, replicaset) group_left (owner_deploy) max by (namespace, replicaset, owner_deploy) (label_replace(kube_replicaset_owner{owner_kind=\"Deployment\", namespace=~\"$namespace\", namespace!~\"$exclude\"}, \"owner_deploy\", \"$1\", \"owner_name\", \"(.*)\")), \"workload\", \"$1\", \"owner_deploy\", \"(.*)\"), \"workload_type\", \"Deployment\", \"namespace\", \".*\") or label_replace(label_replace(kube_pod_owner{owner_kind=~\"StatefulSet|DaemonSet\", namespace=~\"$namespace\", namespace!~\"$exclude\"}, \"workload\", \"$1\", \"owner_name\", \"(.*)\"), \"workload_type\", \"$1\", \"owner_kind\", \"(.*)\"))))) < 0.5) * 0)) or ((((avg by (namespace, workload, workload_type, container) ((max by (namespace, pod, container) (avg_over_time(container_memory_working_set_bytes{container!=\"\", container!=\"POD\", namespace=~\"$namespace\", namespace!~\"$exclude\"}[$waste_window]))) * on (namespace, pod) group_left (workload, workload_type) max by (namespace, pod, workload, workload_type) (label_replace(label_replace(label_replace(max_over_time(kube_pod_owner{owner_kind=\"ReplicaSet\", namespace=~\"$namespace\", namespace!~\"$exclude\"}[$waste_window]), \"replicaset\", \"$1\", \"owner_name\", \"(.*)\") * on (namespace, replicaset) group_left (owner_deploy) max by (namespace, replicaset, owner_deploy) (label_replace(max_over_time(kube_replicaset_owner{owner_kind=\"Deployment\", namespace=~\"$namespace\", namespace!~\"$exclude\"}[$waste_window]), \"owner_deploy\", \"$1\", \"owner_name\", \"(.*)\")), \"workload\", \"$1\", \"owner_deploy\", \"(.*)\"), \"workload_type\", \"Deployment\", \"namespace\", \".*\") or label_replace(label_replace(max_over_time(kube_pod_owner{owner_kind=~\"StatefulSet|DaemonSet\", namespace=~\"$namespace\", namespace!~\"$exclude\"}[$waste_window]), \"workload\", \"$1\", \"owner_name\", \"(.*)\"), \"workload_type\", \"$1\", \"owner_kind\", \"(.*)\")))) / (max by (namespace, workload, workload_type, container) ((max by (namespace, pod, container) (kube_pod_container_resource_requests{resource=\"memory\", namespace=~\"$namespace\", namespace!~\"$exclude\"} > 0)) * on (namespace, pod) group_left (workload, workload_type) max by (namespace, pod, workload, workload_type) (label_replace(label_replace(label_replace(kube_pod_owner{owner_kind=\"ReplicaSet\", namespace=~\"$namespace\", namespace!~\"$exclude\"}, \"replicaset\", \"$1\", \"owner_name\", \"(.*)\") * on (namespace, replicaset) group_left (owner_deploy) max by (namespace, replicaset, owner_deploy) (label_replace(kube_replicaset_owner{owner_kind=\"Deployment\", namespace=~\"$namespace\", namespace!~\"$exclude\"}, \"owner_deploy\", \"$1\", \"owner_name\", \"(.*)\")), \"workload\", \"$1\", \"owner_deploy\", \"(.*)\"), \"workload_type\", \"Deployment\", \"namespace\", \".*\") or label_replace(label_replace(kube_pod_owner{owner_kind=~\"StatefulSet|DaemonSet\", namespace=~\"$namespace\", namespace!~\"$exclude\"}, \"workload\", \"$1\", \"owner_name\", \"(.*)\"), \"workload_type\", \"$1\", \"owner_kind\", \"(.*)\"))))) < 0.5) * 0 - 1)",
+          "legendFormat": "",
+          "range": false,
+          "instant": true,
+          "format": "table"
+        },
+        {
+          "refId": "F",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "expr": "(((max by (namespace, workload, workload_type, container) ((max by (namespace, pod, container) (max_over_time(container_memory_working_set_bytes{container!=\"\", container!=\"POD\", namespace=~\"$namespace\", namespace!~\"$exclude\"}[$waste_window]))) * on (namespace, pod) group_left (workload, workload_type) max by (namespace, pod, workload, workload_type) (label_replace(label_replace(label_replace(max_over_time(kube_pod_owner{owner_kind=\"ReplicaSet\", namespace=~\"$namespace\", namespace!~\"$exclude\"}[$waste_window]), \"replicaset\", \"$1\", \"owner_name\", \"(.*)\") * on (namespace, replicaset) group_left (owner_deploy) max by (namespace, replicaset, owner_deploy) (label_replace(max_over_time(kube_replicaset_owner{owner_kind=\"Deployment\", namespace=~\"$namespace\", namespace!~\"$exclude\"}[$waste_window]), \"owner_deploy\", \"$1\", \"owner_name\", \"(.*)\")), \"workload\", \"$1\", \"owner_deploy\", \"(.*)\"), \"workload_type\", \"Deployment\", \"namespace\", \".*\") or label_replace(label_replace(max_over_time(kube_pod_owner{owner_kind=~\"StatefulSet|DaemonSet\", namespace=~\"$namespace\", namespace!~\"$exclude\"}[$waste_window]), \"workload\", \"$1\", \"owner_name\", \"(.*)\"), \"workload_type\", \"$1\", \"owner_kind\", \"(.*)\")))) / (max by (namespace, workload, workload_type, container) ((max by (namespace, pod, container) (kube_pod_container_resource_requests{resource=\"memory\", namespace=~\"$namespace\", namespace!~\"$exclude\"} > 0)) * on (namespace, pod) group_left (workload, workload_type) max by (namespace, pod, workload, workload_type) (label_replace(label_replace(label_replace(kube_pod_owner{owner_kind=\"ReplicaSet\", namespace=~\"$namespace\", namespace!~\"$exclude\"}, \"replicaset\", \"$1\", \"owner_name\", \"(.*)\") * on (namespace, replicaset) group_left (owner_deploy) max by (namespace, replicaset, owner_deploy) (label_replace(kube_replicaset_owner{owner_kind=\"Deployment\", namespace=~\"$namespace\", namespace!~\"$exclude\"}, \"owner_deploy\", \"$1\", \"owner_name\", \"(.*)\")), \"workload\", \"$1\", \"owner_deploy\", \"(.*)\"), \"workload_type\", \"Deployment\", \"namespace\", \".*\") or label_replace(label_replace(kube_pod_owner{owner_kind=~\"StatefulSet|DaemonSet\", namespace=~\"$namespace\", namespace!~\"$exclude\"}, \"workload\", \"$1\", \"owner_name\", \"(.*)\"), \"workload_type\", \"$1\", \"owner_kind\", \"(.*)\"))))) and on (namespace, workload, workload_type, container) ((((avg by (namespace, workload, workload_type, container) ((max by (namespace, pod, container) (avg_over_time(container_memory_working_set_bytes{container!=\"\", container!=\"POD\", namespace=~\"$namespace\", namespace!~\"$exclude\"}[$waste_window]))) * on (namespace, pod) group_left (workload, workload_type) max by (namespace, pod, workload, workload_type) (label_replace(label_replace(label_replace(max_over_time(kube_pod_owner{owner_kind=\"ReplicaSet\", namespace=~\"$namespace\", namespace!~\"$exclude\"}[$waste_window]), \"replicaset\", \"$1\", \"owner_name\", \"(.*)\") * on (namespace, replicaset) group_left (owner_deploy) max by (namespace, replicaset, owner_deploy) (label_replace(max_over_time(kube_replicaset_owner{owner_kind=\"Deployment\", namespace=~\"$namespace\", namespace!~\"$exclude\"}[$waste_window]), \"owner_deploy\", \"$1\", \"owner_name\", \"(.*)\")), \"workload\", \"$1\", \"owner_deploy\", \"(.*)\"), \"workload_type\", \"Deployment\", \"namespace\", \".*\") or label_replace(label_replace(max_over_time(kube_pod_owner{owner_kind=~\"StatefulSet|DaemonSet\", namespace=~\"$namespace\", namespace!~\"$exclude\"}[$waste_window]), \"workload\", \"$1\", \"owner_name\", \"(.*)\"), \"workload_type\", \"$1\", \"owner_kind\", \"(.*)\")))) / (max by (namespace, workload, workload_type, container) ((max by (namespace, pod, container) (kube_pod_container_resource_requests{resource=\"memory\", namespace=~\"$namespace\", namespace!~\"$exclude\"} > 0)) * on (namespace, pod) group_left (workload, workload_type) max by (namespace, pod, workload, workload_type) (label_replace(label_replace(label_replace(kube_pod_owner{owner_kind=\"ReplicaSet\", namespace=~\"$namespace\", namespace!~\"$exclude\"}, \"replicaset\", \"$1\", \"owner_name\", \"(.*)\") * on (namespace, replicaset) group_left (owner_deploy) max by (namespace, replicaset, owner_deploy) (label_replace(kube_replicaset_owner{owner_kind=\"Deployment\", namespace=~\"$namespace\", namespace!~\"$exclude\"}, \"owner_deploy\", \"$1\", \"owner_name\", \"(.*)\")), \"workload\", \"$1\", \"owner_deploy\", \"(.*)\"), \"workload_type\", \"Deployment\", \"namespace\", \".*\") or label_replace(label_replace(kube_pod_owner{owner_kind=~\"StatefulSet|DaemonSet\", namespace=~\"$namespace\", namespace!~\"$exclude\"}, \"workload\", \"$1\", \"owner_name\", \"(.*)\"), \"workload_type\", \"$1\", \"owner_kind\", \"(.*)\"))))) < 0.5) * 0)) or ((((avg by (namespace, workload, workload_type, container) ((max by (namespace, pod, container) (avg_over_time(container_memory_working_set_bytes{container!=\"\", container!=\"POD\", namespace=~\"$namespace\", namespace!~\"$exclude\"}[$waste_window]))) * on (namespace, pod) group_left (workload, workload_type) max by (namespace, pod, workload, workload_type) (label_replace(label_replace(label_replace(max_over_time(kube_pod_owner{owner_kind=\"ReplicaSet\", namespace=~\"$namespace\", namespace!~\"$exclude\"}[$waste_window]), \"replicaset\", \"$1\", \"owner_name\", \"(.*)\") * on (namespace, replicaset) group_left (owner_deploy) max by (namespace, replicaset, owner_deploy) (label_replace(max_over_time(kube_replicaset_owner{owner_kind=\"Deployment\", namespace=~\"$namespace\", namespace!~\"$exclude\"}[$waste_window]), \"owner_deploy\", \"$1\", \"owner_name\", \"(.*)\")), \"workload\", \"$1\", \"owner_deploy\", \"(.*)\"), \"workload_type\", \"Deployment\", \"namespace\", \".*\") or label_replace(label_replace(max_over_time(kube_pod_owner{owner_kind=~\"StatefulSet|DaemonSet\", namespace=~\"$namespace\", namespace!~\"$exclude\"}[$waste_window]), \"workload\", \"$1\", \"owner_name\", \"(.*)\"), \"workload_type\", \"$1\", \"owner_kind\", \"(.*)\")))) / (max by (namespace, workload, workload_type, container) ((max by (namespace, pod, container) (kube_pod_container_resource_requests{resource=\"memory\", namespace=~\"$namespace\", namespace!~\"$exclude\"} > 0)) * on (namespace, pod) group_left (workload, workload_type) max by (namespace, pod, workload, workload_type) (label_replace(label_replace(label_replace(kube_pod_owner{owner_kind=\"ReplicaSet\", namespace=~\"$namespace\", namespace!~\"$exclude\"}, \"replicaset\", \"$1\", \"owner_name\", \"(.*)\") * on (namespace, replicaset) group_left (owner_deploy) max by (namespace, replicaset, owner_deploy) (label_replace(kube_replicaset_owner{owner_kind=\"Deployment\", namespace=~\"$namespace\", namespace!~\"$exclude\"}, \"owner_deploy\", \"$1\", \"owner_name\", \"(.*)\")), \"workload\", \"$1\", \"owner_deploy\", \"(.*)\"), \"workload_type\", \"Deployment\", \"namespace\", \".*\") or label_replace(label_replace(kube_pod_owner{owner_kind=~\"StatefulSet|DaemonSet\", namespace=~\"$namespace\", namespace!~\"$exclude\"}, \"workload\", \"$1\", \"owner_name\", \"(.*)\"), \"workload_type\", \"$1\", \"owner_kind\", \"(.*)\"))))) < 0.5) * 0 - 1)",
+          "legendFormat": "",
+          "range": false,
+          "instant": true,
+          "format": "table"
+        },
+        {
+          "refId": "G",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "expr": "((clamp_min((max by (namespace, workload, workload_type, container) ((max by (namespace, pod, container) (kube_pod_container_resource_requests{resource=\"memory\", namespace=~\"$namespace\", namespace!~\"$exclude\"} > 0)) * on (namespace, pod) group_left (workload, workload_type) max by (namespace, pod, workload, workload_type) (label_replace(label_replace(label_replace(kube_pod_owner{owner_kind=\"ReplicaSet\", namespace=~\"$namespace\", namespace!~\"$exclude\"}, \"replicaset\", \"$1\", \"owner_name\", \"(.*)\") * on (namespace, replicaset) group_left (owner_deploy) max by (namespace, replicaset, owner_deploy) (label_replace(kube_replicaset_owner{owner_kind=\"Deployment\", namespace=~\"$namespace\", namespace!~\"$exclude\"}, \"owner_deploy\", \"$1\", \"owner_name\", \"(.*)\")), \"workload\", \"$1\", \"owner_deploy\", \"(.*)\"), \"workload_type\", \"Deployment\", \"namespace\", \".*\") or label_replace(label_replace(kube_pod_owner{owner_kind=~\"StatefulSet|DaemonSet\", namespace=~\"$namespace\", namespace!~\"$exclude\"}, \"workload\", \"$1\", \"owner_name\", \"(.*)\"), \"workload_type\", \"$1\", \"owner_kind\", \"(.*)\")))) - (avg by (namespace, workload, workload_type, container) ((max by (namespace, pod, container) (avg_over_time(container_memory_working_set_bytes{container!=\"\", container!=\"POD\", namespace=~\"$namespace\", namespace!~\"$exclude\"}[$waste_window]))) * on (namespace, pod) group_left (workload, workload_type) max by (namespace, pod, workload, workload_type) (label_replace(label_replace(label_replace(max_over_time(kube_pod_owner{owner_kind=\"ReplicaSet\", namespace=~\"$namespace\", namespace!~\"$exclude\"}[$waste_window]), \"replicaset\", \"$1\", \"owner_name\", \"(.*)\") * on (namespace, replicaset) group_left (owner_deploy) max by (namespace, replicaset, owner_deploy) (label_replace(max_over_time(kube_replicaset_owner{owner_kind=\"Deployment\", namespace=~\"$namespace\", namespace!~\"$exclude\"}[$waste_window]), \"owner_deploy\", \"$1\", \"owner_name\", \"(.*)\")), \"workload\", \"$1\", \"owner_deploy\", \"(.*)\"), \"workload_type\", \"Deployment\", \"namespace\", \".*\") or label_replace(label_replace(max_over_time(kube_pod_owner{owner_kind=~\"StatefulSet|DaemonSet\", namespace=~\"$namespace\", namespace!~\"$exclude\"}[$waste_window]), \"workload\", \"$1\", \"owner_name\", \"(.*)\"), \"workload_type\", \"$1\", \"owner_kind\", \"(.*)\")))), 0) * count by (namespace, workload, workload_type, container) (max by (namespace, pod, container) (rate(container_cpu_usage_seconds_total{container!=\"\", container!=\"POD\", namespace=~\"$namespace\", namespace!~\"$exclude\"}[5m])) * on (namespace, pod) group_left (workload, workload_type) max by (namespace, pod, workload, workload_type) (label_replace(label_replace(label_replace(kube_pod_owner{owner_kind=\"ReplicaSet\", namespace=~\"$namespace\", namespace!~\"$exclude\"}, \"replicaset\", \"$1\", \"owner_name\", \"(.*)\") * on (namespace, replicaset) group_left (owner_deploy) max by (namespace, replicaset, owner_deploy) (label_replace(kube_replicaset_owner{owner_kind=\"Deployment\", namespace=~\"$namespace\", namespace!~\"$exclude\"}, \"owner_deploy\", \"$1\", \"owner_name\", \"(.*)\")), \"workload\", \"$1\", \"owner_deploy\", \"(.*)\"), \"workload_type\", \"Deployment\", \"namespace\", \".*\") or label_replace(label_replace(kube_pod_owner{owner_kind=~\"StatefulSet|DaemonSet\", namespace=~\"$namespace\", namespace!~\"$exclude\"}, \"workload\", \"$1\", \"owner_name\", \"(.*)\"), \"workload_type\", \"$1\", \"owner_kind\", \"(.*)\")))) and on (namespace, workload, workload_type, container) ((((avg by (namespace, workload, workload_type, container) ((max by (namespace, pod, container) (avg_over_time(container_memory_working_set_bytes{container!=\"\", container!=\"POD\", namespace=~\"$namespace\", namespace!~\"$exclude\"}[$waste_window]))) * on (namespace, pod) group_left (workload, workload_type) max by (namespace, pod, workload, workload_type) (label_replace(label_replace(label_replace(max_over_time(kube_pod_owner{owner_kind=\"ReplicaSet\", namespace=~\"$namespace\", namespace!~\"$exclude\"}[$waste_window]), \"replicaset\", \"$1\", \"owner_name\", \"(.*)\") * on (namespace, replicaset) group_left (owner_deploy) max by (namespace, replicaset, owner_deploy) (label_replace(max_over_time(kube_replicaset_owner{owner_kind=\"Deployment\", namespace=~\"$namespace\", namespace!~\"$exclude\"}[$waste_window]), \"owner_deploy\", \"$1\", \"owner_name\", \"(.*)\")), \"workload\", \"$1\", \"owner_deploy\", \"(.*)\"), \"workload_type\", \"Deployment\", \"namespace\", \".*\") or label_replace(label_replace(max_over_time(kube_pod_owner{owner_kind=~\"StatefulSet|DaemonSet\", namespace=~\"$namespace\", namespace!~\"$exclude\"}[$waste_window]), \"workload\", \"$1\", \"owner_name\", \"(.*)\"), \"workload_type\", \"$1\", \"owner_kind\", \"(.*)\")))) / (max by (namespace, workload, workload_type, container) ((max by (namespace, pod, container) (kube_pod_container_resource_requests{resource=\"memory\", namespace=~\"$namespace\", namespace!~\"$exclude\"} > 0)) * on (namespace, pod) group_left (workload, workload_type) max by (namespace, pod, workload, workload_type) (label_replace(label_replace(label_replace(kube_pod_owner{owner_kind=\"ReplicaSet\", namespace=~\"$namespace\", namespace!~\"$exclude\"}, \"replicaset\", \"$1\", \"owner_name\", \"(.*)\") * on (namespace, replicaset) group_left (owner_deploy) max by (namespace, replicaset, owner_deploy) (label_replace(kube_replicaset_owner{owner_kind=\"Deployment\", namespace=~\"$namespace\", namespace!~\"$exclude\"}, \"owner_deploy\", \"$1\", \"owner_name\", \"(.*)\")), \"workload\", \"$1\", \"owner_deploy\", \"(.*)\"), \"workload_type\", \"Deployment\", \"namespace\", \".*\") or label_replace(label_replace(kube_pod_owner{owner_kind=~\"StatefulSet|DaemonSet\", namespace=~\"$namespace\", namespace!~\"$exclude\"}, \"workload\", \"$1\", \"owner_name\", \"(.*)\"), \"workload_type\", \"$1\", \"owner_kind\", \"(.*)\"))))) < 0.5) * 0)) or ((((avg by (namespace, workload, workload_type, container) ((max by (namespace, pod, container) (avg_over_time(container_memory_working_set_bytes{container!=\"\", container!=\"POD\", namespace=~\"$namespace\", namespace!~\"$exclude\"}[$waste_window]))) * on (namespace, pod) group_left (workload, workload_type) max by (namespace, pod, workload, workload_type) (label_replace(label_replace(label_replace(max_over_time(kube_pod_owner{owner_kind=\"ReplicaSet\", namespace=~\"$namespace\", namespace!~\"$exclude\"}[$waste_window]), \"replicaset\", \"$1\", \"owner_name\", \"(.*)\") * on (namespace, replicaset) group_left (owner_deploy) max by (namespace, replicaset, owner_deploy) (label_replace(max_over_time(kube_replicaset_owner{owner_kind=\"Deployment\", namespace=~\"$namespace\", namespace!~\"$exclude\"}[$waste_window]), \"owner_deploy\", \"$1\", \"owner_name\", \"(.*)\")), \"workload\", \"$1\", \"owner_deploy\", \"(.*)\"), \"workload_type\", \"Deployment\", \"namespace\", \".*\") or label_replace(label_replace(max_over_time(kube_pod_owner{owner_kind=~\"StatefulSet|DaemonSet\", namespace=~\"$namespace\", namespace!~\"$exclude\"}[$waste_window]), \"workload\", \"$1\", \"owner_name\", \"(.*)\"), \"workload_type\", \"$1\", \"owner_kind\", \"(.*)\")))) / (max by (namespace, workload, workload_type, container) ((max by (namespace, pod, container) (kube_pod_container_resource_requests{resource=\"memory\", namespace=~\"$namespace\", namespace!~\"$exclude\"} > 0)) * on (namespace, pod) group_left (workload, workload_type) max by (namespace, pod, workload, workload_type) (label_replace(label_replace(label_replace(kube_pod_owner{owner_kind=\"ReplicaSet\", namespace=~\"$namespace\", namespace!~\"$exclude\"}, \"replicaset\", \"$1\", \"owner_name\", \"(.*)\") * on (namespace, replicaset) group_left (owner_deploy) max by (namespace, replicaset, owner_deploy) (label_replace(kube_replicaset_owner{owner_kind=\"Deployment\", namespace=~\"$namespace\", namespace!~\"$exclude\"}, \"owner_deploy\", \"$1\", \"owner_name\", \"(.*)\")), \"workload\", \"$1\", \"owner_deploy\", \"(.*)\"), \"workload_type\", \"Deployment\", \"namespace\", \".*\") or label_replace(label_replace(kube_pod_owner{owner_kind=~\"StatefulSet|DaemonSet\", namespace=~\"$namespace\", namespace!~\"$exclude\"}, \"workload\", \"$1\", \"owner_name\", \"(.*)\"), \"workload_type\", \"$1\", \"owner_kind\", \"(.*)\"))))) < 0.5) * 0 - 1)",
+          "legendFormat": "",
+          "range": false,
+          "instant": true,
+          "format": "table"
+        }
+      ],
+      "transformations": [
+        {
+          "id": "merge",
+          "options": {}
+        },
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": {
+              "Time": true,
+              "workload_type": true
+            },
+            "renameByName": {
+              "Value #A": "Pod 數",
+              "Value #B": "平均用量／Pod",
+              "Value #C": "尖峰／Pod",
+              "Value #D": "Request／Pod",
+              "Value #E": "平均 ÷ Request",
+              "Value #F": "尖峰 ÷ Request",
+              "Value #G": "沒用到的 Request（全部 Pod）",
+              "workload_type": "類型",
+              "container": "容器"
+            },
+            "indexByName": {
+              "namespace": 0,
+              "workload": 1,
+              "workload_type": 2,
+              "container": 3,
+              "Value #A": 4,
+              "Value #B": 5,
+              "Value #C": 6,
+              "Value #D": 7,
+              "Value #E": 8,
+              "Value #F": 9,
+              "Value #G": 10
+            }
+          }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "filterable": false,
+            "align": "auto",
+            "minWidth": 80,
+            "wrapHeaderText": true
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Pod 數"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "none"
+              },
+              {
+                "id": "decimals",
+                "value": 0
+              },
+              {
+                "id": "mappings",
+                "value": [
+                  {
+                    "type": "value",
+                    "options": {
+                      "-1": {
+                        "text": "—",
+                        "color": "#8e8e8e",
+                        "index": 99
+                      }
+                    }
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "平均用量／Pod"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "bytes"
+              },
+              {
+                "id": "decimals",
+                "value": 2
+              },
+              {
+                "id": "mappings",
+                "value": [
+                  {
+                    "type": "value",
+                    "options": {
+                      "-1": {
+                        "text": "—",
+                        "color": "#8e8e8e",
+                        "index": 99
+                      }
+                    }
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "尖峰／Pod"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "bytes"
+              },
+              {
+                "id": "decimals",
+                "value": 1
+              },
+              {
+                "id": "mappings",
+                "value": [
+                  {
+                    "type": "value",
+                    "options": {
+                      "-1": {
+                        "text": "—",
+                        "color": "#8e8e8e",
+                        "index": 99
+                      }
+                    }
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Request／Pod"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "bytes"
+              },
+              {
+                "id": "decimals",
+                "value": 1
+              },
+              {
+                "id": "mappings",
+                "value": [
+                  {
+                    "type": "value",
+                    "options": {
+                      "-1": {
+                        "text": "—",
+                        "color": "#8e8e8e",
+                        "index": 99
+                      }
+                    }
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "平均 ÷ Request"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "percentunit"
+              },
+              {
+                "id": "decimals",
+                "value": 0
+              },
+              {
+                "id": "thresholds",
+                "value": {
+                  "mode": "absolute",
+                  "steps": [
+                    {
+                      "color": "red",
+                      "value": null
+                    },
+                    {
+                      "color": "yellow",
+                      "value": 0.2
+                    },
+                    {
+                      "color": "green",
+                      "value": 0.5
+                    }
+                  ]
+                }
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "thresholds"
+                }
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-background",
+                  "mode": "basic"
+                }
+              },
+              {
+                "id": "custom.displayMode",
+                "value": "color-background"
+              },
+              {
+                "id": "mappings",
+                "value": [
+                  {
+                    "type": "value",
+                    "options": {
+                      "-1": {
+                        "text": "—",
+                        "color": "#8e8e8e",
+                        "index": 99
+                      }
+                    }
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "尖峰 ÷ Request"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "percentunit"
+              },
+              {
+                "id": "decimals",
+                "value": 0
+              },
+              {
+                "id": "thresholds",
+                "value": {
+                  "mode": "absolute",
+                  "steps": [
+                    {
+                      "color": "red",
+                      "value": null
+                    },
+                    {
+                      "color": "yellow",
+                      "value": 0.5
+                    },
+                    {
+                      "color": "green",
+                      "value": 1.0
+                    }
+                  ]
+                }
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "thresholds"
+                }
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-background",
+                  "mode": "basic"
+                }
+              },
+              {
+                "id": "custom.displayMode",
+                "value": "color-background"
+              },
+              {
+                "id": "mappings",
+                "value": [
+                  {
+                    "type": "value",
+                    "options": {
+                      "-1": {
+                        "text": "—",
+                        "color": "#8e8e8e",
+                        "index": 99
+                      }
+                    }
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "沒用到的 Request（全部 Pod）"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "bytes"
+              },
+              {
+                "id": "decimals",
+                "value": 1
+              },
+              {
+                "id": "mappings",
+                "value": [
+                  {
+                    "type": "value",
+                    "options": {
+                      "-1": {
+                        "text": "—",
+                        "color": "#8e8e8e",
+                        "index": 99
+                      }
+                    }
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "workload"
+            },
+            "properties": [
+              {
+                "id": "links",
+                "value": [
+                  {
+                    "title": "開啟此 Workload 的細節 Dashboard",
+                    "url": "/d/ocp-loadtest-impact/?var-datasource=${datasource}&var-namespace=${__data.fields.namespace}&var-workload=${__data.fields.workload}&${__url_time_range}"
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "namespace"
+            },
+            "properties": [
+              {
+                "id": "custom.filterable",
+                "value": true
+              },
+              {
+                "id": "custom.width",
+                "value": 120
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "workload"
+            },
+            "properties": [
+              {
+                "id": "custom.filterable",
+                "value": true
+              },
+              {
+                "id": "custom.width",
+                "value": 150
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "類型"
+            },
+            "properties": [
+              {
+                "id": "custom.filterable",
+                "value": true
+              },
+              {
+                "id": "custom.width",
+                "value": 100
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "容器"
+            },
+            "properties": [
+              {
+                "id": "custom.filterable",
+                "value": true
+              },
+              {
+                "id": "custom.width",
+                "value": 130
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "showHeader": true,
+        "sortBy": [
+          {
+            "displayName": "沒用到的 Request（全部 Pod）",
+            "desc": true
+          }
+        ],
+        "footer": {
+          "show": false
+        }
+      },
+      "gridPos": {
+        "h": 10,
+        "w": 24,
+        "x": 0,
+        "y": 142
+      }
+    },
+    {
+      "id": 32,
+      "type": "timeseries",
+      "title": "【叢集】CPU：Request 總和 vs 實際用量（核）",
+      "description": "**視角**：上方 namespace 篩選內，所有有設 CPU Request 且正在跑的容器加總\n\n**這是什麼**：排程器保留的 CPU（Request）跟實際用掉的 CPU。兩條線中間的空間就是被保留卻沒用到的量。\n\n**怎麼看**：時間範圍拉長（例如 7 天）看長期：兩條線差距一直很大 → Request 普遍設太高；差距只在離峰時很大 → 正常的日夜起伏。",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${datasource}"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "expr": "sum(max by (namespace, pod, container) (kube_pod_container_resource_requests{resource=\"cpu\", namespace=~\"$namespace\", namespace!~\"$exclude\"} > 0) and on (namespace, pod, container) max by (namespace, pod, container) (rate(container_cpu_usage_seconds_total{container!=\"\", container!=\"POD\", namespace=~\"$namespace\", namespace!~\"$exclude\"}[$__rate_interval])))",
+          "legendFormat": "Request 總和",
+          "range": true,
+          "instant": false
+        },
+        {
+          "refId": "B",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "expr": "sum(max by (namespace, pod, container) (rate(container_cpu_usage_seconds_total{container!=\"\", container!=\"POD\", namespace=~\"$namespace\", namespace!~\"$exclude\"}[$__rate_interval])) and on (namespace, pod, container) max by (namespace, pod, container) (kube_pod_container_resource_requests{resource=\"cpu\", namespace=~\"$namespace\", namespace!~\"$exclude\"} > 0))",
+          "legendFormat": "實際用量",
+          "range": true,
+          "instant": false
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "min": 0,
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 1,
+            "fillOpacity": 10,
+            "showPoints": "never",
+            "spanNulls": true
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "right",
+          "calcs": [
+            "max"
+          ],
+          "sortBy": "Max",
+          "sortDesc": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 152
+      }
+    },
+    {
+      "id": 33,
+      "type": "timeseries",
+      "title": "【叢集】記憶體：Request 總和 vs 實際用量",
+      "description": "**視角**：上方 namespace 篩選內，所有有設記憶體 Request 且正在跑的容器加總\n\n**這是什麼**：排程器保留的記憶體（Request）跟實際用掉的記憶體（working set）。兩條線中間的空間就是被保留卻沒用到的量。\n\n**怎麼看**：時間範圍拉長（例如 7 天）看長期：兩條線差距一直很大 → Request 普遍設太高；差距只在離峰時很大 → 正常的日夜起伏。",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${datasource}"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "expr": "sum(max by (namespace, pod, container) (kube_pod_container_resource_requests{resource=\"memory\", namespace=~\"$namespace\", namespace!~\"$exclude\"} > 0) and on (namespace, pod, container) max by (namespace, pod, container) (container_memory_working_set_bytes{container!=\"\", container!=\"POD\", namespace=~\"$namespace\", namespace!~\"$exclude\"}))",
+          "legendFormat": "Request 總和",
+          "range": true,
+          "instant": false
+        },
+        {
+          "refId": "B",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "expr": "sum(max by (namespace, pod, container) (container_memory_working_set_bytes{container!=\"\", container!=\"POD\", namespace=~\"$namespace\", namespace!~\"$exclude\"}) and on (namespace, pod, container) max by (namespace, pod, container) (kube_pod_container_resource_requests{resource=\"memory\", namespace=~\"$namespace\", namespace!~\"$exclude\"} > 0))",
+          "legendFormat": "實際用量",
+          "range": true,
+          "instant": false
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "bytes",
+          "min": 0,
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 1,
+            "fillOpacity": 10,
+            "showPoints": "never",
+            "spanNulls": true
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "right",
+          "calcs": [
+            "max"
+          ],
+          "sortBy": "Max",
+          "sortDesc": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 152
+      }
+    },
+    {
+      "id": 34,
+      "type": "timeseries",
+      "title": "【Workload】沒用到的 CPU Request（核）Top 10",
+      "description": "**視角**：叢集內每一個 Workload（該 Workload 所有 Pod 合計）\n\n**這是什麼**：Request − 實際用量（只算有設 Request 的容器，所有 Pod 加總）。\n\n**怎麼看**：時間範圍拉長（例如 7 天）看長期：兩條線差距一直很大 → Request 普遍設太高；差距只在離峰時很大 → 正常的日夜起伏。一直在 Top 10 的，到上方表格看是哪個容器。",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${datasource}"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "expr": "topk(10, clamp_min(sum by (namespace, workload, workload_type) ((sum by (namespace, pod) (max by (namespace, pod, container) (kube_pod_container_resource_requests{resource=\"cpu\", namespace=~\"$namespace\", namespace!~\"$exclude\"} > 0))) * on (namespace, pod) group_left (workload, workload_type) max by (namespace, pod, workload, workload_type) (label_replace(label_replace(label_replace(kube_pod_owner{owner_kind=\"ReplicaSet\", namespace=~\"$namespace\", namespace!~\"$exclude\"}, \"replicaset\", \"$1\", \"owner_name\", \"(.*)\") * on (namespace, replicaset) group_left (owner_deploy) max by (namespace, replicaset, owner_deploy) (label_replace(kube_replicaset_owner{owner_kind=\"Deployment\", namespace=~\"$namespace\", namespace!~\"$exclude\"}, \"owner_deploy\", \"$1\", \"owner_name\", \"(.*)\")), \"workload\", \"$1\", \"owner_deploy\", \"(.*)\"), \"workload_type\", \"Deployment\", \"namespace\", \".*\") or label_replace(label_replace(kube_pod_owner{owner_kind=~\"StatefulSet|DaemonSet\", namespace=~\"$namespace\", namespace!~\"$exclude\"}, \"workload\", \"$1\", \"owner_name\", \"(.*)\"), \"workload_type\", \"$1\", \"owner_kind\", \"(.*)\"))) - sum by (namespace, workload, workload_type) ((sum by (namespace, pod) ((max by (namespace, pod, container) (rate(container_cpu_usage_seconds_total{container!=\"\", container!=\"POD\", namespace=~\"$namespace\", namespace!~\"$exclude\"}[$__rate_interval])) and on (namespace, pod, container) max by (namespace, pod, container) (kube_pod_container_resource_requests{resource=\"cpu\", namespace=~\"$namespace\", namespace!~\"$exclude\"} > 0)))) * on (namespace, pod) group_left (workload, workload_type) max by (namespace, pod, workload, workload_type) (label_replace(label_replace(label_replace(kube_pod_owner{owner_kind=\"ReplicaSet\", namespace=~\"$namespace\", namespace!~\"$exclude\"}, \"replicaset\", \"$1\", \"owner_name\", \"(.*)\") * on (namespace, replicaset) group_left (owner_deploy) max by (namespace, replicaset, owner_deploy) (label_replace(kube_replicaset_owner{owner_kind=\"Deployment\", namespace=~\"$namespace\", namespace!~\"$exclude\"}, \"owner_deploy\", \"$1\", \"owner_name\", \"(.*)\")), \"workload\", \"$1\", \"owner_deploy\", \"(.*)\"), \"workload_type\", \"Deployment\", \"namespace\", \".*\") or label_replace(label_replace(kube_pod_owner{owner_kind=~\"StatefulSet|DaemonSet\", namespace=~\"$namespace\", namespace!~\"$exclude\"}, \"workload\", \"$1\", \"owner_name\", \"(.*)\"), \"workload_type\", \"$1\", \"owner_kind\", \"(.*)\"))), 0))",
+          "legendFormat": "{{namespace}}/{{workload}}",
+          "range": true,
+          "instant": false
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "min": 0,
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 1,
+            "fillOpacity": 10,
+            "showPoints": "never",
+            "spanNulls": true
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "right",
+          "calcs": [
+            "max"
+          ],
+          "sortBy": "Max",
+          "sortDesc": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 160
+      }
+    },
+    {
+      "id": 35,
+      "type": "timeseries",
+      "title": "【Workload】沒用到的記憶體 Request Top 10",
+      "description": "**視角**：叢集內每一個 Workload（該 Workload 所有 Pod 合計）\n\n**這是什麼**：Request − 實際用量（只算有設 Request 的容器，所有 Pod 加總）。\n\n**怎麼看**：時間範圍拉長（例如 7 天）看長期：兩條線差距一直很大 → Request 普遍設太高；差距只在離峰時很大 → 正常的日夜起伏。一直在 Top 10 的，到上方表格看是哪個容器。",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${datasource}"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "expr": "topk(10, clamp_min(sum by (namespace, workload, workload_type) ((sum by (namespace, pod) (max by (namespace, pod, container) (kube_pod_container_resource_requests{resource=\"memory\", namespace=~\"$namespace\", namespace!~\"$exclude\"} > 0))) * on (namespace, pod) group_left (workload, workload_type) max by (namespace, pod, workload, workload_type) (label_replace(label_replace(label_replace(kube_pod_owner{owner_kind=\"ReplicaSet\", namespace=~\"$namespace\", namespace!~\"$exclude\"}, \"replicaset\", \"$1\", \"owner_name\", \"(.*)\") * on (namespace, replicaset) group_left (owner_deploy) max by (namespace, replicaset, owner_deploy) (label_replace(kube_replicaset_owner{owner_kind=\"Deployment\", namespace=~\"$namespace\", namespace!~\"$exclude\"}, \"owner_deploy\", \"$1\", \"owner_name\", \"(.*)\")), \"workload\", \"$1\", \"owner_deploy\", \"(.*)\"), \"workload_type\", \"Deployment\", \"namespace\", \".*\") or label_replace(label_replace(kube_pod_owner{owner_kind=~\"StatefulSet|DaemonSet\", namespace=~\"$namespace\", namespace!~\"$exclude\"}, \"workload\", \"$1\", \"owner_name\", \"(.*)\"), \"workload_type\", \"$1\", \"owner_kind\", \"(.*)\"))) - sum by (namespace, workload, workload_type) ((sum by (namespace, pod) ((max by (namespace, pod, container) (container_memory_working_set_bytes{container!=\"\", container!=\"POD\", namespace=~\"$namespace\", namespace!~\"$exclude\"}) and on (namespace, pod, container) max by (namespace, pod, container) (kube_pod_container_resource_requests{resource=\"memory\", namespace=~\"$namespace\", namespace!~\"$exclude\"} > 0)))) * on (namespace, pod) group_left (workload, workload_type) max by (namespace, pod, workload, workload_type) (label_replace(label_replace(label_replace(kube_pod_owner{owner_kind=\"ReplicaSet\", namespace=~\"$namespace\", namespace!~\"$exclude\"}, \"replicaset\", \"$1\", \"owner_name\", \"(.*)\") * on (namespace, replicaset) group_left (owner_deploy) max by (namespace, replicaset, owner_deploy) (label_replace(kube_replicaset_owner{owner_kind=\"Deployment\", namespace=~\"$namespace\", namespace!~\"$exclude\"}, \"owner_deploy\", \"$1\", \"owner_name\", \"(.*)\")), \"workload\", \"$1\", \"owner_deploy\", \"(.*)\"), \"workload_type\", \"Deployment\", \"namespace\", \".*\") or label_replace(label_replace(kube_pod_owner{owner_kind=~\"StatefulSet|DaemonSet\", namespace=~\"$namespace\", namespace!~\"$exclude\"}, \"workload\", \"$1\", \"owner_name\", \"(.*)\"), \"workload_type\", \"$1\", \"owner_kind\", \"(.*)\"))), 0))",
+          "legendFormat": "{{namespace}}/{{workload}}",
+          "range": true,
+          "instant": false
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "bytes",
+          "min": 0,
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 1,
+            "fillOpacity": 10,
+            "showPoints": "never",
+            "spanNulls": true
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "right",
+          "calcs": [
+            "max"
+          ],
+          "sortBy": "Max",
+          "sortDesc": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 160
       }
     }
   ]

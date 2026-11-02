@@ -56,6 +56,7 @@ OCP 沒有特別設定時，不會限制 Pod 的網路頻寬與磁碟讀寫速�
 | 2.【Workload】共用資源與重啟 | 重啟、網路流量與丟包、磁碟寫入、可寫層用量 |
 | 3.【Workload】Limit 相關 Top 10 | CPU / 記憶體用量 ÷ Limit、throttling、重啟隨時間的變化 |
 | 4.【Workload】共用資源 Top 10 | 沒設 Limit 的容器 CPU、記憶體用量，網路、磁碟這些 limit 管不到、會影響同 Node 鄰居的指標隨時間的變化 |
+| 5.【浪費】長期用量遠低於 Request | 上方「浪費分析平均區間」選 1 / 7 / 14 / 30 天（預設 7 天）。Node 表：Request ÷ 可分配 vs 平均用量 ÷ 可分配、佔住沒用；CPU、記憶體各一張容器表：平均用量、尖峰、Request（每個 Pod）、平均 / 尖峰 ÷ Request、沒用到的 Request（全部 Pod）；叢集 Request 總和 vs 實際用量、沒用到的 Request Top 10 趨勢 |
 
 注意事項：
 
@@ -73,6 +74,12 @@ OCP 沒有特別設定時，不會限制 Pod 的網路頻寬與磁碟讀寫速�
 - **預設排除系統 namespace**：`openshift.*|kube-.*`，可在上方「排除的 Namespace」修改或清空。
 - **點擊跳轉只支援 Deployment**：細節 Dashboard 以 Pod 名稱規則對應 Deployment，StatefulSet、DaemonSet 點進去會沒有資料。
 - **使用 hostNetwork 的 Pod**：網路指標會是整台 Node 的流量，排名可能偏高。
+- **第 5 區浪費分析看的是長期平均**，不是結束前 5 分鐘：
+  - 從時間範圍結束點往回推「浪費分析平均區間」；容器表只列**平均用量不到 Request 一半**的容器，依「沒用到的 Request」排序。
+  - 平均是**每個 Pod 的平均再取平均**，rollout 換掉的舊 Pod 也算，Pod 數變動不會讓數字加倍；新上線不滿區間的 Pod 只算它活著的時間。CPU 是每 5 分鐘的 rate 取平均（直接 `rate(...[7d])` 會除以整個 7 天，換過 Pod 的會被低估）。
+  - **沒用到的 Request** = (Request − 平均用量) × 目前 Pod 數。CPU 不夠只會變慢，Request 可以調到平均附近、靠 Limit 衝；記憶體不夠會被驅逐，Request 建議調到**尖峰**附近再留餘裕。
+  - Node 表不受 namespace 篩選影響：排程器看所有 Pod 的 Request，Request ÷ 可分配滿了就排不進新 Pod，就算機器其實很閒。
+  - 選 30 天前先確認 Prometheus 保留期（OCP 預設 15 天），超過的部分沒有資料，只會算有資料的那段；區間越長查詢越久。
 
 ## Kong → Router → AP 延遲鏈路分析
 

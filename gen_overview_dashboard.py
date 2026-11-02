@@ -19,17 +19,30 @@ DEV = 'device=~"sd[a-z]+|nvme[0-9]+n[0-9]+|vd[a-z]+|xvd[a-z]+"'
 NIC = 'device=~"(ens|eth|eno|enp|bond)[a-z0-9]*"'
 FS = 'mountpoint=~"/sysroot|/var|/", fstype!~"tmpfs|overlay|squashfs"'
 
-# Pod -> workload mapping: Deployments through their ReplicaSet, StatefulSets and DaemonSets directly.
-WL = ('max by (namespace, pod, workload, workload_type) ('
-      'label_replace(label_replace('
-      f'label_replace(kube_pod_owner{{owner_kind="ReplicaSet", {NSF}}}, "replicaset", "$1", "owner_name", "(.*)")'
-      ' * on (namespace, replicaset) group_left (owner_deploy) '
-      'max by (namespace, replicaset, owner_deploy) ('
-      f'label_replace(kube_replicaset_owner{{owner_kind="Deployment", {NSF}}}, "owner_deploy", "$1", "owner_name", "(.*)"))'
-      ', "workload", "$1", "owner_deploy", "(.*)"), "workload_type", "Deployment", "namespace", ".*")'
-      ' or label_replace(label_replace('
-      f'kube_pod_owner{{owner_kind=~"StatefulSet|DaemonSet", {NSF}}}, "workload", "$1", "owner_name", "(.*)")'
-      ', "workload_type", "$1", "owner_kind", "(.*)"))')
+WIN = "$waste_window"    # waste section: averages over this many days before the end of the time range
+
+
+def pod_to_wl(seen=lambda sel: sel):
+    """Pod -> workload mapping: Deployments through their ReplicaSet, StatefulSets and DaemonSets directly.
+    seen wraps each owner selector, e.g. to also map pods that were deleted earlier in a window."""
+    rs_pods = seen(f'kube_pod_owner{{owner_kind="ReplicaSet", {NSF}}}')
+    rs_deploy = seen(f'kube_replicaset_owner{{owner_kind="Deployment", {NSF}}}')
+    other_pods = seen(f'kube_pod_owner{{owner_kind=~"StatefulSet|DaemonSet", {NSF}}}')
+    return ('max by (namespace, pod, workload, workload_type) ('
+            'label_replace(label_replace('
+            f'label_replace({rs_pods}, "replicaset", "$1", "owner_name", "(.*)")'
+            ' * on (namespace, replicaset) group_left (owner_deploy) '
+            'max by (namespace, replicaset, owner_deploy) ('
+            f'label_replace({rs_deploy}, "owner_deploy", "$1", "owner_name", "(.*)"))'
+            ', "workload", "$1", "owner_deploy", "(.*)"), "workload_type", "Deployment", "namespace", ".*")'
+            ' or label_replace(label_replace('
+            f'{other_pods}, "workload", "$1", "owner_name", "(.*)")'
+            ', "workload_type", "$1", "owner_kind", "(.*)"))')
+
+
+WL = pod_to_wl()
+# Every pod that existed at any time in the waste window, so pods replaced by a rollout still count
+WL_WIN = pod_to_wl(lambda sel: f'max_over_time({sel}[{WIN}])')
 
 
 def by_wl(per_pod, agg="sum"):
@@ -100,12 +113,15 @@ def unlimited(used_ct, resource):
     return f'({used_ct} unless on (namespace, pod, container) {spec("limits", resource)})'
 
 
+def with_request(used_ct, resource):
+    """Usage per pod, counting only containers that set a request."""
+    return f'sum by (namespace, pod) (({used_ct} and on (namespace, pod, container) {spec("requests", resource)}))'
+
+
 def over_request(used_ct, resource):
     """Usage ÷ request for the whole workload, counting only containers that set a request, so a
     container without one does not inflate the ratio."""
-    used = f'({used_ct} and on (namespace, pod, container) {spec("requests", resource)})'
-    return (f'{by_wl(f"sum by (namespace, pod) ({used})")}'
-            f' / {by_wl(total("requests", resource))}')
+    return f'{by_wl(with_request(used_ct, resource))} / {by_wl(total("requests", resource))}'
 
 
 K_CT = "namespace, workload, workload_type, container"
@@ -295,11 +311,13 @@ def text(line, content, w=24, h=8):
 
 
 def ts(line, title, expr, legend, unit, description, w=12, h=8):
+    """expr / legend can also be lists, one line per query."""
+    exprs, legends = (expr, legend) if isinstance(expr, list) else ([expr], [legend])
     line.add({
         "id": nid(), "type": "timeseries", "title": title, "description": description,
         "datasource": DS,
-        "targets": [{"refId": "A", "datasource": DS, "expr": expr, "legendFormat": legend,
-                     "range": True, "instant": False}],
+        "targets": [{"refId": chr(65 + i), "datasource": DS, "expr": e, "legendFormat": lg,
+                     "range": True, "instant": False} for i, (e, lg) in enumerate(zip(exprs, legends))],
         "fieldConfig": {"defaults": {"unit": unit, "min": 0,
                                      "custom": {"drawStyle": "line", "lineWidth": 1, "fillOpacity": 10,
                                                 "showPoints": "never", "spanNulls": True}},
@@ -385,8 +403,9 @@ text(L, """**叢集風險總覽**：先找出嫌疑的 Node 與 Workload，再�
 1. **哪台 Node 吃緊** → 第 1 區
 2. **哪個 Workload 用量大、快碰到 Limit、Pod 之間不平均** → 第 2 區（點表頭排序、名稱欄的漏斗篩選，紅 / 黃格要注意）
 3. **是什麼時候飆起來的** → 第 3、4 區 Top 10 趨勢
+4. **誰長期用很少、Request 卻設很高（浪費）** → 第 5 區，上方「浪費分析平均區間」選幾天（預設 7 天）
 
-表格是時間範圍**結束前 5 分鐘**的值；百分比都是 **用量 ÷ 欄名寫的分母**；預設排除 `openshift*`、`kube-*` namespace。""", h=6)
+表格是時間範圍**結束前 5 分鐘**的值（第 5 區是結束前 N 天的平均）；百分比都是 **用量 ÷ 欄名寫的分母**；預設排除 `openshift*`、`kube-*` namespace。""", h=7)
 L.newline()
 
 # ---------------------------------------------------------------- 1 nodes
@@ -490,6 +509,7 @@ L.newline()
 L = Line()
 # 每列一個容器 (同一個 Workload 的 Pod 共用一份設定,所以容器只列一次,用量是所有 Pod 加總)
 CT_ALL = f'max by ({K_CT}) ({cpu_ct(W5)} * on (namespace, pod) group_left (workload, workload_type) {WL}) * 0'
+PODS_CT = f'count by ({K_CT}) ({cpu_ct(W5)} * on (namespace, pod) group_left (workload, workload_type) {WL})'
 UNL_CPU, UNL_MEM = unlimited(cpu_ct(W5), "cpu"), unlimited(mem_ct(), "memory")
 MISS = (f'(({by_wl_ct(f"({UNL_CPU}) * 0 + 1", "max")}) or {CT_ALL})'
         f' + 2 * (({by_wl_ct(f"({UNL_MEM}) * 0 + 1", "max")}) or {CT_ALL})')
@@ -502,8 +522,7 @@ table(L, "【Workload】沒設 Limit 的容器：用量沒有上限，會吃掉 
         "1": {"text": "CPU", "color": "orange", "index": 0},
         "2": {"text": "記憶體", "color": "orange", "index": 1},
         "3": {"text": "CPU、記憶體", "color": "red", "index": 2}}}]),
-    ("Pod 數", f'count by ({K_CT}) ({cpu_ct(W5)} * on (namespace, pod) group_left (workload, workload_type) {WL})',
-     "none", None, 0, None),
+    ("Pod 數", PODS_CT, "none", None, 0, None),
     ("CPU 用量（核）", by_wl_ct(cpu_ct(W5)), "none", None, 2, None),
     ("CPU Request（核）", by_wl_ct(spec("requests", "cpu")), "none", None, 2, None, NOT_SET),
     ("CPU ÷ Request", ct_over_request(cpu_ct(W5), "cpu"), "percentunit", OVER_REQ, 0, None, NOT_SET),
@@ -602,6 +621,148 @@ ts(L, "【Workload】可寫層用量 Top 10",
    desc(V_CLUSTER_WL, "容器在 Node 本機磁碟上佔用的空間，持續成長可能把 Node 磁碟寫滿。", WL_HOW))
 L.newline()
 
+# ---------------------------------------------------------------- 5 waste
+row("5. 【浪費】長期用量遠低於 Request：Request 佔住 Node，別人排不進來（過去 $waste_window 平均）")
+
+
+# Node 層級不套 namespace 篩選:不管誰的 Request,都會佔住 Node 的可分配量
+def n_alloc(resource):
+    return (f'max by (instance) (label_replace(kube_node_status_allocatable{{resource="{resource}"}},'
+            ' "instance", "$1", "node", "(.*)"))')
+
+
+def n_requested(resource):
+    """Requests of the pods on each node that are still pending or running (finished pods do not hold any)."""
+    req = f'max by (namespace, pod, container) (kube_pod_container_resource_requests{{resource="{resource}"}})'
+    live = 'max by (namespace, pod) (kube_pod_status_phase{phase=~"Pending|Running"}) == 1'
+    node = ('label_replace(max by (namespace, pod, node) (kube_pod_info{node!=""}),'
+            ' "instance", "$1", "node", "(.*)")')
+    return (f'sum by (instance) (({req} and on (namespace, pod) ({live}))'
+            f' * on (namespace, pod) group_left (instance) {node})')
+
+
+N_CPU_AVG = f'({N_CORES}) * ({n_cpu(WIN)})'
+N_MEM_AVG = (f'max by (instance) (avg_over_time(node_memory_MemTotal_bytes[{WIN}])'
+             f' - avg_over_time(node_memory_MemAvailable_bytes[{WIN}]))')
+
+
+def n_waste(used_avg, resource):
+    """(Request ÷ allocatable, average usage ÷ allocatable, the part held by requests but not used)."""
+    req = f'({n_requested(resource)}) / ({n_alloc(resource)})'
+    used = f'({used_avg}) / ({n_alloc(resource)})'
+    return req, used, f'clamp_min({req} - {used}, 0)'
+
+
+N_CPU_REQ, N_CPU_USED, N_CPU_IDLE = n_waste(N_CPU_AVG, "cpu")
+N_MEM_REQ, N_MEM_USED, N_MEM_IDLE = n_waste(N_MEM_AVG, "memory")
+FULL = steps((Y, 0.8), (RD, 0.9))
+HELD = steps((Y, 0.3), (RD, 0.5))
+L = Line()
+table(L, "【Node】Request 佔住多少 vs 過去 $waste_window 平均實際用多少", ["instance"], [
+    ("CPU 可分配（核）", n_alloc("cpu"), "none", None, 1, None),
+    ("CPU Request ÷ 可分配", N_CPU_REQ, "percentunit", FULL, 0, None),
+    ("CPU 平均用量 ÷ 可分配", N_CPU_USED, "percentunit", None, 0, None),
+    ("CPU 佔住沒用", N_CPU_IDLE, "percentunit", HELD, 0, None),
+    ("記憶體可分配", n_alloc("memory"), "bytes", None, 1, None),
+    ("記憶體 Request ÷ 可分配", N_MEM_REQ, "percentunit", FULL, 0, None),
+    ("記憶體平均用量 ÷ 可分配", N_MEM_USED, "percentunit", None, 0, None),
+    ("記憶體佔住沒用", N_MEM_IDLE, "percentunit", HELD, 0, None),
+], desc("叢集內每一台 Node（所有 namespace 的 Pod 都算，不受上方 namespace 篩選影響）",
+        "排程器只看 Request：Request ÷ 可分配滿了，新的 Pod 就排不進這台 Node，就算機器其實很閒。"
+        "**Request ÷ 可分配** = 這台 Node 上還在跑（Pending / Running）的 Pod 的 Request 加總 ÷ 可分配量（目前）；"
+        "**平均用量 ÷ 可分配** = 整台 Node 過去 $waste_window 的平均用量（CPU：非 idle 時間；記憶體：總量 − 可用）÷ 可分配量；"
+        "**佔住沒用** = 兩者相減：被 Request 保留起來、卻沒有在用的比例。",
+        "Request ÷ 可分配是紅 / 黃、佔住沒用也很高 → 這台 Node 是被「Request 設太高」塞滿，不是真的忙；"
+        "到下方兩張表找是哪些容器，把 Request 調低就能空出位置。"),
+    sort_by="記憶體佔住沒用", h=8, key_rename={"instance": "Node"},
+    base="max by (instance) (node_memory_MemTotal_bytes) * 0")
+L.newline()
+
+LOW_USE = steps((Y, 0.2), (G, 0.5), base=RD)
+PEAK_USE = steps((Y, 0.5), (G, 1.0), base=RD)
+
+
+def per_pod_win(per_ct, agg):
+    """Rolls a per-container value over the window up to (workload, container) across every pod seen in the window."""
+    return f'{agg} by ({K_CT}) (({per_ct}) * on (namespace, pod) group_left (workload, workload_type) {WL_WIN})'
+
+
+def waste_cols(avg_ct, peak_ct, resource, unit, decimals, suffix):
+    """Per (workload, container): average and peak per pod over the window vs the request each pod sets.
+    Average per pod (not the sum over pods) so pods replaced by a rollout or a change in replicas
+    do not add up; the unused total multiplies by the pods running now."""
+    avg, peak = per_pod_win(avg_ct, "avg"), per_pod_win(peak_ct, "max")
+    req = by_wl_ct(spec("requests", resource), "max")
+    cols = [
+        ("Pod 數", PODS_CT, "none", None, 0, None),
+        (f"平均用量／Pod{suffix}", avg, unit, None, decimals + 1, None),
+        (f"尖峰／Pod{suffix}", peak, unit, None, decimals, None),
+        (f"Request／Pod{suffix}", req, unit, None, decimals, None),
+        ("平均 ÷ Request", f'({avg}) / ({req})', "percentunit", LOW_USE, 0, None),
+        ("尖峰 ÷ Request", f'({peak}) / ({req})', "percentunit", PEAK_USE, 0, None),
+        (f"沒用到的 Request（全部 Pod）{suffix}", f'clamp_min(({req}) - ({avg}), 0) * {PODS_CT}', unit, None, decimals, None),
+    ]
+    # 只列平均用不到 Request 一半的容器
+    return cols, f'((({avg}) / ({req})) < 0.5) * 0'
+
+
+# 不用 rate(...[7d]):rate 除以整段區間,rollout 換掉或剛上線的 Pod 平均會被低估;每 5 分鐘的 rate 取平均只算它活著的時間
+CPU_AVG_CT = one(f'avg_over_time(rate(container_cpu_usage_seconds_total{{{CT}}}[5m])[{WIN}:5m])')
+CPU_PEAK_CT = one(f'max_over_time(rate(container_cpu_usage_seconds_total{{{CT}}}[5m])[{WIN}:5m])')
+MEM_AVG_CT = one(f'avg_over_time(container_memory_working_set_bytes{{{CT}}}[{WIN}])')
+MEM_PEAK_CT = one(f'max_over_time(container_memory_working_set_bytes{{{CT}}}[{WIN}])')
+V_WASTE = "叢集內每一個 Workload 的每個容器（同一個 Workload 的 Pod 共用一份設定，容器只列一次）"
+WASTE_WHAT = ("只列**過去 $waste_window 平均用量不到 Request 一半**的容器。"
+              "**平均用量／Pod** = 這段期間每個 Pod 的平均用量，再取所有 Pod 的平均（rollout 換掉的舊 Pod 也算）；"
+              "**尖峰／Pod** = 最高的那個 Pod 在這段期間的最高值{peak}；"
+              "**Request／Pod** = 目前每個 Pod 設的 Request；"
+              "**沒用到的 Request** = (Request − 平均用量) × 目前 Pod 數，就是可以還給 Node 的量。"
+              "新上線不滿 $waste_window 的 Pod 只算它活著的時間。")
+L = Line()
+cols, rows = waste_cols(CPU_AVG_CT, CPU_PEAK_CT, "cpu", "none", 2, "（核）")
+table(L, "【Workload】CPU：長期用量遠低於 Request（過去 $waste_window 平均）", K_CT.split(", "), cols,
+      desc(V_WASTE, WASTE_WHAT.format(peak="（每 5 分鐘的平均）"),
+           "依「沒用到的 Request」排序，越上面浪費越多。尖峰 ÷ Request 也很低（紅）→ 連最忙的時候都用不到，"
+           "可以放心把 Request 調到尖峰附近；尖峰 ÷ Request 接近或超過 100% → 平常閒、偶爾會衝，"
+           "Request 可以調到平均附近，靠 Limit 讓它衝（CPU 不夠只會變慢，不會被殺）。"),
+      sort_by="沒用到的 Request（全部 Pod）（核）", h=10, key_links={"workload": DETAIL_LINK},
+      key_rename={**WL_RENAME, "container": "容器"}, base=rows, hide=("workload_type",))
+L.newline()
+L = Line()
+cols, rows = waste_cols(MEM_AVG_CT, MEM_PEAK_CT, "memory", "bytes", 1, "")
+table(L, "【Workload】記憶體：長期用量遠低於 Request（過去 $waste_window 平均）", K_CT.split(", "), cols,
+      desc(V_WASTE, WASTE_WHAT.format(peak=""),
+           "依「沒用到的 Request」排序，越上面浪費越多。記憶體不像 CPU 可以借：Request 建議調到**尖峰**附近再留一點餘裕，"
+           "不要調到平均，否則 Node 記憶體不夠時會先被驅逐；尖峰 ÷ Request 也很低（紅）→ 可以放心調低。"),
+      sort_by="沒用到的 Request（全部 Pod）", h=10, key_links={"workload": DETAIL_LINK},
+      key_rename={**WL_RENAME, "container": "容器"}, base=rows, hide=("workload_type",))
+L.newline()
+
+L = Line()
+WASTE_HOW = "時間範圍拉長（例如 7 天）看長期：兩條線差距一直很大 → Request 普遍設太高；差距只在離峰時很大 → 正常的日夜起伏。"
+REQ_CPU, REQ_MEM = spec("requests", "cpu"), spec("requests", "memory")
+ts(L, "【叢集】CPU：Request 總和 vs 實際用量（核）",
+   [f'sum({REQ_CPU} and on (namespace, pod, container) {cpu_ct(WR)})',
+    f'sum({cpu_ct(WR)} and on (namespace, pod, container) {REQ_CPU})'],
+   ["Request 總和", "實際用量"], "none",
+   desc("上方 namespace 篩選內，所有有設 CPU Request 且正在跑的容器加總",
+        "排程器保留的 CPU（Request）跟實際用掉的 CPU。兩條線中間的空間就是被保留卻沒用到的量。", WASTE_HOW))
+ts(L, "【叢集】記憶體：Request 總和 vs 實際用量",
+   [f'sum({REQ_MEM} and on (namespace, pod, container) {mem_ct()})',
+    f'sum({mem_ct()} and on (namespace, pod, container) {REQ_MEM})'],
+   ["Request 總和", "實際用量"], "bytes",
+   desc("上方 namespace 篩選內，所有有設記憶體 Request 且正在跑的容器加總",
+        "排程器保留的記憶體（Request）跟實際用掉的記憶體（working set）。兩條線中間的空間就是被保留卻沒用到的量。", WASTE_HOW))
+ts(L, "【Workload】沒用到的 CPU Request（核）Top 10",
+   f'topk(10, clamp_min({by_wl(total("requests", "cpu"))} - {by_wl(with_request(cpu_ct(WR), "cpu"))}, 0))',
+   "{{namespace}}/{{workload}}", "none",
+   desc(V_CLUSTER_WL, "Request − 實際用量（只算有設 Request 的容器，所有 Pod 加總）。", WASTE_HOW + "一直在 Top 10 的，到上方表格看是哪個容器。"))
+ts(L, "【Workload】沒用到的記憶體 Request Top 10",
+   f'topk(10, clamp_min({by_wl(total("requests", "memory"))} - {by_wl(with_request(mem_ct(), "memory"))}, 0))',
+   "{{namespace}}/{{workload}}", "bytes",
+   desc(V_CLUSTER_WL, "Request − 實際用量（只算有設 Request 的容器，所有 Pod 加總）。", WASTE_HOW + "一直在 Top 10 的，到上方表格看是哪個容器。"))
+L.newline()
+
 # ---------------------------------------------------------------- dashboard
 dash = {
     "uid": "ocp-cluster-risk-overview",
@@ -609,7 +770,7 @@ dash = {
     "tags": ["ocp", "loadtest", "capacity", "overview"],
     "timezone": "browser",
     "schemaVersion": 39,
-    "version": 4,
+    "version": 5,
     "editable": True,
     "graphTooltip": 1,
     "refresh": "1m",
@@ -629,6 +790,10 @@ dash = {
         {"type": "textbox", "name": "exclude", "label": "排除的 Namespace（regex）",
          "query": "openshift.*|kube-.*",
          "current": {"text": "openshift.*|kube-.*", "value": "openshift.*|kube-.*"}, "hide": 0},
+        {"type": "custom", "name": "waste_window", "label": "浪費分析平均區間（第 5 區）",
+         "query": "1d,7d,14d,30d", "current": {"text": "7d", "value": "7d"},
+         "options": [{"text": v, "value": v, "selected": v == "7d"} for v in ("1d", "7d", "14d", "30d")],
+         "multi": False, "includeAll": False, "hide": 0},
     ]},
     "annotations": {"list": [{"builtIn": 1, "datasource": {"type": "grafana", "uid": "-- Grafana --"},
                               "enable": True, "hide": True, "iconColor": "rgba(0, 211, 255, 1)",
