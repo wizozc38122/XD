@@ -264,10 +264,18 @@ def nid():
     return _id[0]
 
 
-def row(title):
-    panels.append({"id": nid(), "type": "row", "title": title, "collapsed": False,
-                   "gridPos": {"h": 1, "w": 24, "x": 0, "y": _y[0]}, "panels": []})
+_open_row = [None]  # collapsed row that new panels go into
+
+
+def row(title, collapsed=False):
+    """collapsed: its panels stay inside the row and only query when it is opened (for heavy queries)."""
+    if _open_row[0]:
+        _y[0] = _open_row[0]["gridPos"]["y"] + 1  # a collapsed row takes one line
+    r = {"id": nid(), "type": "row", "title": title, "collapsed": collapsed,
+         "gridPos": {"h": 1, "w": 24, "x": 0, "y": _y[0]}, "panels": []}
+    panels.append(r)
     _y[0] += 1
+    _open_row[0] = r if collapsed else None
 
 
 class Line:
@@ -281,7 +289,7 @@ class Line:
         if self.x + w > 24:
             self.newline()
         panel["gridPos"] = {"h": h, "w": w, "x": self.x, "y": _y[0]}
-        panels.append(panel)
+        (_open_row[0]["panels"] if _open_row[0] else panels).append(panel)
         self.x += w
         self.h = max(self.h, h)
 
@@ -649,7 +657,7 @@ ts(L, "【Workload】可寫層用量 Top 10",
 L.newline()
 
 # ---------------------------------------------------------------- 5 capacity
-row("5. 【容量】Request 是不是真的快滿：有沒有 Pod 排不進來、該加 Node 還是該砍 Request")
+row("5. 【容量】Request 是不是真的快滿：有沒有 Pod 排不進來、該加 Node 還是該砍 Request（查詢較重，點開才會查）", collapsed=True)
 
 
 # Node 層級不套 namespace 篩選:不管誰的 Request,都會佔住 Node 的可分配量
@@ -722,10 +730,10 @@ def capacity_cols(resource, now, avg, peak, unit, decimals, suffix, limit_thr):
         return f'({e}) / ({alloc})'
 
     req, peak_r = r(n_requested(resource)), r(peak)
-    # 3 = Request 滿而且尖峰也高 (真的滿)、2 = Request 滿但尖峰不高 (佔住沒用)、1 = Request 快滿 (或沒有用量資料)
+    # 3 = Request 滿而且尖峰也高 (真的滿)、2 = Request 滿但尖峰不高 (佔住沒用)、1 = Request 快滿
+    # 尖峰要掃整段區間,只算一次:`or` 只補前面沒有的 Node
     verdict = (f'(({req} >= 0.9) and ({peak_r} >= 0.7)) * 0 + 3'
-               f' or (({req} >= 0.9) and ({peak_r} < 0.7)) * 0 + 2'
-               f' or ({req} >= 0.8) * 0 + 1 or {req} * 0')
+               f' or ({req} >= 0.9) * 0 + 2 or ({req} >= 0.8) * 0 + 1 or {req} * 0')
     return [
         ("可排程", SCHED, "none", None, 0, SCHED_MAP),
         ("Pod 數 ÷ 上限", f'({N_LIVE_PODS}) / ({n_alloc("pods")})', "percentunit", FULL, 0, None),
@@ -858,8 +866,10 @@ def node_pod_cols(resource, now, peak5m, unit, decimals, prefix):
 
 
 # W5 也是 5m,目前用量跟尖峰 (每 5 分鐘的平均) 用同一個查詢
-CPU_POD_ALL = 'sum by (namespace, pod) (%s)' % one(f'rate(container_cpu_usage_seconds_total{{{ALL_CT}}}[{W5}])')
-MEM_POD_ALL = 'sum by (namespace, pod) (%s)' % one(f'container_memory_working_set_bytes{{{ALL_CT}}}')
+# 先用 node 標籤只讀這台 Node 的容器,不然尖峰要掃全叢集每個容器整段區間
+NODE_CT = f'{ALL_CT}, node=~"$node"'
+CPU_POD_ALL = 'sum by (namespace, pod) (%s)' % one(f'rate(container_cpu_usage_seconds_total{{{NODE_CT}}}[{W5}])')
+MEM_POD_ALL = 'sum by (namespace, pod) (%s)' % one(f'container_memory_working_set_bytes{{{NODE_CT}}}')
 L = Line()
 table(L, "【Node】$node 上每個 Pod：Request / 用量 / 尖峰 / Limit（尖峰是過去 $waste_window）", ["namespace", "pod"],
       node_pod_cols("cpu", CPU_POD_ALL, CPU_POD_ALL, "none", 2, "CPU（核）")
@@ -873,7 +883,7 @@ table(L, "【Node】$node 上每個 Pod：Request / 用量 / 尖峰 / Limit（�
 L.newline()
 
 # ---------------------------------------------------------------- 6 waste
-row("6. 【浪費】長期用量遠低於 Request：找出可以調低 Request 的容器（過去 $waste_window 平均）")
+row("6. 【浪費】長期用量遠低於 Request：找出可以調低 Request 的容器（過去 $waste_window 平均，查詢較重，點開才會查）", collapsed=True)
 
 
 
@@ -897,8 +907,9 @@ def waste_cols(avg_ct, peak_ct, resource, unit, decimals, suffix):
         ("尖峰 ÷ Request", f'({peak}) / ({req})', "percentunit", PEAK_USE, 0, None),
         (f"沒用到的 Request（全部 Pod）{suffix}", f'clamp_min(({req}) - ({avg}), 0) * {PODS_CT}', unit, None, decimals, None),
     ]
-    # 只列平均用不到 Request 一半的容器
-    return cols, f'((({avg}) / ({req})) < 0.5) * 0'
+    # 列出所有有設 Request 的容器,依沒用到的量排序。不用「平均 ÷ Request < 50%」當列:
+    # 每一欄都會再算一次整段區間的平均,查詢重好幾倍
+    return cols, f'({req}) * 0'
 
 
 # 不用 rate(...[7d]):rate 除以整段區間,rollout 換掉或剛上線的 Pod 平均會被低估;每 5 分鐘的 rate 取平均只算它活著的時間
@@ -907,7 +918,7 @@ CPU_PEAK_CT = one(f'max_over_time(rate(container_cpu_usage_seconds_total{{{CT}}}
 MEM_AVG_CT = one(f'avg_over_time(container_memory_working_set_bytes{{{CT}}}[{WIN}])')
 MEM_PEAK_CT = one(f'max_over_time(container_memory_working_set_bytes{{{CT}}}[{WIN}])')
 V_WASTE = "叢集內每一個 Workload 的每個容器（同一個 Workload 的 Pod 共用一份設定，容器只列一次）"
-WASTE_WHAT = ("只列**過去 $waste_window 平均用量不到 Request 一半**的容器。"
+WASTE_WHAT = ("列出所有有設 Request 的容器，依沒用到的 Request 排序，平均 ÷ Request 紅 / 黃的就是浪費的。"
               "**平均用量／Pod** = 這段期間每個 Pod 的平均用量，再取所有 Pod 的平均（rollout 換掉的舊 Pod 也算）；"
               "**尖峰／Pod** = 最高的那個 Pod 在這段期間的最高值{peak}；"
               "**Request／Pod** = 目前每個 Pod 設的 Request；"
@@ -965,10 +976,11 @@ dash = {
     "tags": ["ocp", "loadtest", "capacity", "overview"],
     "timezone": "browser",
     "schemaVersion": 39,
-    "version": 6,
+    "version": 7,
     "editable": True,
     "graphTooltip": 1,
-    "refresh": "1m",
+    # 預設不自動刷新:長期分析的查詢很重,每分鐘重跑會拖垮資料來源
+    "refresh": "",
     "time": {"from": "now-3h", "to": "now"},
     "links": [{"title": "單一 Workload 細節（OCP 壓測影響評估）", "type": "link", "icon": "dashboard",
                "url": "/d/" + DETAIL_UID + "/?var-datasource=${datasource}", "keepTime": True,

@@ -57,10 +57,11 @@ OCP 沒有特別設定時，不會限制 Pod 的網路頻寬與磁碟讀寫速�
 | 3.【Workload】Limit 相關 Top 10 | CPU / 記憶體用量 ÷ Limit、throttling、重啟隨時間的變化 |
 | 4.【Workload】共用資源 Top 10 | 沒設 Limit 的容器 CPU、記憶體用量，網路、磁碟這些 limit 管不到、會影響同 Node 鄰居的指標隨時間的變化 |
 | 5.【容量】Request 是不是真的快滿 | 排不進來的 Pod、排程失敗次數、排得下最大 Pod 的 Node 數、最大 Pod 的 Request、叢集 Request ÷ 可分配；CPU、記憶體各一張 Node 表：可排程狀態、Pod 數 ÷ 上限、可分配、Request / 目前 / 平均 / 尖峰 / Limit ÷ 可分配、佔住沒用、剩餘可排、**判定**；排不進來的 Pod 明細與趨勢、各 Node Request ÷ 可分配 Top 10；上方「Node」選一台看每個 Pod 的 Request / 用量 / 尖峰 / Limit |
-| 6.【浪費】長期用量遠低於 Request | 上方「長期分析區間」選 1 / 7 / 14 / 30 天（預設 7 天）。CPU、記憶體各一張容器表：平均用量、尖峰、Request（每個 Pod）、平均 / 尖峰 ÷ Request、沒用到的 Request（全部 Pod）；叢集 Request 總和 vs 實際用量、沒用到的 Request Top 10 趨勢 |
+| 6.【浪費】長期用量遠低於 Request | 上方「長期分析區間」選 1 / 7 / 14 / 30 天（預設 7 天）。CPU、記憶體各一張容器表（所有有設 Request 的容器）：平均用量、尖峰、Request（每個 Pod）、平均 / 尖峰 ÷ Request、沒用到的 Request（全部 Pod）；叢集 Request 總和 vs 實際用量、沒用到的 Request Top 10 趨勢 |
 
 注意事項：
 
+- **第 5、6 區預設折疊、dashboard 預設不自動刷新**：這兩區要掃過去 N 天的資料，查詢很重；一打開就全部跑、或每分鐘自動重跑，會把 Prometheus / Thanos querier 拖垮（Grafana 顯示 OpenShift 的「Application is not available」頁面）。要看時再點開；需要自動刷新就在右上角自己開，但第 5、6 區點開時不要開。
 - **表格是快照**：表格取的是時間範圍**結束前 5 分鐘**。要看壓測當下的排名，把時間範圍的結束點拉到壓測期間；Top 10 趨勢圖則會顯示整段時間。
 - **風險排行的角度是整個 Workload**：用量、Request、Limit 是所有 Pod 加總。例外是會讓單一容器出事的比例取最糟的那一個，因為加總會把快爆的平均掉：
   - **用量 ÷ Limit**：最接近 Limit 的那個容器。CPU 接近 100% 會被 throttling，記憶體到 100% 會被 OOMKilled。
@@ -81,9 +82,10 @@ OCP 沒有特別設定時，不會限制 Pod 的網路頻寬與磁碟讀寫速�
   - 只有一兩台滿、沒有排不進來的 Pod、還有 Node 排得下最大的 Pod → 排程器會放到別台，偶爾 Request 設高不用急著砍；很多台滿、開始有 Pod 排不進來，才要動手（到 Node 明細或第 6 區找對象）。
   - 排不進來的 Pod 來自 kube-state-metrics（`kube_pod_status_unschedulable`）；排程失敗次數來自排程器（`scheduler_schedule_attempts_total`、`scheduler_pending_pods`），資料來源沒收集排程器指標時顯示「沒收集」。原因文字（例如 `Insufficient cpu`）只在事件裡：`oc get events -A --field-selector reason=FailedScheduling`。
   - 可排程：有 NoSchedule / NoExecute taint（例如 master）或被 cordon 的 Node 不算進「排得下最大 Pod 的 Node 數」、「叢集 Request ÷ 可分配」。用量是整台 Node（含系統程序），可能超過可分配的 100%。
+  - Node 明細只讀選定 Node 的容器指標（靠 cAdvisor 指標上的 `node` 標籤，OCP 預設有）；用量、尖峰欄是「—」代表沒有這個標籤。
   - Node 層級（Node 表、Node 明細、排不進來的 Pod）不受 namespace 篩選影響；「最大 Pod 的 Request」只看篩選內的 namespace。
 - **第 6 區浪費分析看的是長期平均**，不是結束前 5 分鐘：
-  - 從時間範圍結束點往回推「長期分析區間」；容器表只列**平均用量不到 Request 一半**的容器，依「沒用到的 Request」排序。
+  - 從時間範圍結束點往回推「長期分析區間」；容器表列出所有有設 Request 的容器，依「沒用到的 Request」排序，平均 ÷ Request 紅 / 黃的就是浪費的（不再只列平均不到一半的：那個篩選會讓每一欄都重算一次整段區間的平均，查詢重好幾倍）。
   - 平均是**每個 Pod 的平均再取平均**，rollout 換掉的舊 Pod 也算，Pod 數變動不會讓數字加倍；新上線不滿區間的 Pod 只算它活著的時間。CPU 是每 5 分鐘的 rate 取平均（直接 `rate(...[7d])` 會除以整個 7 天，換過 Pod 的會被低估）。
   - **沒用到的 Request** = (Request − 平均用量) × 目前 Pod 數。CPU 不夠只會變慢，Request 可以調到平均附近、靠 Limit 衝；記憶體不夠會被驅逐，Request 建議調到**尖峰**附近再留餘裕。
   - 選 30 天前先確認 Prometheus 保留期（OCP 預設 15 天），超過的部分沒有資料，只會算有資料的那段；區間越長查詢越久。
