@@ -9,7 +9,7 @@
   ],
   "timezone": "browser",
   "schemaVersion": 39,
-  "version": 5,
+  "version": 6,
   "editable": true,
   "graphTooltip": 1,
   "refresh": "1m",
@@ -72,9 +72,26 @@
         "hide": 0
       },
       {
+        "type": "query",
+        "name": "node",
+        "label": "Node（第 5 區明細）",
+        "datasource": {
+          "type": "prometheus",
+          "uid": "${datasource}"
+        },
+        "query": "label_values(kube_node_info, node)",
+        "definition": "label_values(kube_node_info, node)",
+        "refresh": 2,
+        "sort": 1,
+        "multi": false,
+        "includeAll": false,
+        "current": {},
+        "hide": 0
+      },
+      {
         "type": "custom",
         "name": "waste_window",
-        "label": "浪費分析平均區間（第 5 區）",
+        "label": "長期分析區間（第 5、6 區）",
         "query": "1d,7d,14d,30d",
         "current": {
           "text": "7d",
@@ -131,10 +148,10 @@
       "title": "",
       "options": {
         "mode": "markdown",
-        "content": "**叢集風險總覽**：先找出嫌疑的 Node 與 Workload，再點 workload 名稱進細節 Dashboard 查證。上方切換資料來源 = 切換叢集。\n\n1. **哪台 Node 吃緊** → 第 1 區\n2. **哪個 Workload 用量大、快碰到 Limit、Pod 之間不平均** → 第 2 區（點表頭排序、名稱欄的漏斗篩選，紅 / 黃格要注意）\n3. **是什麼時候飆起來的** → 第 3、4 區 Top 10 趨勢\n4. **誰長期用很少、Request 卻設很高（浪費）** → 第 5 區，上方「浪費分析平均區間」選幾天（預設 7 天）\n\n表格是時間範圍**結束前 5 分鐘**的值（第 5 區是結束前 N 天的平均）；百分比都是 **用量 ÷ 欄名寫的分母**；預設排除 `openshift*`、`kube-*` namespace。"
+        "content": "**叢集風險總覽**：先找出嫌疑的 Node 與 Workload，再點 workload 名稱進細節 Dashboard 查證。上方切換資料來源 = 切換叢集。\n\n1. **哪台 Node 吃緊** → 第 1 區\n2. **哪個 Workload 用量大、快碰到 Limit、Pod 之間不平均** → 第 2 區（點表頭排序、名稱欄的漏斗篩選，紅 / 黃格要注意）\n3. **是什麼時候飆起來的** → 第 3、4 區 Top 10 趨勢\n4. **Request 是不是真的快滿、有沒有 Pod 排不進來、該加 Node 還是該砍 Request** → 第 5 區（上方「Node」選一台看每個 Pod 的明細）\n5. **誰長期用很少、Request 卻設很高（浪費）** → 第 6 區\n\n上方「長期分析區間」選幾天（預設 7 天），第 5 區的平均 / 尖峰和第 6 區都用它。表格是時間範圍**結束前 5 分鐘**的值（另有寫「過去 N 天」的除外）；百分比都是 **用量 ÷ 欄名寫的分母**；預設排除 `openshift*`、`kube-*` namespace（第 5 區的 Node 層級不排除）。"
       },
       "gridPos": {
-        "h": 7,
+        "h": 8,
         "w": 24,
         "x": 0,
         "y": 0
@@ -149,7 +166,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 7
+        "y": 8
       },
       "panels": []
     },
@@ -1014,7 +1031,7 @@
         "h": 10,
         "w": 24,
         "x": 0,
-        "y": 8
+        "y": 9
       }
     },
     {
@@ -1072,7 +1089,7 @@
         "h": 8,
         "w": 8,
         "x": 0,
-        "y": 18
+        "y": 19
       }
     },
     {
@@ -1130,7 +1147,7 @@
         "h": 8,
         "w": 8,
         "x": 8,
-        "y": 18
+        "y": 19
       }
     },
     {
@@ -1188,7 +1205,7 @@
         "h": 8,
         "w": 8,
         "x": 16,
-        "y": 18
+        "y": 19
       }
     },
     {
@@ -1246,7 +1263,7 @@
         "h": 8,
         "w": 8,
         "x": 0,
-        "y": 26
+        "y": 27
       }
     },
     {
@@ -1304,7 +1321,7 @@
         "h": 8,
         "w": 8,
         "x": 8,
-        "y": 26
+        "y": 27
       }
     },
     {
@@ -1362,7 +1379,7 @@
         "h": 8,
         "w": 8,
         "x": 16,
-        "y": 26
+        "y": 27
       }
     },
     {
@@ -1374,7 +1391,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 34
+        "y": 35
       },
       "panels": []
     },
@@ -2077,7 +2094,7 @@
         "h": 10,
         "w": 24,
         "x": 0,
-        "y": 35
+        "y": 36
       }
     },
     {
@@ -2697,7 +2714,7 @@
         "h": 10,
         "w": 24,
         "x": 0,
-        "y": 45
+        "y": 46
       }
     },
     {
@@ -3299,7 +3316,7 @@
         "h": 8,
         "w": 24,
         "x": 0,
-        "y": 55
+        "y": 56
       }
     },
     {
@@ -3810,7 +3827,7 @@
         "h": 8,
         "w": 24,
         "x": 0,
-        "y": 63
+        "y": 64
       }
     },
     {
@@ -4284,7 +4301,7 @@
         "h": 10,
         "w": 24,
         "x": 0,
-        "y": 71
+        "y": 72
       }
     },
     {
@@ -4296,7 +4313,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 81
+        "y": 82
       },
       "panels": []
     },
@@ -4355,7 +4372,7 @@
         "h": 8,
         "w": 12,
         "x": 0,
-        "y": 82
+        "y": 83
       }
     },
     {
@@ -4413,7 +4430,7 @@
         "h": 8,
         "w": 12,
         "x": 12,
-        "y": 82
+        "y": 83
       }
     },
     {
@@ -4471,7 +4488,7 @@
         "h": 8,
         "w": 12,
         "x": 0,
-        "y": 90
+        "y": 91
       }
     },
     {
@@ -4529,7 +4546,7 @@
         "h": 8,
         "w": 12,
         "x": 12,
-        "y": 90
+        "y": 91
       }
     },
     {
@@ -4541,7 +4558,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 98
+        "y": 99
       },
       "panels": []
     },
@@ -4600,7 +4617,7 @@
         "h": 8,
         "w": 12,
         "x": 0,
-        "y": 99
+        "y": 100
       }
     },
     {
@@ -4658,7 +4675,7 @@
         "h": 8,
         "w": 12,
         "x": 12,
-        "y": 99
+        "y": 100
       }
     },
     {
@@ -4716,7 +4733,7 @@
         "h": 8,
         "w": 12,
         "x": 0,
-        "y": 107
+        "y": 108
       }
     },
     {
@@ -4774,7 +4791,7 @@
         "h": 8,
         "w": 12,
         "x": 12,
-        "y": 107
+        "y": 108
       }
     },
     {
@@ -4832,7 +4849,7 @@
         "h": 8,
         "w": 12,
         "x": 0,
-        "y": 115
+        "y": 116
       }
     },
     {
@@ -4890,27 +4907,27 @@
         "h": 8,
         "w": 12,
         "x": 12,
-        "y": 115
+        "y": 116
       }
     },
     {
       "id": 28,
       "type": "row",
-      "title": "5. 【浪費】長期用量遠低於 Request：Request 佔住 Node，別人排不進來（過去 $waste_window 平均）",
+      "title": "5. 【容量】Request 是不是真的快滿：有沒有 Pod 排不進來、該加 Node 還是該砍 Request",
       "collapsed": false,
       "gridPos": {
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 123
+        "y": 124
       },
       "panels": []
     },
     {
       "id": 29,
-      "type": "table",
-      "title": "【Node】Request 佔住多少 vs 過去 $waste_window 平均實際用多少",
-      "description": "**視角**：叢集內每一台 Node（所有 namespace 的 Pod 都算，不受上方 namespace 篩選影響）\n\n**這是什麼**：排程器只看 Request：Request ÷ 可分配滿了，新的 Pod 就排不進這台 Node，就算機器其實很閒。**Request ÷ 可分配** = 這台 Node 上還在跑（Pending / Running）的 Pod 的 Request 加總 ÷ 可分配量（目前）；**平均用量 ÷ 可分配** = 整台 Node 過去 $waste_window 的平均用量（CPU：非 idle 時間；記憶體：總量 − 可用）÷ 可分配量；**佔住沒用** = 兩者相減：被 Request 保留起來、卻沒有在用的比例。\n\n**怎麼看**：Request ÷ 可分配是紅 / 黃、佔住沒用也很高 → 這台 Node 是被「Request 設太高」塞滿，不是真的忙；到下方兩張表找是哪些容器，把 Request 調低就能空出位置。",
+      "type": "stat",
+      "title": "排不進來的 Pod（目前）",
+      "description": "**視角**：叢集內所有 namespace\n\n**這是什麼**：排程器找不到任何一台 Node 放得下的 Pod（kube-state-metrics 的 PodScheduled=False、reason=Unschedulable）。原因可能是 Request 不夠、taint、affinity、PVC 所在區域。\n\n**怎麼看**：大於 0 就看下方「排不進來的 Pod」表。原因文字（例如 Insufficient cpu）只在事件裡，不是指標：`oc get events -A --field-selector reason=FailedScheduling`",
       "datasource": {
         "type": "prometheus",
         "uid": "${datasource}"
@@ -4922,7 +4939,459 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "((max by (instance) (label_replace(kube_node_status_allocatable{resource=\"cpu\"}, \"instance\", \"$1\", \"node\", \"(.*)\"))) and on (instance) (max by (instance) (node_memory_MemTotal_bytes) * 0)) or (max by (instance) (node_memory_MemTotal_bytes) * 0 - 1)",
+          "expr": "count(max by (namespace, pod) (kube_pod_status_unschedulable) == 1) or vector(0)",
+          "legendFormat": "",
+          "range": false,
+          "instant": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "red",
+                "value": 1
+              }
+            ]
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byFrameRefID",
+              "options": "A"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "none"
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "background",
+        "graphMode": "none",
+        "textMode": "value",
+        "justifyMode": "center",
+        "orientation": "horizontal"
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 4,
+        "x": 0,
+        "y": 125
+      }
+    },
+    {
+      "id": 30,
+      "type": "stat",
+      "title": "排程失敗次數（時間範圍內）",
+      "description": "**視角**：叢集的排程器（openshift-kube-scheduler）\n\n**這是什麼**：排程器嘗試排 Pod 卻找不到 Node 的次數。同一個 Pod 會一直重試，所以次數會比 Pod 數多。\n\n**怎麼看**：時間範圍拉長（例如 7 天）看最近有沒有發生過，「排不進來的 Pod」只看得到現在。沒資料代表這個資料來源沒有收集排程器指標，改看下方趨勢圖的 kube-state-metrics 那條線。",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${datasource}"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "expr": "sum(increase(scheduler_schedule_attempts_total{result=\"unschedulable\"}[$__range]))",
+          "legendFormat": "",
+          "range": false,
+          "instant": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "yellow",
+                "value": 1
+              }
+            ]
+          },
+          "noValue": "沒收集"
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byFrameRefID",
+              "options": "A"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "none"
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "background",
+        "graphMode": "none",
+        "textMode": "value",
+        "justifyMode": "center",
+        "orientation": "horizontal"
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 4,
+        "x": 4,
+        "y": 125
+      }
+    },
+    {
+      "id": 31,
+      "type": "stat",
+      "title": "排得下最大 Pod 的 Node 數",
+      "description": "**視角**：可排程（沒有 cordon、沒有 NoSchedule taint）的 Node\n\n**這是什麼**：剩餘可排的 CPU 和記憶體都大於右邊「最大的 Pod」的 Node 有幾台。\n\n**怎麼看**：0 台 → 目前最大的 Workload 一 rollout 或擴容，新 Pod 就會排不進來；1–2 台 → 快沒位置了。",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${datasource}"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "expr": "count((clamp_min((max by (instance) (label_replace(kube_node_status_allocatable{resource=\"cpu\"}, \"instance\", \"$1\", \"node\", \"(.*)\"))) - (sum by (instance) (max by (namespace, pod, container) (kube_pod_container_resource_requests{resource=\"cpu\"}) * on (namespace, pod) group_left (instance) (max by (namespace, pod, instance) (label_replace(kube_pod_info{node=~\".+\"}, \"instance\", \"$1\", \"node\", \"(.*)\")) and on (namespace, pod) (max by (namespace, pod) (kube_pod_status_phase{phase=~\"Pending|Running\"}) == 1))) or max by (instance) (label_replace(kube_node_status_allocatable{resource=\"cpu\"}, \"instance\", \"$1\", \"node\", \"(.*)\")) * 0), 0) >= scalar(max(sum by (namespace, pod) (max by (namespace, pod, container) (kube_pod_container_resource_requests{resource=\"cpu\", namespace=~\"$namespace\", namespace!~\"$exclude\"} > 0) and on (namespace, pod) (max by (namespace, pod) (kube_pod_status_phase{phase=~\"Pending|Running\"}) == 1))))) and on (instance) (clamp_min((max by (instance) (label_replace(kube_node_status_allocatable{resource=\"memory\"}, \"instance\", \"$1\", \"node\", \"(.*)\"))) - (sum by (instance) (max by (namespace, pod, container) (kube_pod_container_resource_requests{resource=\"memory\"}) * on (namespace, pod) group_left (instance) (max by (namespace, pod, instance) (label_replace(kube_pod_info{node=~\".+\"}, \"instance\", \"$1\", \"node\", \"(.*)\")) and on (namespace, pod) (max by (namespace, pod) (kube_pod_status_phase{phase=~\"Pending|Running\"}) == 1))) or max by (instance) (label_replace(kube_node_status_allocatable{resource=\"memory\"}, \"instance\", \"$1\", \"node\", \"(.*)\")) * 0), 0) >= scalar(max(sum by (namespace, pod) (max by (namespace, pod, container) (kube_pod_container_resource_requests{resource=\"memory\", namespace=~\"$namespace\", namespace!~\"$exclude\"} > 0) and on (namespace, pod) (max by (namespace, pod) (kube_pod_status_phase{phase=~\"Pending|Running\"}) == 1))))) and on (instance) ((((max by (instance) (label_replace(kube_node_spec_unschedulable, \"instance\", \"$1\", \"node\", \"(.*)\"))) == 1) * 2 or (max by (instance) (label_replace(kube_node_spec_taint{effect=~\"NoSchedule|NoExecute\"}, \"instance\", \"$1\", \"node\", \"(.*)\"))) * 0 + 1 or (max by (instance) (label_replace(kube_node_spec_unschedulable, \"instance\", \"$1\", \"node\", \"(.*)\"))) * 0) == 0)) or vector(0)",
+          "legendFormat": "",
+          "range": false,
+          "instant": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "red",
+                "value": null
+              },
+              {
+                "color": "yellow",
+                "value": 1
+              },
+              {
+                "color": "green",
+                "value": 3
+              }
+            ]
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byFrameRefID",
+              "options": "A"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "none"
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "background",
+        "graphMode": "none",
+        "textMode": "value",
+        "justifyMode": "center",
+        "orientation": "horizontal"
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 4,
+        "x": 8,
+        "y": 125
+      }
+    },
+    {
+      "id": 32,
+      "type": "stat",
+      "title": "最大 Pod 的 Request",
+      "description": "**視角**：上方 namespace 篩選內，還沒結束的 Pod\n\n**這是什麼**：單一 Pod 的 Request（所有容器加總）最大是多少，CPU 和記憶體分開取。\n\n**怎麼看**：跟下方 Node 表的「剩餘可排」比：剩餘可排比它小的 Node，排不下這種大小的 Pod。",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${datasource}"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "expr": "max(sum by (namespace, pod) (max by (namespace, pod, container) (kube_pod_container_resource_requests{resource=\"cpu\", namespace=~\"$namespace\", namespace!~\"$exclude\"} > 0) and on (namespace, pod) (max by (namespace, pod) (kube_pod_status_phase{phase=~\"Pending|Running\"}) == 1)))",
+          "legendFormat": "CPU（核）",
+          "range": false,
+          "instant": true
+        },
+        {
+          "refId": "B",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "expr": "max(sum by (namespace, pod) (max by (namespace, pod, container) (kube_pod_container_resource_requests{resource=\"memory\", namespace=~\"$namespace\", namespace!~\"$exclude\"} > 0) and on (namespace, pod) (max by (namespace, pod) (kube_pod_status_phase{phase=~\"Pending|Running\"}) == 1)))",
+          "legendFormat": "記憶體",
+          "range": false,
+          "instant": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "text",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byFrameRefID",
+              "options": "A"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "none"
+              },
+              {
+                "id": "decimals",
+                "value": 2
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byFrameRefID",
+              "options": "B"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "bytes"
+              },
+              {
+                "id": "decimals",
+                "value": 1
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "none",
+        "graphMode": "none",
+        "textMode": "value_and_name",
+        "justifyMode": "center",
+        "orientation": "horizontal"
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 4,
+        "x": 12,
+        "y": 125
+      }
+    },
+    {
+      "id": 33,
+      "type": "stat",
+      "title": "叢集 Request ÷ 可分配",
+      "description": "**視角**：可排程的 Node 加總\n\n**這是什麼**：所有可排程 Node 的 Request 加總 ÷ 可分配加總。\n\n**怎麼看**：接近 80% 以上，代表整個叢集都快排不下，不只是單一 Node。",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${datasource}"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "expr": "sum((sum by (instance) (max by (namespace, pod, container) (kube_pod_container_resource_requests{resource=\"cpu\"}) * on (namespace, pod) group_left (instance) (max by (namespace, pod, instance) (label_replace(kube_pod_info{node=~\".+\"}, \"instance\", \"$1\", \"node\", \"(.*)\")) and on (namespace, pod) (max by (namespace, pod) (kube_pod_status_phase{phase=~\"Pending|Running\"}) == 1))) or max by (instance) (label_replace(kube_node_status_allocatable{resource=\"cpu\"}, \"instance\", \"$1\", \"node\", \"(.*)\")) * 0) and on (instance) ((((max by (instance) (label_replace(kube_node_spec_unschedulable, \"instance\", \"$1\", \"node\", \"(.*)\"))) == 1) * 2 or (max by (instance) (label_replace(kube_node_spec_taint{effect=~\"NoSchedule|NoExecute\"}, \"instance\", \"$1\", \"node\", \"(.*)\"))) * 0 + 1 or (max by (instance) (label_replace(kube_node_spec_unschedulable, \"instance\", \"$1\", \"node\", \"(.*)\"))) * 0) == 0)) / sum(max by (instance) (label_replace(kube_node_status_allocatable{resource=\"cpu\"}, \"instance\", \"$1\", \"node\", \"(.*)\")) and on (instance) ((((max by (instance) (label_replace(kube_node_spec_unschedulable, \"instance\", \"$1\", \"node\", \"(.*)\"))) == 1) * 2 or (max by (instance) (label_replace(kube_node_spec_taint{effect=~\"NoSchedule|NoExecute\"}, \"instance\", \"$1\", \"node\", \"(.*)\"))) * 0 + 1 or (max by (instance) (label_replace(kube_node_spec_unschedulable, \"instance\", \"$1\", \"node\", \"(.*)\"))) * 0) == 0))",
+          "legendFormat": "CPU",
+          "range": false,
+          "instant": true
+        },
+        {
+          "refId": "B",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "expr": "sum((sum by (instance) (max by (namespace, pod, container) (kube_pod_container_resource_requests{resource=\"memory\"}) * on (namespace, pod) group_left (instance) (max by (namespace, pod, instance) (label_replace(kube_pod_info{node=~\".+\"}, \"instance\", \"$1\", \"node\", \"(.*)\")) and on (namespace, pod) (max by (namespace, pod) (kube_pod_status_phase{phase=~\"Pending|Running\"}) == 1))) or max by (instance) (label_replace(kube_node_status_allocatable{resource=\"memory\"}, \"instance\", \"$1\", \"node\", \"(.*)\")) * 0) and on (instance) ((((max by (instance) (label_replace(kube_node_spec_unschedulable, \"instance\", \"$1\", \"node\", \"(.*)\"))) == 1) * 2 or (max by (instance) (label_replace(kube_node_spec_taint{effect=~\"NoSchedule|NoExecute\"}, \"instance\", \"$1\", \"node\", \"(.*)\"))) * 0 + 1 or (max by (instance) (label_replace(kube_node_spec_unschedulable, \"instance\", \"$1\", \"node\", \"(.*)\"))) * 0) == 0)) / sum(max by (instance) (label_replace(kube_node_status_allocatable{resource=\"memory\"}, \"instance\", \"$1\", \"node\", \"(.*)\")) and on (instance) ((((max by (instance) (label_replace(kube_node_spec_unschedulable, \"instance\", \"$1\", \"node\", \"(.*)\"))) == 1) * 2 or (max by (instance) (label_replace(kube_node_spec_taint{effect=~\"NoSchedule|NoExecute\"}, \"instance\", \"$1\", \"node\", \"(.*)\"))) * 0 + 1 or (max by (instance) (label_replace(kube_node_spec_unschedulable, \"instance\", \"$1\", \"node\", \"(.*)\"))) * 0) == 0))",
+          "legendFormat": "記憶體",
+          "range": false,
+          "instant": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "yellow",
+                "value": 0.8
+              },
+              {
+                "color": "red",
+                "value": 0.9
+              }
+            ]
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byFrameRefID",
+              "options": "A"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "percentunit"
+              },
+              {
+                "id": "decimals",
+                "value": 0
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byFrameRefID",
+              "options": "B"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "percentunit"
+              },
+              {
+                "id": "decimals",
+                "value": 0
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "background",
+        "graphMode": "none",
+        "textMode": "value_and_name",
+        "justifyMode": "center",
+        "orientation": "horizontal"
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 8,
+        "x": 16,
+        "y": 125
+      }
+    },
+    {
+      "id": 34,
+      "type": "table",
+      "title": "【Node】CPU：Request vs 用量 vs 可分配（Request、目前是結束前 5 分鐘；平均、尖峰是過去 $waste_window）",
+      "description": "**視角**：叢集內每一台 Node（所有 namespace 的 Pod 都算，不受上方 namespace 篩選影響）\n\n**這是什麼**：排程器只看 Request：Request ÷ 可分配滿了，新的 Pod 就排不進這台 Node，就算機器其實很閒。**可分配** = Node 扣掉系統保留後給 Pod 用的量（排程的真實上限）；**Request ÷ 可分配** = 這台 Node 上還沒結束（Pending / Running）的 Pod 的 Request 加總 ÷ 可分配（目前）；**目前 / 平均 / 尖峰用量** = 整台 Node 結束前 5 分鐘 / 過去 $waste_window 平均 / 過去 $waste_window 最高（每 5 分鐘的平均）（含系統程序，所以可能超過 100%）；**Limit ÷ 可分配** = Limit 加總（只算有設的容器），超過 100% 代表大家同時衝到 Limit 時 Node 會不夠，CPU 只會變慢、被 throttling；**佔住沒用** = Request ÷ 可分配 − 平均用量 ÷ 可分配；**剩餘可排** = 可分配 − Request，新 Pod 的 Request 要小於它才排得進來。\n\n**怎麼看**：看「判定」：**真的滿 → 加 Node**（Request ≥ 90% 而且尖峰 ≥ 70%）；**Request 滿、沒在用 → 砍 Request**（Request ≥ 90% 但尖峰 < 70%），到第 6 區找是哪些容器，或在下方選這台 Node 看明細；**快滿** = Request ≥ 80%。只有一兩台滿、上方「排不進來的 Pod」是 0、還有 Node 排得下最大的 Pod → 排程器會放到別台，不急著砍；很多台滿而且開始有 Pod 排不進來，才是要動手的時候。",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${datasource}"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "expr": "(((((max by (instance) (label_replace(kube_node_spec_unschedulable, \"instance\", \"$1\", \"node\", \"(.*)\"))) == 1) * 2 or (max by (instance) (label_replace(kube_node_spec_taint{effect=~\"NoSchedule|NoExecute\"}, \"instance\", \"$1\", \"node\", \"(.*)\"))) * 0 + 1 or (max by (instance) (label_replace(kube_node_spec_unschedulable, \"instance\", \"$1\", \"node\", \"(.*)\"))) * 0)) and on (instance) ((max by (instance) (label_replace(kube_node_status_allocatable{resource=\"pods\"}, \"instance\", \"$1\", \"node\", \"(.*)\"))) * 0)) or ((max by (instance) (label_replace(kube_node_status_allocatable{resource=\"pods\"}, \"instance\", \"$1\", \"node\", \"(.*)\"))) * 0 - 1)",
           "legendFormat": "",
           "range": false,
           "instant": true,
@@ -4934,7 +5403,7 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "(((sum by (instance) ((max by (namespace, pod, container) (kube_pod_container_resource_requests{resource=\"cpu\"}) and on (namespace, pod) (max by (namespace, pod) (kube_pod_status_phase{phase=~\"Pending|Running\"}) == 1)) * on (namespace, pod) group_left (instance) label_replace(max by (namespace, pod, node) (kube_pod_info{node!=\"\"}), \"instance\", \"$1\", \"node\", \"(.*)\"))) / (max by (instance) (label_replace(kube_node_status_allocatable{resource=\"cpu\"}, \"instance\", \"$1\", \"node\", \"(.*)\")))) and on (instance) (max by (instance) (node_memory_MemTotal_bytes) * 0)) or (max by (instance) (node_memory_MemTotal_bytes) * 0 - 1)",
+          "expr": "((((count by (instance) ((max by (namespace, pod, instance) (label_replace(kube_pod_info{node=~\".+\"}, \"instance\", \"$1\", \"node\", \"(.*)\")) and on (namespace, pod) (max by (namespace, pod) (kube_pod_status_phase{phase=~\"Pending|Running\"}) == 1))) or max by (instance) (label_replace(kube_node_status_allocatable{resource=\"pods\"}, \"instance\", \"$1\", \"node\", \"(.*)\")) * 0)) / (max by (instance) (label_replace(kube_node_status_allocatable{resource=\"pods\"}, \"instance\", \"$1\", \"node\", \"(.*)\")))) and on (instance) ((max by (instance) (label_replace(kube_node_status_allocatable{resource=\"pods\"}, \"instance\", \"$1\", \"node\", \"(.*)\"))) * 0)) or ((max by (instance) (label_replace(kube_node_status_allocatable{resource=\"pods\"}, \"instance\", \"$1\", \"node\", \"(.*)\"))) * 0 - 1)",
           "legendFormat": "",
           "range": false,
           "instant": true,
@@ -4946,7 +5415,7 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "((((count by (instance) (node_cpu_seconds_total{mode=\"idle\"})) * (1 - avg by (instance) (rate(node_cpu_seconds_total{mode=\"idle\"}[$waste_window])))) / (max by (instance) (label_replace(kube_node_status_allocatable{resource=\"cpu\"}, \"instance\", \"$1\", \"node\", \"(.*)\")))) and on (instance) (max by (instance) (node_memory_MemTotal_bytes) * 0)) or (max by (instance) (node_memory_MemTotal_bytes) * 0 - 1)",
+          "expr": "((max by (instance) (label_replace(kube_node_status_allocatable{resource=\"cpu\"}, \"instance\", \"$1\", \"node\", \"(.*)\"))) and on (instance) ((max by (instance) (label_replace(kube_node_status_allocatable{resource=\"pods\"}, \"instance\", \"$1\", \"node\", \"(.*)\"))) * 0)) or ((max by (instance) (label_replace(kube_node_status_allocatable{resource=\"pods\"}, \"instance\", \"$1\", \"node\", \"(.*)\"))) * 0 - 1)",
           "legendFormat": "",
           "range": false,
           "instant": true,
@@ -4958,7 +5427,7 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "((clamp_min((sum by (instance) ((max by (namespace, pod, container) (kube_pod_container_resource_requests{resource=\"cpu\"}) and on (namespace, pod) (max by (namespace, pod) (kube_pod_status_phase{phase=~\"Pending|Running\"}) == 1)) * on (namespace, pod) group_left (instance) label_replace(max by (namespace, pod, node) (kube_pod_info{node!=\"\"}), \"instance\", \"$1\", \"node\", \"(.*)\"))) / (max by (instance) (label_replace(kube_node_status_allocatable{resource=\"cpu\"}, \"instance\", \"$1\", \"node\", \"(.*)\"))) - ((count by (instance) (node_cpu_seconds_total{mode=\"idle\"})) * (1 - avg by (instance) (rate(node_cpu_seconds_total{mode=\"idle\"}[$waste_window])))) / (max by (instance) (label_replace(kube_node_status_allocatable{resource=\"cpu\"}, \"instance\", \"$1\", \"node\", \"(.*)\"))), 0)) and on (instance) (max by (instance) (node_memory_MemTotal_bytes) * 0)) or (max by (instance) (node_memory_MemTotal_bytes) * 0 - 1)",
+          "expr": "((((sum by (instance) (max by (namespace, pod, container) (kube_pod_container_resource_requests{resource=\"cpu\"}) * on (namespace, pod) group_left (instance) (max by (namespace, pod, instance) (label_replace(kube_pod_info{node=~\".+\"}, \"instance\", \"$1\", \"node\", \"(.*)\")) and on (namespace, pod) (max by (namespace, pod) (kube_pod_status_phase{phase=~\"Pending|Running\"}) == 1))) or max by (instance) (label_replace(kube_node_status_allocatable{resource=\"cpu\"}, \"instance\", \"$1\", \"node\", \"(.*)\")) * 0)) / (max by (instance) (label_replace(kube_node_status_allocatable{resource=\"cpu\"}, \"instance\", \"$1\", \"node\", \"(.*)\")))) and on (instance) ((max by (instance) (label_replace(kube_node_status_allocatable{resource=\"pods\"}, \"instance\", \"$1\", \"node\", \"(.*)\"))) * 0)) or ((max by (instance) (label_replace(kube_node_status_allocatable{resource=\"pods\"}, \"instance\", \"$1\", \"node\", \"(.*)\"))) * 0 - 1)",
           "legendFormat": "",
           "range": false,
           "instant": true,
@@ -4970,7 +5439,7 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "((max by (instance) (label_replace(kube_node_status_allocatable{resource=\"memory\"}, \"instance\", \"$1\", \"node\", \"(.*)\"))) and on (instance) (max by (instance) (node_memory_MemTotal_bytes) * 0)) or (max by (instance) (node_memory_MemTotal_bytes) * 0 - 1)",
+          "expr": "((((count by (instance) (node_cpu_seconds_total{mode=\"idle\"})) * (1 - avg by (instance) (rate(node_cpu_seconds_total{mode=\"idle\"}[5m])))) / (max by (instance) (label_replace(kube_node_status_allocatable{resource=\"cpu\"}, \"instance\", \"$1\", \"node\", \"(.*)\")))) and on (instance) ((max by (instance) (label_replace(kube_node_status_allocatable{resource=\"pods\"}, \"instance\", \"$1\", \"node\", \"(.*)\"))) * 0)) or ((max by (instance) (label_replace(kube_node_status_allocatable{resource=\"pods\"}, \"instance\", \"$1\", \"node\", \"(.*)\"))) * 0 - 1)",
           "legendFormat": "",
           "range": false,
           "instant": true,
@@ -4982,7 +5451,7 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "(((sum by (instance) ((max by (namespace, pod, container) (kube_pod_container_resource_requests{resource=\"memory\"}) and on (namespace, pod) (max by (namespace, pod) (kube_pod_status_phase{phase=~\"Pending|Running\"}) == 1)) * on (namespace, pod) group_left (instance) label_replace(max by (namespace, pod, node) (kube_pod_info{node!=\"\"}), \"instance\", \"$1\", \"node\", \"(.*)\"))) / (max by (instance) (label_replace(kube_node_status_allocatable{resource=\"memory\"}, \"instance\", \"$1\", \"node\", \"(.*)\")))) and on (instance) (max by (instance) (node_memory_MemTotal_bytes) * 0)) or (max by (instance) (node_memory_MemTotal_bytes) * 0 - 1)",
+          "expr": "((((count by (instance) (node_cpu_seconds_total{mode=\"idle\"})) * (1 - avg by (instance) (rate(node_cpu_seconds_total{mode=\"idle\"}[$waste_window])))) / (max by (instance) (label_replace(kube_node_status_allocatable{resource=\"cpu\"}, \"instance\", \"$1\", \"node\", \"(.*)\")))) and on (instance) ((max by (instance) (label_replace(kube_node_status_allocatable{resource=\"pods\"}, \"instance\", \"$1\", \"node\", \"(.*)\"))) * 0)) or ((max by (instance) (label_replace(kube_node_status_allocatable{resource=\"pods\"}, \"instance\", \"$1\", \"node\", \"(.*)\"))) * 0 - 1)",
           "legendFormat": "",
           "range": false,
           "instant": true,
@@ -4994,7 +5463,7 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "(((max by (instance) (avg_over_time(node_memory_MemTotal_bytes[$waste_window]) - avg_over_time(node_memory_MemAvailable_bytes[$waste_window]))) / (max by (instance) (label_replace(kube_node_status_allocatable{resource=\"memory\"}, \"instance\", \"$1\", \"node\", \"(.*)\")))) and on (instance) (max by (instance) (node_memory_MemTotal_bytes) * 0)) or (max by (instance) (node_memory_MemTotal_bytes) * 0 - 1)",
+          "expr": "(((max_over_time(((count by (instance) (node_cpu_seconds_total{mode=\"idle\"})) * (1 - avg by (instance) (rate(node_cpu_seconds_total{mode=\"idle\"}[5m]))))[$waste_window:5m])) / (max by (instance) (label_replace(kube_node_status_allocatable{resource=\"cpu\"}, \"instance\", \"$1\", \"node\", \"(.*)\")))) and on (instance) ((max by (instance) (label_replace(kube_node_status_allocatable{resource=\"pods\"}, \"instance\", \"$1\", \"node\", \"(.*)\"))) * 0)) or ((max by (instance) (label_replace(kube_node_status_allocatable{resource=\"pods\"}, \"instance\", \"$1\", \"node\", \"(.*)\"))) * 0 - 1)",
           "legendFormat": "",
           "range": false,
           "instant": true,
@@ -5006,7 +5475,43 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "((clamp_min((sum by (instance) ((max by (namespace, pod, container) (kube_pod_container_resource_requests{resource=\"memory\"}) and on (namespace, pod) (max by (namespace, pod) (kube_pod_status_phase{phase=~\"Pending|Running\"}) == 1)) * on (namespace, pod) group_left (instance) label_replace(max by (namespace, pod, node) (kube_pod_info{node!=\"\"}), \"instance\", \"$1\", \"node\", \"(.*)\"))) / (max by (instance) (label_replace(kube_node_status_allocatable{resource=\"memory\"}, \"instance\", \"$1\", \"node\", \"(.*)\"))) - (max by (instance) (avg_over_time(node_memory_MemTotal_bytes[$waste_window]) - avg_over_time(node_memory_MemAvailable_bytes[$waste_window]))) / (max by (instance) (label_replace(kube_node_status_allocatable{resource=\"memory\"}, \"instance\", \"$1\", \"node\", \"(.*)\"))), 0)) and on (instance) (max by (instance) (node_memory_MemTotal_bytes) * 0)) or (max by (instance) (node_memory_MemTotal_bytes) * 0 - 1)",
+          "expr": "((((sum by (instance) (max by (namespace, pod, container) (kube_pod_container_resource_limits{resource=\"cpu\"}) * on (namespace, pod) group_left (instance) (max by (namespace, pod, instance) (label_replace(kube_pod_info{node=~\".+\"}, \"instance\", \"$1\", \"node\", \"(.*)\")) and on (namespace, pod) (max by (namespace, pod) (kube_pod_status_phase{phase=~\"Pending|Running\"}) == 1))) or max by (instance) (label_replace(kube_node_status_allocatable{resource=\"cpu\"}, \"instance\", \"$1\", \"node\", \"(.*)\")) * 0)) / (max by (instance) (label_replace(kube_node_status_allocatable{resource=\"cpu\"}, \"instance\", \"$1\", \"node\", \"(.*)\")))) and on (instance) ((max by (instance) (label_replace(kube_node_status_allocatable{resource=\"pods\"}, \"instance\", \"$1\", \"node\", \"(.*)\"))) * 0)) or ((max by (instance) (label_replace(kube_node_status_allocatable{resource=\"pods\"}, \"instance\", \"$1\", \"node\", \"(.*)\"))) * 0 - 1)",
+          "legendFormat": "",
+          "range": false,
+          "instant": true,
+          "format": "table"
+        },
+        {
+          "refId": "I",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "expr": "((clamp_min(((sum by (instance) (max by (namespace, pod, container) (kube_pod_container_resource_requests{resource=\"cpu\"}) * on (namespace, pod) group_left (instance) (max by (namespace, pod, instance) (label_replace(kube_pod_info{node=~\".+\"}, \"instance\", \"$1\", \"node\", \"(.*)\")) and on (namespace, pod) (max by (namespace, pod) (kube_pod_status_phase{phase=~\"Pending|Running\"}) == 1))) or max by (instance) (label_replace(kube_node_status_allocatable{resource=\"cpu\"}, \"instance\", \"$1\", \"node\", \"(.*)\")) * 0)) / (max by (instance) (label_replace(kube_node_status_allocatable{resource=\"cpu\"}, \"instance\", \"$1\", \"node\", \"(.*)\"))) - ((count by (instance) (node_cpu_seconds_total{mode=\"idle\"})) * (1 - avg by (instance) (rate(node_cpu_seconds_total{mode=\"idle\"}[$waste_window])))) / (max by (instance) (label_replace(kube_node_status_allocatable{resource=\"cpu\"}, \"instance\", \"$1\", \"node\", \"(.*)\"))), 0)) and on (instance) ((max by (instance) (label_replace(kube_node_status_allocatable{resource=\"pods\"}, \"instance\", \"$1\", \"node\", \"(.*)\"))) * 0)) or ((max by (instance) (label_replace(kube_node_status_allocatable{resource=\"pods\"}, \"instance\", \"$1\", \"node\", \"(.*)\"))) * 0 - 1)",
+          "legendFormat": "",
+          "range": false,
+          "instant": true,
+          "format": "table"
+        },
+        {
+          "refId": "J",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "expr": "((clamp_min((max by (instance) (label_replace(kube_node_status_allocatable{resource=\"cpu\"}, \"instance\", \"$1\", \"node\", \"(.*)\"))) - (sum by (instance) (max by (namespace, pod, container) (kube_pod_container_resource_requests{resource=\"cpu\"}) * on (namespace, pod) group_left (instance) (max by (namespace, pod, instance) (label_replace(kube_pod_info{node=~\".+\"}, \"instance\", \"$1\", \"node\", \"(.*)\")) and on (namespace, pod) (max by (namespace, pod) (kube_pod_status_phase{phase=~\"Pending|Running\"}) == 1))) or max by (instance) (label_replace(kube_node_status_allocatable{resource=\"cpu\"}, \"instance\", \"$1\", \"node\", \"(.*)\")) * 0), 0)) and on (instance) ((max by (instance) (label_replace(kube_node_status_allocatable{resource=\"pods\"}, \"instance\", \"$1\", \"node\", \"(.*)\"))) * 0)) or ((max by (instance) (label_replace(kube_node_status_allocatable{resource=\"pods\"}, \"instance\", \"$1\", \"node\", \"(.*)\"))) * 0 - 1)",
+          "legendFormat": "",
+          "range": false,
+          "instant": true,
+          "format": "table"
+        },
+        {
+          "refId": "K",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "expr": "((((((sum by (instance) (max by (namespace, pod, container) (kube_pod_container_resource_requests{resource=\"cpu\"}) * on (namespace, pod) group_left (instance) (max by (namespace, pod, instance) (label_replace(kube_pod_info{node=~\".+\"}, \"instance\", \"$1\", \"node\", \"(.*)\")) and on (namespace, pod) (max by (namespace, pod) (kube_pod_status_phase{phase=~\"Pending|Running\"}) == 1))) or max by (instance) (label_replace(kube_node_status_allocatable{resource=\"cpu\"}, \"instance\", \"$1\", \"node\", \"(.*)\")) * 0)) / (max by (instance) (label_replace(kube_node_status_allocatable{resource=\"cpu\"}, \"instance\", \"$1\", \"node\", \"(.*)\"))) >= 0.9) and ((max_over_time(((count by (instance) (node_cpu_seconds_total{mode=\"idle\"})) * (1 - avg by (instance) (rate(node_cpu_seconds_total{mode=\"idle\"}[5m]))))[$waste_window:5m])) / (max by (instance) (label_replace(kube_node_status_allocatable{resource=\"cpu\"}, \"instance\", \"$1\", \"node\", \"(.*)\"))) >= 0.7)) * 0 + 3 or ((((sum by (instance) (max by (namespace, pod, container) (kube_pod_container_resource_requests{resource=\"cpu\"}) * on (namespace, pod) group_left (instance) (max by (namespace, pod, instance) (label_replace(kube_pod_info{node=~\".+\"}, \"instance\", \"$1\", \"node\", \"(.*)\")) and on (namespace, pod) (max by (namespace, pod) (kube_pod_status_phase{phase=~\"Pending|Running\"}) == 1))) or max by (instance) (label_replace(kube_node_status_allocatable{resource=\"cpu\"}, \"instance\", \"$1\", \"node\", \"(.*)\")) * 0)) / (max by (instance) (label_replace(kube_node_status_allocatable{resource=\"cpu\"}, \"instance\", \"$1\", \"node\", \"(.*)\"))) >= 0.9) and ((max_over_time(((count by (instance) (node_cpu_seconds_total{mode=\"idle\"})) * (1 - avg by (instance) (rate(node_cpu_seconds_total{mode=\"idle\"}[5m]))))[$waste_window:5m])) / (max by (instance) (label_replace(kube_node_status_allocatable{resource=\"cpu\"}, \"instance\", \"$1\", \"node\", \"(.*)\"))) < 0.7)) * 0 + 2 or (((sum by (instance) (max by (namespace, pod, container) (kube_pod_container_resource_requests{resource=\"cpu\"}) * on (namespace, pod) group_left (instance) (max by (namespace, pod, instance) (label_replace(kube_pod_info{node=~\".+\"}, \"instance\", \"$1\", \"node\", \"(.*)\")) and on (namespace, pod) (max by (namespace, pod) (kube_pod_status_phase{phase=~\"Pending|Running\"}) == 1))) or max by (instance) (label_replace(kube_node_status_allocatable{resource=\"cpu\"}, \"instance\", \"$1\", \"node\", \"(.*)\")) * 0)) / (max by (instance) (label_replace(kube_node_status_allocatable{resource=\"cpu\"}, \"instance\", \"$1\", \"node\", \"(.*)\"))) >= 0.8) * 0 + 1 or ((sum by (instance) (max by (namespace, pod, container) (kube_pod_container_resource_requests{resource=\"cpu\"}) * on (namespace, pod) group_left (instance) (max by (namespace, pod, instance) (label_replace(kube_pod_info{node=~\".+\"}, \"instance\", \"$1\", \"node\", \"(.*)\")) and on (namespace, pod) (max by (namespace, pod) (kube_pod_status_phase{phase=~\"Pending|Running\"}) == 1))) or max by (instance) (label_replace(kube_node_status_allocatable{resource=\"cpu\"}, \"instance\", \"$1\", \"node\", \"(.*)\")) * 0)) / (max by (instance) (label_replace(kube_node_status_allocatable{resource=\"cpu\"}, \"instance\", \"$1\", \"node\", \"(.*)\"))) * 0) and on (instance) ((max by (instance) (label_replace(kube_node_status_allocatable{resource=\"pods\"}, \"instance\", \"$1\", \"node\", \"(.*)\"))) * 0)) or ((max by (instance) (label_replace(kube_node_status_allocatable{resource=\"pods\"}, \"instance\", \"$1\", \"node\", \"(.*)\"))) * 0 - 1)",
           "legendFormat": "",
           "range": false,
           "instant": true,
@@ -5025,14 +5530,17 @@
               "Time": true
             },
             "renameByName": {
-              "Value #A": "CPU 可分配（核）",
-              "Value #B": "CPU Request ÷ 可分配",
-              "Value #C": "CPU 平均用量 ÷ 可分配",
-              "Value #D": "CPU 佔住沒用",
-              "Value #E": "記憶體可分配",
-              "Value #F": "記憶體 Request ÷ 可分配",
-              "Value #G": "記憶體平均用量 ÷ 可分配",
-              "Value #H": "記憶體佔住沒用",
+              "Value #A": "可排程",
+              "Value #B": "Pod 數 ÷ 上限",
+              "Value #C": "可分配（核）",
+              "Value #D": "Request ÷ 可分配",
+              "Value #E": "目前用量 ÷ 可分配",
+              "Value #F": "平均用量 ÷ 可分配",
+              "Value #G": "尖峰 ÷ 可分配",
+              "Value #H": "Limit ÷ 可分配",
+              "Value #I": "佔住沒用",
+              "Value #J": "剩餘可排（核）",
+              "Value #K": "判定",
               "instance": "Node"
             },
             "indexByName": {
@@ -5044,7 +5552,10 @@
               "Value #E": 5,
               "Value #F": 6,
               "Value #G": 7,
-              "Value #H": 8
+              "Value #H": 8,
+              "Value #I": 9,
+              "Value #J": 10,
+              "Value #K": 11
             }
           }
         }
@@ -5062,7 +5573,121 @@
           {
             "matcher": {
               "id": "byName",
-              "options": "CPU 可分配（核）"
+              "options": "可排程"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "none"
+              },
+              {
+                "id": "decimals",
+                "value": 0
+              },
+              {
+                "id": "mappings",
+                "value": [
+                  {
+                    "type": "value",
+                    "options": {
+                      "0": {
+                        "text": "可排程"
+                      },
+                      "1": {
+                        "text": "有 taint"
+                      },
+                      "2": {
+                        "text": "停止排程",
+                        "color": "yellow"
+                      }
+                    }
+                  },
+                  {
+                    "type": "value",
+                    "options": {
+                      "-1": {
+                        "text": "—",
+                        "color": "#8e8e8e",
+                        "index": 99
+                      }
+                    }
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Pod 數 ÷ 上限"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "percentunit"
+              },
+              {
+                "id": "decimals",
+                "value": 0
+              },
+              {
+                "id": "thresholds",
+                "value": {
+                  "mode": "absolute",
+                  "steps": [
+                    {
+                      "color": "green",
+                      "value": null
+                    },
+                    {
+                      "color": "yellow",
+                      "value": 0.8
+                    },
+                    {
+                      "color": "red",
+                      "value": 0.9
+                    }
+                  ]
+                }
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "thresholds"
+                }
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-background",
+                  "mode": "basic"
+                }
+              },
+              {
+                "id": "custom.displayMode",
+                "value": "color-background"
+              },
+              {
+                "id": "mappings",
+                "value": [
+                  {
+                    "type": "value",
+                    "options": {
+                      "-1": {
+                        "text": "—",
+                        "color": "#8e8e8e",
+                        "index": 99
+                      }
+                    }
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "可分配（核）"
             },
             "properties": [
               {
@@ -5093,7 +5718,7 @@
           {
             "matcher": {
               "id": "byName",
-              "options": "CPU Request ÷ 可分配"
+              "options": "Request ÷ 可分配"
             },
             "properties": [
               {
@@ -5161,7 +5786,75 @@
           {
             "matcher": {
               "id": "byName",
-              "options": "CPU 平均用量 ÷ 可分配"
+              "options": "目前用量 ÷ 可分配"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "percentunit"
+              },
+              {
+                "id": "decimals",
+                "value": 0
+              },
+              {
+                "id": "thresholds",
+                "value": {
+                  "mode": "absolute",
+                  "steps": [
+                    {
+                      "color": "green",
+                      "value": null
+                    },
+                    {
+                      "color": "yellow",
+                      "value": 0.8
+                    },
+                    {
+                      "color": "red",
+                      "value": 0.9
+                    }
+                  ]
+                }
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "thresholds"
+                }
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-background",
+                  "mode": "basic"
+                }
+              },
+              {
+                "id": "custom.displayMode",
+                "value": "color-background"
+              },
+              {
+                "id": "mappings",
+                "value": [
+                  {
+                    "type": "value",
+                    "options": {
+                      "-1": {
+                        "text": "—",
+                        "color": "#8e8e8e",
+                        "index": 99
+                      }
+                    }
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "平均用量 ÷ 可分配"
             },
             "properties": [
               {
@@ -5192,7 +5885,143 @@
           {
             "matcher": {
               "id": "byName",
-              "options": "CPU 佔住沒用"
+              "options": "尖峰 ÷ 可分配"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "percentunit"
+              },
+              {
+                "id": "decimals",
+                "value": 0
+              },
+              {
+                "id": "thresholds",
+                "value": {
+                  "mode": "absolute",
+                  "steps": [
+                    {
+                      "color": "green",
+                      "value": null
+                    },
+                    {
+                      "color": "yellow",
+                      "value": 0.8
+                    },
+                    {
+                      "color": "red",
+                      "value": 0.9
+                    }
+                  ]
+                }
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "thresholds"
+                }
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-background",
+                  "mode": "basic"
+                }
+              },
+              {
+                "id": "custom.displayMode",
+                "value": "color-background"
+              },
+              {
+                "id": "mappings",
+                "value": [
+                  {
+                    "type": "value",
+                    "options": {
+                      "-1": {
+                        "text": "—",
+                        "color": "#8e8e8e",
+                        "index": 99
+                      }
+                    }
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Limit ÷ 可分配"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "percentunit"
+              },
+              {
+                "id": "decimals",
+                "value": 0
+              },
+              {
+                "id": "thresholds",
+                "value": {
+                  "mode": "absolute",
+                  "steps": [
+                    {
+                      "color": "green",
+                      "value": null
+                    },
+                    {
+                      "color": "yellow",
+                      "value": 2
+                    },
+                    {
+                      "color": "red",
+                      "value": 3
+                    }
+                  ]
+                }
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "thresholds"
+                }
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-background",
+                  "mode": "basic"
+                }
+              },
+              {
+                "id": "custom.displayMode",
+                "value": "color-background"
+              },
+              {
+                "id": "mappings",
+                "value": [
+                  {
+                    "type": "value",
+                    "options": {
+                      "-1": {
+                        "text": "—",
+                        "color": "#8e8e8e",
+                        "index": 99
+                      }
+                    }
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "佔住沒用"
             },
             "properties": [
               {
@@ -5260,12 +6089,12 @@
           {
             "matcher": {
               "id": "byName",
-              "options": "記憶體可分配"
+              "options": "剩餘可排（核）"
             },
             "properties": [
               {
                 "id": "unit",
-                "value": "bytes"
+                "value": "none"
               },
               {
                 "id": "decimals",
@@ -5291,12 +6120,12 @@
           {
             "matcher": {
               "id": "byName",
-              "options": "記憶體 Request ÷ 可分配"
+              "options": "判定"
             },
             "properties": [
               {
                 "id": "unit",
-                "value": "percentunit"
+                "value": "none"
               },
               {
                 "id": "decimals",
@@ -5313,11 +6142,15 @@
                     },
                     {
                       "color": "yellow",
-                      "value": 0.8
+                      "value": 1
+                    },
+                    {
+                      "color": "orange",
+                      "value": 2
                     },
                     {
                       "color": "red",
-                      "value": 0.9
+                      "value": 3
                     }
                   ]
                 }
@@ -5345,102 +6178,20 @@
                   {
                     "type": "value",
                     "options": {
-                      "-1": {
-                        "text": "—",
-                        "color": "#8e8e8e",
-                        "index": 99
+                      "0": {
+                        "text": "還有空間"
+                      },
+                      "1": {
+                        "text": "快滿"
+                      },
+                      "2": {
+                        "text": "Request 滿、沒在用 → 砍 Request"
+                      },
+                      "3": {
+                        "text": "真的滿 → 加 Node"
                       }
                     }
-                  }
-                ]
-              }
-            ]
-          },
-          {
-            "matcher": {
-              "id": "byName",
-              "options": "記憶體平均用量 ÷ 可分配"
-            },
-            "properties": [
-              {
-                "id": "unit",
-                "value": "percentunit"
-              },
-              {
-                "id": "decimals",
-                "value": 0
-              },
-              {
-                "id": "mappings",
-                "value": [
-                  {
-                    "type": "value",
-                    "options": {
-                      "-1": {
-                        "text": "—",
-                        "color": "#8e8e8e",
-                        "index": 99
-                      }
-                    }
-                  }
-                ]
-              }
-            ]
-          },
-          {
-            "matcher": {
-              "id": "byName",
-              "options": "記憶體佔住沒用"
-            },
-            "properties": [
-              {
-                "id": "unit",
-                "value": "percentunit"
-              },
-              {
-                "id": "decimals",
-                "value": 0
-              },
-              {
-                "id": "thresholds",
-                "value": {
-                  "mode": "absolute",
-                  "steps": [
-                    {
-                      "color": "green",
-                      "value": null
-                    },
-                    {
-                      "color": "yellow",
-                      "value": 0.3
-                    },
-                    {
-                      "color": "red",
-                      "value": 0.5
-                    }
-                  ]
-                }
-              },
-              {
-                "id": "color",
-                "value": {
-                  "mode": "thresholds"
-                }
-              },
-              {
-                "id": "custom.cellOptions",
-                "value": {
-                  "type": "color-background",
-                  "mode": "basic"
-                }
-              },
-              {
-                "id": "custom.displayMode",
-                "value": "color-background"
-              },
-              {
-                "id": "mappings",
-                "value": [
+                  },
                   {
                     "type": "value",
                     "options": {
@@ -5477,7 +6228,1104 @@
         "showHeader": true,
         "sortBy": [
           {
-            "displayName": "記憶體佔住沒用",
+            "displayName": "判定",
+            "desc": true
+          }
+        ],
+        "footer": {
+          "show": false
+        }
+      },
+      "gridPos": {
+        "h": 9,
+        "w": 24,
+        "x": 0,
+        "y": 129
+      }
+    },
+    {
+      "id": 35,
+      "type": "table",
+      "title": "【Node】記憶體：Request vs 用量 vs 可分配（Request、目前是結束前 5 分鐘；平均、尖峰是過去 $waste_window）",
+      "description": "**視角**：叢集內每一台 Node（所有 namespace 的 Pod 都算，不受上方 namespace 篩選影響）\n\n**這是什麼**：排程器只看 Request：Request ÷ 可分配滿了，新的 Pod 就排不進這台 Node，就算機器其實很閒。**可分配** = Node 扣掉系統保留後給 Pod 用的量（排程的真實上限）；**Request ÷ 可分配** = 這台 Node 上還沒結束（Pending / Running）的 Pod 的 Request 加總 ÷ 可分配（目前）；**目前 / 平均 / 尖峰用量** = 整台 Node 結束前 5 分鐘 / 過去 $waste_window 平均 / 過去 $waste_window 最高（含系統程序，所以可能超過 100%）；**Limit ÷ 可分配** = Limit 加總（只算有設的容器），超過 100% 代表大家同時衝到 Limit 時 Node 會不夠，記憶體會 OOMKilled 或被驅逐；**佔住沒用** = Request ÷ 可分配 − 平均用量 ÷ 可分配；**剩餘可排** = 可分配 − Request，新 Pod 的 Request 要小於它才排得進來。\n\n**怎麼看**：看「判定」：**真的滿 → 加 Node**（Request ≥ 90% 而且尖峰 ≥ 70%）；**Request 滿、沒在用 → 砍 Request**（Request ≥ 90% 但尖峰 < 70%），到第 6 區找是哪些容器，或在下方選這台 Node 看明細；**快滿** = Request ≥ 80%。只有一兩台滿、上方「排不進來的 Pod」是 0、還有 Node 排得下最大的 Pod → 排程器會放到別台，不急著砍；很多台滿而且開始有 Pod 排不進來，才是要動手的時候。記憶體不像 CPU 可以借，尖峰 ÷ 可分配很高的 Node 不要再砍 Request 塞更多 Pod。",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${datasource}"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "expr": "(((((max by (instance) (label_replace(kube_node_spec_unschedulable, \"instance\", \"$1\", \"node\", \"(.*)\"))) == 1) * 2 or (max by (instance) (label_replace(kube_node_spec_taint{effect=~\"NoSchedule|NoExecute\"}, \"instance\", \"$1\", \"node\", \"(.*)\"))) * 0 + 1 or (max by (instance) (label_replace(kube_node_spec_unschedulable, \"instance\", \"$1\", \"node\", \"(.*)\"))) * 0)) and on (instance) ((max by (instance) (label_replace(kube_node_status_allocatable{resource=\"pods\"}, \"instance\", \"$1\", \"node\", \"(.*)\"))) * 0)) or ((max by (instance) (label_replace(kube_node_status_allocatable{resource=\"pods\"}, \"instance\", \"$1\", \"node\", \"(.*)\"))) * 0 - 1)",
+          "legendFormat": "",
+          "range": false,
+          "instant": true,
+          "format": "table"
+        },
+        {
+          "refId": "B",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "expr": "((((count by (instance) ((max by (namespace, pod, instance) (label_replace(kube_pod_info{node=~\".+\"}, \"instance\", \"$1\", \"node\", \"(.*)\")) and on (namespace, pod) (max by (namespace, pod) (kube_pod_status_phase{phase=~\"Pending|Running\"}) == 1))) or max by (instance) (label_replace(kube_node_status_allocatable{resource=\"pods\"}, \"instance\", \"$1\", \"node\", \"(.*)\")) * 0)) / (max by (instance) (label_replace(kube_node_status_allocatable{resource=\"pods\"}, \"instance\", \"$1\", \"node\", \"(.*)\")))) and on (instance) ((max by (instance) (label_replace(kube_node_status_allocatable{resource=\"pods\"}, \"instance\", \"$1\", \"node\", \"(.*)\"))) * 0)) or ((max by (instance) (label_replace(kube_node_status_allocatable{resource=\"pods\"}, \"instance\", \"$1\", \"node\", \"(.*)\"))) * 0 - 1)",
+          "legendFormat": "",
+          "range": false,
+          "instant": true,
+          "format": "table"
+        },
+        {
+          "refId": "C",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "expr": "((max by (instance) (label_replace(kube_node_status_allocatable{resource=\"memory\"}, \"instance\", \"$1\", \"node\", \"(.*)\"))) and on (instance) ((max by (instance) (label_replace(kube_node_status_allocatable{resource=\"pods\"}, \"instance\", \"$1\", \"node\", \"(.*)\"))) * 0)) or ((max by (instance) (label_replace(kube_node_status_allocatable{resource=\"pods\"}, \"instance\", \"$1\", \"node\", \"(.*)\"))) * 0 - 1)",
+          "legendFormat": "",
+          "range": false,
+          "instant": true,
+          "format": "table"
+        },
+        {
+          "refId": "D",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "expr": "((((sum by (instance) (max by (namespace, pod, container) (kube_pod_container_resource_requests{resource=\"memory\"}) * on (namespace, pod) group_left (instance) (max by (namespace, pod, instance) (label_replace(kube_pod_info{node=~\".+\"}, \"instance\", \"$1\", \"node\", \"(.*)\")) and on (namespace, pod) (max by (namespace, pod) (kube_pod_status_phase{phase=~\"Pending|Running\"}) == 1))) or max by (instance) (label_replace(kube_node_status_allocatable{resource=\"memory\"}, \"instance\", \"$1\", \"node\", \"(.*)\")) * 0)) / (max by (instance) (label_replace(kube_node_status_allocatable{resource=\"memory\"}, \"instance\", \"$1\", \"node\", \"(.*)\")))) and on (instance) ((max by (instance) (label_replace(kube_node_status_allocatable{resource=\"pods\"}, \"instance\", \"$1\", \"node\", \"(.*)\"))) * 0)) or ((max by (instance) (label_replace(kube_node_status_allocatable{resource=\"pods\"}, \"instance\", \"$1\", \"node\", \"(.*)\"))) * 0 - 1)",
+          "legendFormat": "",
+          "range": false,
+          "instant": true,
+          "format": "table"
+        },
+        {
+          "refId": "E",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "expr": "(((max by (instance) (node_memory_MemTotal_bytes - node_memory_MemAvailable_bytes)) / (max by (instance) (label_replace(kube_node_status_allocatable{resource=\"memory\"}, \"instance\", \"$1\", \"node\", \"(.*)\")))) and on (instance) ((max by (instance) (label_replace(kube_node_status_allocatable{resource=\"pods\"}, \"instance\", \"$1\", \"node\", \"(.*)\"))) * 0)) or ((max by (instance) (label_replace(kube_node_status_allocatable{resource=\"pods\"}, \"instance\", \"$1\", \"node\", \"(.*)\"))) * 0 - 1)",
+          "legendFormat": "",
+          "range": false,
+          "instant": true,
+          "format": "table"
+        },
+        {
+          "refId": "F",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "expr": "(((max by (instance) (avg_over_time(node_memory_MemTotal_bytes[$waste_window]) - avg_over_time(node_memory_MemAvailable_bytes[$waste_window]))) / (max by (instance) (label_replace(kube_node_status_allocatable{resource=\"memory\"}, \"instance\", \"$1\", \"node\", \"(.*)\")))) and on (instance) ((max by (instance) (label_replace(kube_node_status_allocatable{resource=\"pods\"}, \"instance\", \"$1\", \"node\", \"(.*)\"))) * 0)) or ((max by (instance) (label_replace(kube_node_status_allocatable{resource=\"pods\"}, \"instance\", \"$1\", \"node\", \"(.*)\"))) * 0 - 1)",
+          "legendFormat": "",
+          "range": false,
+          "instant": true,
+          "format": "table"
+        },
+        {
+          "refId": "G",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "expr": "(((max_over_time((max by (instance) (node_memory_MemTotal_bytes - node_memory_MemAvailable_bytes))[$waste_window:5m])) / (max by (instance) (label_replace(kube_node_status_allocatable{resource=\"memory\"}, \"instance\", \"$1\", \"node\", \"(.*)\")))) and on (instance) ((max by (instance) (label_replace(kube_node_status_allocatable{resource=\"pods\"}, \"instance\", \"$1\", \"node\", \"(.*)\"))) * 0)) or ((max by (instance) (label_replace(kube_node_status_allocatable{resource=\"pods\"}, \"instance\", \"$1\", \"node\", \"(.*)\"))) * 0 - 1)",
+          "legendFormat": "",
+          "range": false,
+          "instant": true,
+          "format": "table"
+        },
+        {
+          "refId": "H",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "expr": "((((sum by (instance) (max by (namespace, pod, container) (kube_pod_container_resource_limits{resource=\"memory\"}) * on (namespace, pod) group_left (instance) (max by (namespace, pod, instance) (label_replace(kube_pod_info{node=~\".+\"}, \"instance\", \"$1\", \"node\", \"(.*)\")) and on (namespace, pod) (max by (namespace, pod) (kube_pod_status_phase{phase=~\"Pending|Running\"}) == 1))) or max by (instance) (label_replace(kube_node_status_allocatable{resource=\"memory\"}, \"instance\", \"$1\", \"node\", \"(.*)\")) * 0)) / (max by (instance) (label_replace(kube_node_status_allocatable{resource=\"memory\"}, \"instance\", \"$1\", \"node\", \"(.*)\")))) and on (instance) ((max by (instance) (label_replace(kube_node_status_allocatable{resource=\"pods\"}, \"instance\", \"$1\", \"node\", \"(.*)\"))) * 0)) or ((max by (instance) (label_replace(kube_node_status_allocatable{resource=\"pods\"}, \"instance\", \"$1\", \"node\", \"(.*)\"))) * 0 - 1)",
+          "legendFormat": "",
+          "range": false,
+          "instant": true,
+          "format": "table"
+        },
+        {
+          "refId": "I",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "expr": "((clamp_min(((sum by (instance) (max by (namespace, pod, container) (kube_pod_container_resource_requests{resource=\"memory\"}) * on (namespace, pod) group_left (instance) (max by (namespace, pod, instance) (label_replace(kube_pod_info{node=~\".+\"}, \"instance\", \"$1\", \"node\", \"(.*)\")) and on (namespace, pod) (max by (namespace, pod) (kube_pod_status_phase{phase=~\"Pending|Running\"}) == 1))) or max by (instance) (label_replace(kube_node_status_allocatable{resource=\"memory\"}, \"instance\", \"$1\", \"node\", \"(.*)\")) * 0)) / (max by (instance) (label_replace(kube_node_status_allocatable{resource=\"memory\"}, \"instance\", \"$1\", \"node\", \"(.*)\"))) - (max by (instance) (avg_over_time(node_memory_MemTotal_bytes[$waste_window]) - avg_over_time(node_memory_MemAvailable_bytes[$waste_window]))) / (max by (instance) (label_replace(kube_node_status_allocatable{resource=\"memory\"}, \"instance\", \"$1\", \"node\", \"(.*)\"))), 0)) and on (instance) ((max by (instance) (label_replace(kube_node_status_allocatable{resource=\"pods\"}, \"instance\", \"$1\", \"node\", \"(.*)\"))) * 0)) or ((max by (instance) (label_replace(kube_node_status_allocatable{resource=\"pods\"}, \"instance\", \"$1\", \"node\", \"(.*)\"))) * 0 - 1)",
+          "legendFormat": "",
+          "range": false,
+          "instant": true,
+          "format": "table"
+        },
+        {
+          "refId": "J",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "expr": "((clamp_min((max by (instance) (label_replace(kube_node_status_allocatable{resource=\"memory\"}, \"instance\", \"$1\", \"node\", \"(.*)\"))) - (sum by (instance) (max by (namespace, pod, container) (kube_pod_container_resource_requests{resource=\"memory\"}) * on (namespace, pod) group_left (instance) (max by (namespace, pod, instance) (label_replace(kube_pod_info{node=~\".+\"}, \"instance\", \"$1\", \"node\", \"(.*)\")) and on (namespace, pod) (max by (namespace, pod) (kube_pod_status_phase{phase=~\"Pending|Running\"}) == 1))) or max by (instance) (label_replace(kube_node_status_allocatable{resource=\"memory\"}, \"instance\", \"$1\", \"node\", \"(.*)\")) * 0), 0)) and on (instance) ((max by (instance) (label_replace(kube_node_status_allocatable{resource=\"pods\"}, \"instance\", \"$1\", \"node\", \"(.*)\"))) * 0)) or ((max by (instance) (label_replace(kube_node_status_allocatable{resource=\"pods\"}, \"instance\", \"$1\", \"node\", \"(.*)\"))) * 0 - 1)",
+          "legendFormat": "",
+          "range": false,
+          "instant": true,
+          "format": "table"
+        },
+        {
+          "refId": "K",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "expr": "((((((sum by (instance) (max by (namespace, pod, container) (kube_pod_container_resource_requests{resource=\"memory\"}) * on (namespace, pod) group_left (instance) (max by (namespace, pod, instance) (label_replace(kube_pod_info{node=~\".+\"}, \"instance\", \"$1\", \"node\", \"(.*)\")) and on (namespace, pod) (max by (namespace, pod) (kube_pod_status_phase{phase=~\"Pending|Running\"}) == 1))) or max by (instance) (label_replace(kube_node_status_allocatable{resource=\"memory\"}, \"instance\", \"$1\", \"node\", \"(.*)\")) * 0)) / (max by (instance) (label_replace(kube_node_status_allocatable{resource=\"memory\"}, \"instance\", \"$1\", \"node\", \"(.*)\"))) >= 0.9) and ((max_over_time((max by (instance) (node_memory_MemTotal_bytes - node_memory_MemAvailable_bytes))[$waste_window:5m])) / (max by (instance) (label_replace(kube_node_status_allocatable{resource=\"memory\"}, \"instance\", \"$1\", \"node\", \"(.*)\"))) >= 0.7)) * 0 + 3 or ((((sum by (instance) (max by (namespace, pod, container) (kube_pod_container_resource_requests{resource=\"memory\"}) * on (namespace, pod) group_left (instance) (max by (namespace, pod, instance) (label_replace(kube_pod_info{node=~\".+\"}, \"instance\", \"$1\", \"node\", \"(.*)\")) and on (namespace, pod) (max by (namespace, pod) (kube_pod_status_phase{phase=~\"Pending|Running\"}) == 1))) or max by (instance) (label_replace(kube_node_status_allocatable{resource=\"memory\"}, \"instance\", \"$1\", \"node\", \"(.*)\")) * 0)) / (max by (instance) (label_replace(kube_node_status_allocatable{resource=\"memory\"}, \"instance\", \"$1\", \"node\", \"(.*)\"))) >= 0.9) and ((max_over_time((max by (instance) (node_memory_MemTotal_bytes - node_memory_MemAvailable_bytes))[$waste_window:5m])) / (max by (instance) (label_replace(kube_node_status_allocatable{resource=\"memory\"}, \"instance\", \"$1\", \"node\", \"(.*)\"))) < 0.7)) * 0 + 2 or (((sum by (instance) (max by (namespace, pod, container) (kube_pod_container_resource_requests{resource=\"memory\"}) * on (namespace, pod) group_left (instance) (max by (namespace, pod, instance) (label_replace(kube_pod_info{node=~\".+\"}, \"instance\", \"$1\", \"node\", \"(.*)\")) and on (namespace, pod) (max by (namespace, pod) (kube_pod_status_phase{phase=~\"Pending|Running\"}) == 1))) or max by (instance) (label_replace(kube_node_status_allocatable{resource=\"memory\"}, \"instance\", \"$1\", \"node\", \"(.*)\")) * 0)) / (max by (instance) (label_replace(kube_node_status_allocatable{resource=\"memory\"}, \"instance\", \"$1\", \"node\", \"(.*)\"))) >= 0.8) * 0 + 1 or ((sum by (instance) (max by (namespace, pod, container) (kube_pod_container_resource_requests{resource=\"memory\"}) * on (namespace, pod) group_left (instance) (max by (namespace, pod, instance) (label_replace(kube_pod_info{node=~\".+\"}, \"instance\", \"$1\", \"node\", \"(.*)\")) and on (namespace, pod) (max by (namespace, pod) (kube_pod_status_phase{phase=~\"Pending|Running\"}) == 1))) or max by (instance) (label_replace(kube_node_status_allocatable{resource=\"memory\"}, \"instance\", \"$1\", \"node\", \"(.*)\")) * 0)) / (max by (instance) (label_replace(kube_node_status_allocatable{resource=\"memory\"}, \"instance\", \"$1\", \"node\", \"(.*)\"))) * 0) and on (instance) ((max by (instance) (label_replace(kube_node_status_allocatable{resource=\"pods\"}, \"instance\", \"$1\", \"node\", \"(.*)\"))) * 0)) or ((max by (instance) (label_replace(kube_node_status_allocatable{resource=\"pods\"}, \"instance\", \"$1\", \"node\", \"(.*)\"))) * 0 - 1)",
+          "legendFormat": "",
+          "range": false,
+          "instant": true,
+          "format": "table"
+        }
+      ],
+      "transformations": [
+        {
+          "id": "merge",
+          "options": {}
+        },
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": {
+              "Time": true
+            },
+            "renameByName": {
+              "Value #A": "可排程",
+              "Value #B": "Pod 數 ÷ 上限",
+              "Value #C": "可分配",
+              "Value #D": "Request ÷ 可分配",
+              "Value #E": "目前用量 ÷ 可分配",
+              "Value #F": "平均用量 ÷ 可分配",
+              "Value #G": "尖峰 ÷ 可分配",
+              "Value #H": "Limit ÷ 可分配",
+              "Value #I": "佔住沒用",
+              "Value #J": "剩餘可排",
+              "Value #K": "判定",
+              "instance": "Node"
+            },
+            "indexByName": {
+              "instance": 0,
+              "Value #A": 1,
+              "Value #B": 2,
+              "Value #C": 3,
+              "Value #D": 4,
+              "Value #E": 5,
+              "Value #F": 6,
+              "Value #G": 7,
+              "Value #H": 8,
+              "Value #I": 9,
+              "Value #J": 10,
+              "Value #K": 11
+            }
+          }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "filterable": false,
+            "align": "auto",
+            "minWidth": 80,
+            "wrapHeaderText": true
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "可排程"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "none"
+              },
+              {
+                "id": "decimals",
+                "value": 0
+              },
+              {
+                "id": "mappings",
+                "value": [
+                  {
+                    "type": "value",
+                    "options": {
+                      "0": {
+                        "text": "可排程"
+                      },
+                      "1": {
+                        "text": "有 taint"
+                      },
+                      "2": {
+                        "text": "停止排程",
+                        "color": "yellow"
+                      }
+                    }
+                  },
+                  {
+                    "type": "value",
+                    "options": {
+                      "-1": {
+                        "text": "—",
+                        "color": "#8e8e8e",
+                        "index": 99
+                      }
+                    }
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Pod 數 ÷ 上限"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "percentunit"
+              },
+              {
+                "id": "decimals",
+                "value": 0
+              },
+              {
+                "id": "thresholds",
+                "value": {
+                  "mode": "absolute",
+                  "steps": [
+                    {
+                      "color": "green",
+                      "value": null
+                    },
+                    {
+                      "color": "yellow",
+                      "value": 0.8
+                    },
+                    {
+                      "color": "red",
+                      "value": 0.9
+                    }
+                  ]
+                }
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "thresholds"
+                }
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-background",
+                  "mode": "basic"
+                }
+              },
+              {
+                "id": "custom.displayMode",
+                "value": "color-background"
+              },
+              {
+                "id": "mappings",
+                "value": [
+                  {
+                    "type": "value",
+                    "options": {
+                      "-1": {
+                        "text": "—",
+                        "color": "#8e8e8e",
+                        "index": 99
+                      }
+                    }
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "可分配"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "bytes"
+              },
+              {
+                "id": "decimals",
+                "value": 1
+              },
+              {
+                "id": "mappings",
+                "value": [
+                  {
+                    "type": "value",
+                    "options": {
+                      "-1": {
+                        "text": "—",
+                        "color": "#8e8e8e",
+                        "index": 99
+                      }
+                    }
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Request ÷ 可分配"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "percentunit"
+              },
+              {
+                "id": "decimals",
+                "value": 0
+              },
+              {
+                "id": "thresholds",
+                "value": {
+                  "mode": "absolute",
+                  "steps": [
+                    {
+                      "color": "green",
+                      "value": null
+                    },
+                    {
+                      "color": "yellow",
+                      "value": 0.8
+                    },
+                    {
+                      "color": "red",
+                      "value": 0.9
+                    }
+                  ]
+                }
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "thresholds"
+                }
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-background",
+                  "mode": "basic"
+                }
+              },
+              {
+                "id": "custom.displayMode",
+                "value": "color-background"
+              },
+              {
+                "id": "mappings",
+                "value": [
+                  {
+                    "type": "value",
+                    "options": {
+                      "-1": {
+                        "text": "—",
+                        "color": "#8e8e8e",
+                        "index": 99
+                      }
+                    }
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "目前用量 ÷ 可分配"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "percentunit"
+              },
+              {
+                "id": "decimals",
+                "value": 0
+              },
+              {
+                "id": "thresholds",
+                "value": {
+                  "mode": "absolute",
+                  "steps": [
+                    {
+                      "color": "green",
+                      "value": null
+                    },
+                    {
+                      "color": "yellow",
+                      "value": 0.8
+                    },
+                    {
+                      "color": "red",
+                      "value": 0.9
+                    }
+                  ]
+                }
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "thresholds"
+                }
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-background",
+                  "mode": "basic"
+                }
+              },
+              {
+                "id": "custom.displayMode",
+                "value": "color-background"
+              },
+              {
+                "id": "mappings",
+                "value": [
+                  {
+                    "type": "value",
+                    "options": {
+                      "-1": {
+                        "text": "—",
+                        "color": "#8e8e8e",
+                        "index": 99
+                      }
+                    }
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "平均用量 ÷ 可分配"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "percentunit"
+              },
+              {
+                "id": "decimals",
+                "value": 0
+              },
+              {
+                "id": "mappings",
+                "value": [
+                  {
+                    "type": "value",
+                    "options": {
+                      "-1": {
+                        "text": "—",
+                        "color": "#8e8e8e",
+                        "index": 99
+                      }
+                    }
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "尖峰 ÷ 可分配"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "percentunit"
+              },
+              {
+                "id": "decimals",
+                "value": 0
+              },
+              {
+                "id": "thresholds",
+                "value": {
+                  "mode": "absolute",
+                  "steps": [
+                    {
+                      "color": "green",
+                      "value": null
+                    },
+                    {
+                      "color": "yellow",
+                      "value": 0.8
+                    },
+                    {
+                      "color": "red",
+                      "value": 0.9
+                    }
+                  ]
+                }
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "thresholds"
+                }
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-background",
+                  "mode": "basic"
+                }
+              },
+              {
+                "id": "custom.displayMode",
+                "value": "color-background"
+              },
+              {
+                "id": "mappings",
+                "value": [
+                  {
+                    "type": "value",
+                    "options": {
+                      "-1": {
+                        "text": "—",
+                        "color": "#8e8e8e",
+                        "index": 99
+                      }
+                    }
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Limit ÷ 可分配"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "percentunit"
+              },
+              {
+                "id": "decimals",
+                "value": 0
+              },
+              {
+                "id": "thresholds",
+                "value": {
+                  "mode": "absolute",
+                  "steps": [
+                    {
+                      "color": "green",
+                      "value": null
+                    },
+                    {
+                      "color": "yellow",
+                      "value": 1.0
+                    },
+                    {
+                      "color": "red",
+                      "value": 1.5
+                    }
+                  ]
+                }
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "thresholds"
+                }
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-background",
+                  "mode": "basic"
+                }
+              },
+              {
+                "id": "custom.displayMode",
+                "value": "color-background"
+              },
+              {
+                "id": "mappings",
+                "value": [
+                  {
+                    "type": "value",
+                    "options": {
+                      "-1": {
+                        "text": "—",
+                        "color": "#8e8e8e",
+                        "index": 99
+                      }
+                    }
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "佔住沒用"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "percentunit"
+              },
+              {
+                "id": "decimals",
+                "value": 0
+              },
+              {
+                "id": "thresholds",
+                "value": {
+                  "mode": "absolute",
+                  "steps": [
+                    {
+                      "color": "green",
+                      "value": null
+                    },
+                    {
+                      "color": "yellow",
+                      "value": 0.3
+                    },
+                    {
+                      "color": "red",
+                      "value": 0.5
+                    }
+                  ]
+                }
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "thresholds"
+                }
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-background",
+                  "mode": "basic"
+                }
+              },
+              {
+                "id": "custom.displayMode",
+                "value": "color-background"
+              },
+              {
+                "id": "mappings",
+                "value": [
+                  {
+                    "type": "value",
+                    "options": {
+                      "-1": {
+                        "text": "—",
+                        "color": "#8e8e8e",
+                        "index": 99
+                      }
+                    }
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "剩餘可排"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "bytes"
+              },
+              {
+                "id": "decimals",
+                "value": 1
+              },
+              {
+                "id": "mappings",
+                "value": [
+                  {
+                    "type": "value",
+                    "options": {
+                      "-1": {
+                        "text": "—",
+                        "color": "#8e8e8e",
+                        "index": 99
+                      }
+                    }
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "判定"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "none"
+              },
+              {
+                "id": "decimals",
+                "value": 0
+              },
+              {
+                "id": "thresholds",
+                "value": {
+                  "mode": "absolute",
+                  "steps": [
+                    {
+                      "color": "green",
+                      "value": null
+                    },
+                    {
+                      "color": "yellow",
+                      "value": 1
+                    },
+                    {
+                      "color": "orange",
+                      "value": 2
+                    },
+                    {
+                      "color": "red",
+                      "value": 3
+                    }
+                  ]
+                }
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "thresholds"
+                }
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-background",
+                  "mode": "basic"
+                }
+              },
+              {
+                "id": "custom.displayMode",
+                "value": "color-background"
+              },
+              {
+                "id": "mappings",
+                "value": [
+                  {
+                    "type": "value",
+                    "options": {
+                      "0": {
+                        "text": "還有空間"
+                      },
+                      "1": {
+                        "text": "快滿"
+                      },
+                      "2": {
+                        "text": "Request 滿、沒在用 → 砍 Request"
+                      },
+                      "3": {
+                        "text": "真的滿 → 加 Node"
+                      }
+                    }
+                  },
+                  {
+                    "type": "value",
+                    "options": {
+                      "-1": {
+                        "text": "—",
+                        "color": "#8e8e8e",
+                        "index": 99
+                      }
+                    }
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Node"
+            },
+            "properties": [
+              {
+                "id": "custom.filterable",
+                "value": true
+              },
+              {
+                "id": "custom.width",
+                "value": 140
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "showHeader": true,
+        "sortBy": [
+          {
+            "displayName": "判定",
+            "desc": true
+          }
+        ],
+        "footer": {
+          "show": false
+        }
+      },
+      "gridPos": {
+        "h": 9,
+        "w": 24,
+        "x": 0,
+        "y": 138
+      }
+    },
+    {
+      "id": 36,
+      "type": "table",
+      "title": "【Pod】排不進來的 Pod（目前）",
+      "description": "**視角**：叢集內所有 namespace\n\n**這是什麼**：排程器找不到 Node 放得下的 Pod，跟它要的 Request。\n\n**怎麼看**：跟上方 Node 表的「剩餘可排」比：每台都比它小 → 是 Request 不夠；有 Node 夠大卻還是排不進來 → 是 taint、affinity、PVC 區域這類限制，用 `oc describe pod` 看 Events。沒有資料就是沒有排不進來的 Pod。",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${datasource}"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "expr": "((time() - max by (namespace, pod) (kube_pod_created)) and on (namespace, pod) ((max by (namespace, pod) (kube_pod_status_unschedulable) == 1) * 0)) or ((max by (namespace, pod) (kube_pod_status_unschedulable) == 1) * 0 - 1)",
+          "legendFormat": "",
+          "range": false,
+          "instant": true,
+          "format": "table"
+        },
+        {
+          "refId": "B",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "expr": "((sum by (namespace, pod) (max by (namespace, pod, container) (kube_pod_container_resource_requests{resource=\"cpu\"} > 0))) and on (namespace, pod) ((max by (namespace, pod) (kube_pod_status_unschedulable) == 1) * 0)) or ((max by (namespace, pod) (kube_pod_status_unschedulable) == 1) * 0 - 1)",
+          "legendFormat": "",
+          "range": false,
+          "instant": true,
+          "format": "table"
+        },
+        {
+          "refId": "C",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "expr": "((sum by (namespace, pod) (max by (namespace, pod, container) (kube_pod_container_resource_requests{resource=\"memory\"} > 0))) and on (namespace, pod) ((max by (namespace, pod) (kube_pod_status_unschedulable) == 1) * 0)) or ((max by (namespace, pod) (kube_pod_status_unschedulable) == 1) * 0 - 1)",
+          "legendFormat": "",
+          "range": false,
+          "instant": true,
+          "format": "table"
+        }
+      ],
+      "transformations": [
+        {
+          "id": "merge",
+          "options": {}
+        },
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": {
+              "Time": true
+            },
+            "renameByName": {
+              "Value #A": "已經等了",
+              "Value #B": "CPU Request（核）",
+              "Value #C": "記憶體 Request"
+            },
+            "indexByName": {
+              "namespace": 0,
+              "pod": 1,
+              "Value #A": 2,
+              "Value #B": 3,
+              "Value #C": 4
+            }
+          }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "filterable": false,
+            "align": "auto",
+            "minWidth": 80,
+            "wrapHeaderText": true
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "已經等了"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "s"
+              },
+              {
+                "id": "decimals",
+                "value": 0
+              },
+              {
+                "id": "mappings",
+                "value": [
+                  {
+                    "type": "value",
+                    "options": {
+                      "-1": {
+                        "text": "—",
+                        "color": "#8e8e8e",
+                        "index": 99
+                      }
+                    }
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "CPU Request（核）"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "none"
+              },
+              {
+                "id": "decimals",
+                "value": 2
+              },
+              {
+                "id": "mappings",
+                "value": [
+                  {
+                    "type": "value",
+                    "options": {
+                      "-1": {
+                        "text": "沒設",
+                        "color": "#8e8e8e",
+                        "index": 99
+                      }
+                    }
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "記憶體 Request"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "bytes"
+              },
+              {
+                "id": "decimals",
+                "value": 1
+              },
+              {
+                "id": "mappings",
+                "value": [
+                  {
+                    "type": "value",
+                    "options": {
+                      "-1": {
+                        "text": "沒設",
+                        "color": "#8e8e8e",
+                        "index": 99
+                      }
+                    }
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "namespace"
+            },
+            "properties": [
+              {
+                "id": "custom.filterable",
+                "value": true
+              },
+              {
+                "id": "custom.width",
+                "value": 120
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "pod"
+            },
+            "properties": [
+              {
+                "id": "custom.filterable",
+                "value": true
+              },
+              {
+                "id": "custom.width",
+                "value": 220
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "showHeader": true,
+        "sortBy": [
+          {
+            "displayName": "已經等了",
             "desc": true
           }
         ],
@@ -5487,13 +7335,931 @@
       },
       "gridPos": {
         "h": 8,
-        "w": 24,
+        "w": 12,
         "x": 0,
-        "y": 124
+        "y": 147
       }
     },
     {
-      "id": 30,
+      "id": 37,
+      "type": "timeseries",
+      "title": "【叢集】排不進來的 Pod 與排程失敗",
+      "description": "**視角**：叢集內所有 namespace\n\n**這是什麼**：前兩條是當下排不進來的 Pod 數（兩個來源，應該差不多），第三條是排程器每分鐘找不到 Node 的次數。\n\n**怎麼看**：時間範圍拉長看最近有沒有發生過、發生在什麼時候（rollout、擴容、Node 維護）。排程器的兩條線沒資料代表沒有收集排程器指標。",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${datasource}"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "expr": "count(max by (namespace, pod) (kube_pod_status_unschedulable) == 1) or vector(0)",
+          "legendFormat": "排不進來的 Pod（kube-state-metrics）",
+          "range": true,
+          "instant": false
+        },
+        {
+          "refId": "B",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "expr": "sum(scheduler_pending_pods{queue=\"unschedulable\"})",
+          "legendFormat": "排程器 unschedulable 佇列",
+          "range": true,
+          "instant": false
+        },
+        {
+          "refId": "C",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "expr": "sum(rate(scheduler_schedule_attempts_total{result=\"unschedulable\"}[$__rate_interval])) * 60",
+          "legendFormat": "排程失敗次數／分鐘",
+          "range": true,
+          "instant": false
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "min": 0,
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 1,
+            "fillOpacity": 10,
+            "showPoints": "never",
+            "spanNulls": true
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "right",
+          "calcs": [
+            "max"
+          ],
+          "sortBy": "Max",
+          "sortDesc": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 147
+      }
+    },
+    {
+      "id": 38,
+      "type": "timeseries",
+      "title": "【Node】CPU Request ÷ 可分配 Top 10",
+      "description": "**視角**：叢集內每一台 Node（所有 namespace 的 Pod 都算，不受上方 namespace 篩選影響）\n\n**這是什麼**：每台 Node 上還沒結束的 Pod 的 Request 加總 ÷ 可分配。\n\n**怎麼看**：時間範圍拉長看是一直很滿，還是只有 rollout 時短暫衝高（rollout 時新舊 Pod 同時存在，Request 會暫時變多）。",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${datasource}"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "expr": "topk(10, ((sum by (instance) (max by (namespace, pod, container) (kube_pod_container_resource_requests{resource=\"cpu\"}) * on (namespace, pod) group_left (instance) (max by (namespace, pod, instance) (label_replace(kube_pod_info{node=~\".+\"}, \"instance\", \"$1\", \"node\", \"(.*)\")) and on (namespace, pod) (max by (namespace, pod) (kube_pod_status_phase{phase=~\"Pending|Running\"}) == 1))) or max by (instance) (label_replace(kube_node_status_allocatable{resource=\"cpu\"}, \"instance\", \"$1\", \"node\", \"(.*)\")) * 0)) / (max by (instance) (label_replace(kube_node_status_allocatable{resource=\"cpu\"}, \"instance\", \"$1\", \"node\", \"(.*)\"))))",
+          "legendFormat": "{{instance}}",
+          "range": true,
+          "instant": false
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "min": 0,
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 1,
+            "fillOpacity": 10,
+            "showPoints": "never",
+            "spanNulls": true
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "right",
+          "calcs": [
+            "max"
+          ],
+          "sortBy": "Max",
+          "sortDesc": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 155
+      }
+    },
+    {
+      "id": 39,
+      "type": "timeseries",
+      "title": "【Node】記憶體 Request ÷ 可分配 Top 10",
+      "description": "**視角**：叢集內每一台 Node（所有 namespace 的 Pod 都算，不受上方 namespace 篩選影響）\n\n**這是什麼**：每台 Node 上還沒結束的 Pod 的 Request 加總 ÷ 可分配。\n\n**怎麼看**：時間範圍拉長看是一直很滿，還是只有 rollout 時短暫衝高（rollout 時新舊 Pod 同時存在，Request 會暫時變多）。",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${datasource}"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "expr": "topk(10, ((sum by (instance) (max by (namespace, pod, container) (kube_pod_container_resource_requests{resource=\"memory\"}) * on (namespace, pod) group_left (instance) (max by (namespace, pod, instance) (label_replace(kube_pod_info{node=~\".+\"}, \"instance\", \"$1\", \"node\", \"(.*)\")) and on (namespace, pod) (max by (namespace, pod) (kube_pod_status_phase{phase=~\"Pending|Running\"}) == 1))) or max by (instance) (label_replace(kube_node_status_allocatable{resource=\"memory\"}, \"instance\", \"$1\", \"node\", \"(.*)\")) * 0)) / (max by (instance) (label_replace(kube_node_status_allocatable{resource=\"memory\"}, \"instance\", \"$1\", \"node\", \"(.*)\"))))",
+          "legendFormat": "{{instance}}",
+          "range": true,
+          "instant": false
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "min": 0,
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 1,
+            "fillOpacity": 10,
+            "showPoints": "never",
+            "spanNulls": true
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "right",
+          "calcs": [
+            "max"
+          ],
+          "sortBy": "Max",
+          "sortDesc": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 155
+      }
+    },
+    {
+      "id": 40,
+      "type": "table",
+      "title": "【Node】$node 上每個 Pod：Request / 用量 / 尖峰 / Limit（尖峰是過去 $waste_window）",
+      "description": "**視角**：上方「Node」選的那台 Node 上還沒結束的每個 Pod（所有 namespace，加起來等於 Node 表的 Request）\n\n**這是什麼**：**Request 佔 Node** = 這個 Pod 的 Request ÷ Node 可分配；**尖峰** = 過去 $waste_window 最高（CPU 是每 5 分鐘的平均）；Request、Limit 是所有容器加總（沒設的容器不算）。\n\n**怎麼看**：Node 表判定「砍 Request」時，看這裡誰的 Request 佔 Node 最多、尖峰 ÷ Request 又很低（紅）：那就是該砍的，CPU 可以調到尖峰附近，記憶體調到尖峰再留一點餘裕。尖峰 ÷ Request 接近或超過 100% 的不要砍，他偶爾真的用得到。",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${datasource}"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "expr": "((((sum by (namespace, pod) (max by (namespace, pod, container) (kube_pod_container_resource_requests{resource=\"cpu\"} > 0))) * on (namespace, pod) group_left (instance) (max by (namespace, pod, instance) (label_replace(kube_pod_info{node=~\"$node\"}, \"instance\", \"$1\", \"node\", \"(.*)\")) and on (namespace, pod) (max by (namespace, pod) (kube_pod_status_phase{phase=~\"Pending|Running\"}) == 1)))) and on (namespace, pod) (((max by (namespace, pod, instance) (label_replace(kube_pod_info{node=~\"$node\"}, \"instance\", \"$1\", \"node\", \"(.*)\")) and on (namespace, pod) (max by (namespace, pod) (kube_pod_status_phase{phase=~\"Pending|Running\"}) == 1))) * 0)) or (((max by (namespace, pod, instance) (label_replace(kube_pod_info{node=~\"$node\"}, \"instance\", \"$1\", \"node\", \"(.*)\")) and on (namespace, pod) (max by (namespace, pod) (kube_pod_status_phase{phase=~\"Pending|Running\"}) == 1))) * 0 - 1)",
+          "legendFormat": "",
+          "range": false,
+          "instant": true,
+          "format": "table"
+        },
+        {
+          "refId": "B",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "expr": "((((sum by (namespace, pod) (max by (namespace, pod, container) (rate(container_cpu_usage_seconds_total{container!=\"\", container!=\"POD\"}[5m])))) * on (namespace, pod) group_left (instance) (max by (namespace, pod, instance) (label_replace(kube_pod_info{node=~\"$node\"}, \"instance\", \"$1\", \"node\", \"(.*)\")) and on (namespace, pod) (max by (namespace, pod) (kube_pod_status_phase{phase=~\"Pending|Running\"}) == 1)))) and on (namespace, pod) (((max by (namespace, pod, instance) (label_replace(kube_pod_info{node=~\"$node\"}, \"instance\", \"$1\", \"node\", \"(.*)\")) and on (namespace, pod) (max by (namespace, pod) (kube_pod_status_phase{phase=~\"Pending|Running\"}) == 1))) * 0)) or (((max by (namespace, pod, instance) (label_replace(kube_pod_info{node=~\"$node\"}, \"instance\", \"$1\", \"node\", \"(.*)\")) and on (namespace, pod) (max by (namespace, pod) (kube_pod_status_phase{phase=~\"Pending|Running\"}) == 1))) * 0 - 1)",
+          "legendFormat": "",
+          "range": false,
+          "instant": true,
+          "format": "table"
+        },
+        {
+          "refId": "C",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "expr": "((max_over_time(((sum by (namespace, pod) (max by (namespace, pod, container) (rate(container_cpu_usage_seconds_total{container!=\"\", container!=\"POD\"}[5m])))) * on (namespace, pod) group_left (instance) (max by (namespace, pod, instance) (label_replace(kube_pod_info{node=~\"$node\"}, \"instance\", \"$1\", \"node\", \"(.*)\")) and on (namespace, pod) (max by (namespace, pod) (kube_pod_status_phase{phase=~\"Pending|Running\"}) == 1)))[$waste_window:5m])) and on (namespace, pod) (((max by (namespace, pod, instance) (label_replace(kube_pod_info{node=~\"$node\"}, \"instance\", \"$1\", \"node\", \"(.*)\")) and on (namespace, pod) (max by (namespace, pod) (kube_pod_status_phase{phase=~\"Pending|Running\"}) == 1))) * 0)) or (((max by (namespace, pod, instance) (label_replace(kube_pod_info{node=~\"$node\"}, \"instance\", \"$1\", \"node\", \"(.*)\")) and on (namespace, pod) (max by (namespace, pod) (kube_pod_status_phase{phase=~\"Pending|Running\"}) == 1))) * 0 - 1)",
+          "legendFormat": "",
+          "range": false,
+          "instant": true,
+          "format": "table"
+        },
+        {
+          "refId": "D",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "expr": "((((sum by (namespace, pod) (max by (namespace, pod, container) (kube_pod_container_resource_limits{resource=\"cpu\"} > 0))) * on (namespace, pod) group_left (instance) (max by (namespace, pod, instance) (label_replace(kube_pod_info{node=~\"$node\"}, \"instance\", \"$1\", \"node\", \"(.*)\")) and on (namespace, pod) (max by (namespace, pod) (kube_pod_status_phase{phase=~\"Pending|Running\"}) == 1)))) and on (namespace, pod) (((max by (namespace, pod, instance) (label_replace(kube_pod_info{node=~\"$node\"}, \"instance\", \"$1\", \"node\", \"(.*)\")) and on (namespace, pod) (max by (namespace, pod) (kube_pod_status_phase{phase=~\"Pending|Running\"}) == 1))) * 0)) or (((max by (namespace, pod, instance) (label_replace(kube_pod_info{node=~\"$node\"}, \"instance\", \"$1\", \"node\", \"(.*)\")) and on (namespace, pod) (max by (namespace, pod) (kube_pod_status_phase{phase=~\"Pending|Running\"}) == 1))) * 0 - 1)",
+          "legendFormat": "",
+          "range": false,
+          "instant": true,
+          "format": "table"
+        },
+        {
+          "refId": "E",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "expr": "((max_over_time(((sum by (namespace, pod) (max by (namespace, pod, container) (rate(container_cpu_usage_seconds_total{container!=\"\", container!=\"POD\"}[5m])))) * on (namespace, pod) group_left (instance) (max by (namespace, pod, instance) (label_replace(kube_pod_info{node=~\"$node\"}, \"instance\", \"$1\", \"node\", \"(.*)\")) and on (namespace, pod) (max by (namespace, pod) (kube_pod_status_phase{phase=~\"Pending|Running\"}) == 1)))[$waste_window:5m]) / ((sum by (namespace, pod) (max by (namespace, pod, container) (kube_pod_container_resource_requests{resource=\"cpu\"} > 0))) * on (namespace, pod) group_left (instance) (max by (namespace, pod, instance) (label_replace(kube_pod_info{node=~\"$node\"}, \"instance\", \"$1\", \"node\", \"(.*)\")) and on (namespace, pod) (max by (namespace, pod) (kube_pod_status_phase{phase=~\"Pending|Running\"}) == 1)))) and on (namespace, pod) (((max by (namespace, pod, instance) (label_replace(kube_pod_info{node=~\"$node\"}, \"instance\", \"$1\", \"node\", \"(.*)\")) and on (namespace, pod) (max by (namespace, pod) (kube_pod_status_phase{phase=~\"Pending|Running\"}) == 1))) * 0)) or (((max by (namespace, pod, instance) (label_replace(kube_pod_info{node=~\"$node\"}, \"instance\", \"$1\", \"node\", \"(.*)\")) and on (namespace, pod) (max by (namespace, pod) (kube_pod_status_phase{phase=~\"Pending|Running\"}) == 1))) * 0 - 1)",
+          "legendFormat": "",
+          "range": false,
+          "instant": true,
+          "format": "table"
+        },
+        {
+          "refId": "F",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "expr": "((((sum by (namespace, pod) (max by (namespace, pod, container) (kube_pod_container_resource_requests{resource=\"cpu\"} > 0))) * on (namespace, pod) group_left (instance) (max by (namespace, pod, instance) (label_replace(kube_pod_info{node=~\"$node\"}, \"instance\", \"$1\", \"node\", \"(.*)\")) and on (namespace, pod) (max by (namespace, pod) (kube_pod_status_phase{phase=~\"Pending|Running\"}) == 1))) / on (instance) group_left () (max by (instance) (label_replace(kube_node_status_allocatable{resource=\"cpu\"}, \"instance\", \"$1\", \"node\", \"(.*)\")))) and on (namespace, pod) (((max by (namespace, pod, instance) (label_replace(kube_pod_info{node=~\"$node\"}, \"instance\", \"$1\", \"node\", \"(.*)\")) and on (namespace, pod) (max by (namespace, pod) (kube_pod_status_phase{phase=~\"Pending|Running\"}) == 1))) * 0)) or (((max by (namespace, pod, instance) (label_replace(kube_pod_info{node=~\"$node\"}, \"instance\", \"$1\", \"node\", \"(.*)\")) and on (namespace, pod) (max by (namespace, pod) (kube_pod_status_phase{phase=~\"Pending|Running\"}) == 1))) * 0 - 1)",
+          "legendFormat": "",
+          "range": false,
+          "instant": true,
+          "format": "table"
+        },
+        {
+          "refId": "G",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "expr": "((((sum by (namespace, pod) (max by (namespace, pod, container) (kube_pod_container_resource_requests{resource=\"memory\"} > 0))) * on (namespace, pod) group_left (instance) (max by (namespace, pod, instance) (label_replace(kube_pod_info{node=~\"$node\"}, \"instance\", \"$1\", \"node\", \"(.*)\")) and on (namespace, pod) (max by (namespace, pod) (kube_pod_status_phase{phase=~\"Pending|Running\"}) == 1)))) and on (namespace, pod) (((max by (namespace, pod, instance) (label_replace(kube_pod_info{node=~\"$node\"}, \"instance\", \"$1\", \"node\", \"(.*)\")) and on (namespace, pod) (max by (namespace, pod) (kube_pod_status_phase{phase=~\"Pending|Running\"}) == 1))) * 0)) or (((max by (namespace, pod, instance) (label_replace(kube_pod_info{node=~\"$node\"}, \"instance\", \"$1\", \"node\", \"(.*)\")) and on (namespace, pod) (max by (namespace, pod) (kube_pod_status_phase{phase=~\"Pending|Running\"}) == 1))) * 0 - 1)",
+          "legendFormat": "",
+          "range": false,
+          "instant": true,
+          "format": "table"
+        },
+        {
+          "refId": "H",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "expr": "((((sum by (namespace, pod) (max by (namespace, pod, container) (container_memory_working_set_bytes{container!=\"\", container!=\"POD\"}))) * on (namespace, pod) group_left (instance) (max by (namespace, pod, instance) (label_replace(kube_pod_info{node=~\"$node\"}, \"instance\", \"$1\", \"node\", \"(.*)\")) and on (namespace, pod) (max by (namespace, pod) (kube_pod_status_phase{phase=~\"Pending|Running\"}) == 1)))) and on (namespace, pod) (((max by (namespace, pod, instance) (label_replace(kube_pod_info{node=~\"$node\"}, \"instance\", \"$1\", \"node\", \"(.*)\")) and on (namespace, pod) (max by (namespace, pod) (kube_pod_status_phase{phase=~\"Pending|Running\"}) == 1))) * 0)) or (((max by (namespace, pod, instance) (label_replace(kube_pod_info{node=~\"$node\"}, \"instance\", \"$1\", \"node\", \"(.*)\")) and on (namespace, pod) (max by (namespace, pod) (kube_pod_status_phase{phase=~\"Pending|Running\"}) == 1))) * 0 - 1)",
+          "legendFormat": "",
+          "range": false,
+          "instant": true,
+          "format": "table"
+        },
+        {
+          "refId": "I",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "expr": "((max_over_time(((sum by (namespace, pod) (max by (namespace, pod, container) (container_memory_working_set_bytes{container!=\"\", container!=\"POD\"}))) * on (namespace, pod) group_left (instance) (max by (namespace, pod, instance) (label_replace(kube_pod_info{node=~\"$node\"}, \"instance\", \"$1\", \"node\", \"(.*)\")) and on (namespace, pod) (max by (namespace, pod) (kube_pod_status_phase{phase=~\"Pending|Running\"}) == 1)))[$waste_window:5m])) and on (namespace, pod) (((max by (namespace, pod, instance) (label_replace(kube_pod_info{node=~\"$node\"}, \"instance\", \"$1\", \"node\", \"(.*)\")) and on (namespace, pod) (max by (namespace, pod) (kube_pod_status_phase{phase=~\"Pending|Running\"}) == 1))) * 0)) or (((max by (namespace, pod, instance) (label_replace(kube_pod_info{node=~\"$node\"}, \"instance\", \"$1\", \"node\", \"(.*)\")) and on (namespace, pod) (max by (namespace, pod) (kube_pod_status_phase{phase=~\"Pending|Running\"}) == 1))) * 0 - 1)",
+          "legendFormat": "",
+          "range": false,
+          "instant": true,
+          "format": "table"
+        },
+        {
+          "refId": "J",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "expr": "((((sum by (namespace, pod) (max by (namespace, pod, container) (kube_pod_container_resource_limits{resource=\"memory\"} > 0))) * on (namespace, pod) group_left (instance) (max by (namespace, pod, instance) (label_replace(kube_pod_info{node=~\"$node\"}, \"instance\", \"$1\", \"node\", \"(.*)\")) and on (namespace, pod) (max by (namespace, pod) (kube_pod_status_phase{phase=~\"Pending|Running\"}) == 1)))) and on (namespace, pod) (((max by (namespace, pod, instance) (label_replace(kube_pod_info{node=~\"$node\"}, \"instance\", \"$1\", \"node\", \"(.*)\")) and on (namespace, pod) (max by (namespace, pod) (kube_pod_status_phase{phase=~\"Pending|Running\"}) == 1))) * 0)) or (((max by (namespace, pod, instance) (label_replace(kube_pod_info{node=~\"$node\"}, \"instance\", \"$1\", \"node\", \"(.*)\")) and on (namespace, pod) (max by (namespace, pod) (kube_pod_status_phase{phase=~\"Pending|Running\"}) == 1))) * 0 - 1)",
+          "legendFormat": "",
+          "range": false,
+          "instant": true,
+          "format": "table"
+        },
+        {
+          "refId": "K",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "expr": "((max_over_time(((sum by (namespace, pod) (max by (namespace, pod, container) (container_memory_working_set_bytes{container!=\"\", container!=\"POD\"}))) * on (namespace, pod) group_left (instance) (max by (namespace, pod, instance) (label_replace(kube_pod_info{node=~\"$node\"}, \"instance\", \"$1\", \"node\", \"(.*)\")) and on (namespace, pod) (max by (namespace, pod) (kube_pod_status_phase{phase=~\"Pending|Running\"}) == 1)))[$waste_window:5m]) / ((sum by (namespace, pod) (max by (namespace, pod, container) (kube_pod_container_resource_requests{resource=\"memory\"} > 0))) * on (namespace, pod) group_left (instance) (max by (namespace, pod, instance) (label_replace(kube_pod_info{node=~\"$node\"}, \"instance\", \"$1\", \"node\", \"(.*)\")) and on (namespace, pod) (max by (namespace, pod) (kube_pod_status_phase{phase=~\"Pending|Running\"}) == 1)))) and on (namespace, pod) (((max by (namespace, pod, instance) (label_replace(kube_pod_info{node=~\"$node\"}, \"instance\", \"$1\", \"node\", \"(.*)\")) and on (namespace, pod) (max by (namespace, pod) (kube_pod_status_phase{phase=~\"Pending|Running\"}) == 1))) * 0)) or (((max by (namespace, pod, instance) (label_replace(kube_pod_info{node=~\"$node\"}, \"instance\", \"$1\", \"node\", \"(.*)\")) and on (namespace, pod) (max by (namespace, pod) (kube_pod_status_phase{phase=~\"Pending|Running\"}) == 1))) * 0 - 1)",
+          "legendFormat": "",
+          "range": false,
+          "instant": true,
+          "format": "table"
+        },
+        {
+          "refId": "L",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "expr": "((((sum by (namespace, pod) (max by (namespace, pod, container) (kube_pod_container_resource_requests{resource=\"memory\"} > 0))) * on (namespace, pod) group_left (instance) (max by (namespace, pod, instance) (label_replace(kube_pod_info{node=~\"$node\"}, \"instance\", \"$1\", \"node\", \"(.*)\")) and on (namespace, pod) (max by (namespace, pod) (kube_pod_status_phase{phase=~\"Pending|Running\"}) == 1))) / on (instance) group_left () (max by (instance) (label_replace(kube_node_status_allocatable{resource=\"memory\"}, \"instance\", \"$1\", \"node\", \"(.*)\")))) and on (namespace, pod) (((max by (namespace, pod, instance) (label_replace(kube_pod_info{node=~\"$node\"}, \"instance\", \"$1\", \"node\", \"(.*)\")) and on (namespace, pod) (max by (namespace, pod) (kube_pod_status_phase{phase=~\"Pending|Running\"}) == 1))) * 0)) or (((max by (namespace, pod, instance) (label_replace(kube_pod_info{node=~\"$node\"}, \"instance\", \"$1\", \"node\", \"(.*)\")) and on (namespace, pod) (max by (namespace, pod) (kube_pod_status_phase{phase=~\"Pending|Running\"}) == 1))) * 0 - 1)",
+          "legendFormat": "",
+          "range": false,
+          "instant": true,
+          "format": "table"
+        }
+      ],
+      "transformations": [
+        {
+          "id": "merge",
+          "options": {}
+        },
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": {
+              "Time": true,
+              "instance": true
+            },
+            "renameByName": {
+              "Value #A": "CPU（核） Request",
+              "Value #B": "CPU（核） 目前用量",
+              "Value #C": "CPU（核） 尖峰",
+              "Value #D": "CPU（核） Limit",
+              "Value #E": "CPU（核） 尖峰 ÷ Request",
+              "Value #F": "CPU（核） Request 佔 Node",
+              "Value #G": "記憶體 Request",
+              "Value #H": "記憶體 目前用量",
+              "Value #I": "記憶體 尖峰",
+              "Value #J": "記憶體 Limit",
+              "Value #K": "記憶體 尖峰 ÷ Request",
+              "Value #L": "記憶體 Request 佔 Node"
+            },
+            "indexByName": {
+              "namespace": 0,
+              "pod": 1,
+              "Value #A": 2,
+              "Value #B": 3,
+              "Value #C": 4,
+              "Value #D": 5,
+              "Value #E": 6,
+              "Value #F": 7,
+              "Value #G": 8,
+              "Value #H": 9,
+              "Value #I": 10,
+              "Value #J": 11,
+              "Value #K": 12,
+              "Value #L": 13
+            }
+          }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "filterable": false,
+            "align": "auto",
+            "minWidth": 80,
+            "wrapHeaderText": true
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "CPU（核） Request"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "none"
+              },
+              {
+                "id": "decimals",
+                "value": 2
+              },
+              {
+                "id": "mappings",
+                "value": [
+                  {
+                    "type": "value",
+                    "options": {
+                      "-1": {
+                        "text": "沒設",
+                        "color": "#8e8e8e",
+                        "index": 99
+                      }
+                    }
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "CPU（核） 目前用量"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "none"
+              },
+              {
+                "id": "decimals",
+                "value": 2
+              },
+              {
+                "id": "mappings",
+                "value": [
+                  {
+                    "type": "value",
+                    "options": {
+                      "-1": {
+                        "text": "—",
+                        "color": "#8e8e8e",
+                        "index": 99
+                      }
+                    }
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "CPU（核） 尖峰"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "none"
+              },
+              {
+                "id": "decimals",
+                "value": 2
+              },
+              {
+                "id": "mappings",
+                "value": [
+                  {
+                    "type": "value",
+                    "options": {
+                      "-1": {
+                        "text": "—",
+                        "color": "#8e8e8e",
+                        "index": 99
+                      }
+                    }
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "CPU（核） Limit"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "none"
+              },
+              {
+                "id": "decimals",
+                "value": 2
+              },
+              {
+                "id": "mappings",
+                "value": [
+                  {
+                    "type": "value",
+                    "options": {
+                      "-1": {
+                        "text": "沒設",
+                        "color": "#8e8e8e",
+                        "index": 99
+                      }
+                    }
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "CPU（核） 尖峰 ÷ Request"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "percentunit"
+              },
+              {
+                "id": "decimals",
+                "value": 0
+              },
+              {
+                "id": "thresholds",
+                "value": {
+                  "mode": "absolute",
+                  "steps": [
+                    {
+                      "color": "red",
+                      "value": null
+                    },
+                    {
+                      "color": "yellow",
+                      "value": 0.5
+                    },
+                    {
+                      "color": "green",
+                      "value": 1.0
+                    }
+                  ]
+                }
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "thresholds"
+                }
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-background",
+                  "mode": "basic"
+                }
+              },
+              {
+                "id": "custom.displayMode",
+                "value": "color-background"
+              },
+              {
+                "id": "mappings",
+                "value": [
+                  {
+                    "type": "value",
+                    "options": {
+                      "-1": {
+                        "text": "沒設",
+                        "color": "#8e8e8e",
+                        "index": 99
+                      }
+                    }
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "CPU（核） Request 佔 Node"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "percentunit"
+              },
+              {
+                "id": "decimals",
+                "value": 1
+              },
+              {
+                "id": "mappings",
+                "value": [
+                  {
+                    "type": "value",
+                    "options": {
+                      "-1": {
+                        "text": "沒設",
+                        "color": "#8e8e8e",
+                        "index": 99
+                      }
+                    }
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "記憶體 Request"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "bytes"
+              },
+              {
+                "id": "decimals",
+                "value": 1
+              },
+              {
+                "id": "mappings",
+                "value": [
+                  {
+                    "type": "value",
+                    "options": {
+                      "-1": {
+                        "text": "沒設",
+                        "color": "#8e8e8e",
+                        "index": 99
+                      }
+                    }
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "記憶體 目前用量"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "bytes"
+              },
+              {
+                "id": "decimals",
+                "value": 1
+              },
+              {
+                "id": "mappings",
+                "value": [
+                  {
+                    "type": "value",
+                    "options": {
+                      "-1": {
+                        "text": "—",
+                        "color": "#8e8e8e",
+                        "index": 99
+                      }
+                    }
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "記憶體 尖峰"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "bytes"
+              },
+              {
+                "id": "decimals",
+                "value": 1
+              },
+              {
+                "id": "mappings",
+                "value": [
+                  {
+                    "type": "value",
+                    "options": {
+                      "-1": {
+                        "text": "—",
+                        "color": "#8e8e8e",
+                        "index": 99
+                      }
+                    }
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "記憶體 Limit"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "bytes"
+              },
+              {
+                "id": "decimals",
+                "value": 1
+              },
+              {
+                "id": "mappings",
+                "value": [
+                  {
+                    "type": "value",
+                    "options": {
+                      "-1": {
+                        "text": "沒設",
+                        "color": "#8e8e8e",
+                        "index": 99
+                      }
+                    }
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "記憶體 尖峰 ÷ Request"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "percentunit"
+              },
+              {
+                "id": "decimals",
+                "value": 0
+              },
+              {
+                "id": "thresholds",
+                "value": {
+                  "mode": "absolute",
+                  "steps": [
+                    {
+                      "color": "red",
+                      "value": null
+                    },
+                    {
+                      "color": "yellow",
+                      "value": 0.5
+                    },
+                    {
+                      "color": "green",
+                      "value": 1.0
+                    }
+                  ]
+                }
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "thresholds"
+                }
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-background",
+                  "mode": "basic"
+                }
+              },
+              {
+                "id": "custom.displayMode",
+                "value": "color-background"
+              },
+              {
+                "id": "mappings",
+                "value": [
+                  {
+                    "type": "value",
+                    "options": {
+                      "-1": {
+                        "text": "沒設",
+                        "color": "#8e8e8e",
+                        "index": 99
+                      }
+                    }
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "記憶體 Request 佔 Node"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "percentunit"
+              },
+              {
+                "id": "decimals",
+                "value": 1
+              },
+              {
+                "id": "mappings",
+                "value": [
+                  {
+                    "type": "value",
+                    "options": {
+                      "-1": {
+                        "text": "沒設",
+                        "color": "#8e8e8e",
+                        "index": 99
+                      }
+                    }
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "namespace"
+            },
+            "properties": [
+              {
+                "id": "custom.filterable",
+                "value": true
+              },
+              {
+                "id": "custom.width",
+                "value": 120
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "pod"
+            },
+            "properties": [
+              {
+                "id": "custom.filterable",
+                "value": true
+              },
+              {
+                "id": "custom.width",
+                "value": 220
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "showHeader": true,
+        "sortBy": [
+          {
+            "displayName": "記憶體 Request 佔 Node",
+            "desc": true
+          }
+        ],
+        "footer": {
+          "show": false
+        }
+      },
+      "gridPos": {
+        "h": 12,
+        "w": 24,
+        "x": 0,
+        "y": 163
+      }
+    },
+    {
+      "id": 41,
+      "type": "row",
+      "title": "6. 【浪費】長期用量遠低於 Request：找出可以調低 Request 的容器（過去 $waste_window 平均）",
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 175
+      },
+      "panels": []
+    },
+    {
+      "id": 42,
       "type": "table",
       "title": "【Workload】CPU：長期用量遠低於 Request（過去 $waste_window 平均）",
       "description": "**視角**：叢集內每一個 Workload 的每個容器（同一個 Workload 的 Pod 共用一份設定，容器只列一次）\n\n**這是什麼**：只列**過去 $waste_window 平均用量不到 Request 一半**的容器。**平均用量／Pod** = 這段期間每個 Pod 的平均用量，再取所有 Pod 的平均（rollout 換掉的舊 Pod 也算）；**尖峰／Pod** = 最高的那個 Pod 在這段期間的最高值（每 5 分鐘的平均）；**Request／Pod** = 目前每個 Pod 設的 Request；**沒用到的 Request** = (Request − 平均用量) × 目前 Pod 數，就是可以還給 Node 的量。新上線不滿 $waste_window 的 Pod 只算它活著的時間。\n\n**怎麼看**：依「沒用到的 Request」排序，越上面浪費越多。尖峰 ÷ Request 也很低（紅）→ 連最忙的時候都用不到，可以放心把 Request 調到尖峰附近；尖峰 ÷ Request 接近或超過 100% → 平常閒、偶爾會衝，Request 可以調到平均附近，靠 Limit 讓它衝（CPU 不夠只會變慢，不會被殺）。",
@@ -6026,11 +8792,11 @@
         "h": 10,
         "w": 24,
         "x": 0,
-        "y": 132
+        "y": 176
       }
     },
     {
-      "id": 31,
+      "id": 43,
       "type": "table",
       "title": "【Workload】記憶體：長期用量遠低於 Request（過去 $waste_window 平均）",
       "description": "**視角**：叢集內每一個 Workload 的每個容器（同一個 Workload 的 Pod 共用一份設定，容器只列一次）\n\n**這是什麼**：只列**過去 $waste_window 平均用量不到 Request 一半**的容器。**平均用量／Pod** = 這段期間每個 Pod 的平均用量，再取所有 Pod 的平均（rollout 換掉的舊 Pod 也算）；**尖峰／Pod** = 最高的那個 Pod 在這段期間的最高值；**Request／Pod** = 目前每個 Pod 設的 Request；**沒用到的 Request** = (Request − 平均用量) × 目前 Pod 數，就是可以還給 Node 的量。新上線不滿 $waste_window 的 Pod 只算它活著的時間。\n\n**怎麼看**：依「沒用到的 Request」排序，越上面浪費越多。記憶體不像 CPU 可以借：Request 建議調到**尖峰**附近再留一點餘裕，不要調到平均，否則 Node 記憶體不夠時會先被驅逐；尖峰 ÷ Request 也很低（紅）→ 可以放心調低。",
@@ -6563,11 +9329,11 @@
         "h": 10,
         "w": 24,
         "x": 0,
-        "y": 142
+        "y": 186
       }
     },
     {
-      "id": 32,
+      "id": 44,
       "type": "timeseries",
       "title": "【叢集】CPU：Request 總和 vs 實際用量（核）",
       "description": "**視角**：上方 namespace 篩選內，所有有設 CPU Request 且正在跑的容器加總\n\n**這是什麼**：排程器保留的 CPU（Request）跟實際用掉的 CPU。兩條線中間的空間就是被保留卻沒用到的量。\n\n**怎麼看**：時間範圍拉長（例如 7 天）看長期：兩條線差距一直很大 → Request 普遍設太高；差距只在離峰時很大 → 正常的日夜起伏。",
@@ -6632,11 +9398,11 @@
         "h": 8,
         "w": 12,
         "x": 0,
-        "y": 152
+        "y": 196
       }
     },
     {
-      "id": 33,
+      "id": 45,
       "type": "timeseries",
       "title": "【叢集】記憶體：Request 總和 vs 實際用量",
       "description": "**視角**：上方 namespace 篩選內，所有有設記憶體 Request 且正在跑的容器加總\n\n**這是什麼**：排程器保留的記憶體（Request）跟實際用掉的記憶體（working set）。兩條線中間的空間就是被保留卻沒用到的量。\n\n**怎麼看**：時間範圍拉長（例如 7 天）看長期：兩條線差距一直很大 → Request 普遍設太高；差距只在離峰時很大 → 正常的日夜起伏。",
@@ -6701,11 +9467,11 @@
         "h": 8,
         "w": 12,
         "x": 12,
-        "y": 152
+        "y": 196
       }
     },
     {
-      "id": 34,
+      "id": 46,
       "type": "timeseries",
       "title": "【Workload】沒用到的 CPU Request（核）Top 10",
       "description": "**視角**：叢集內每一個 Workload（該 Workload 所有 Pod 合計）\n\n**這是什麼**：Request − 實際用量（只算有設 Request 的容器，所有 Pod 加總）。\n\n**怎麼看**：時間範圍拉長（例如 7 天）看長期：兩條線差距一直很大 → Request 普遍設太高；差距只在離峰時很大 → 正常的日夜起伏。一直在 Top 10 的，到上方表格看是哪個容器。",
@@ -6759,11 +9525,11 @@
         "h": 8,
         "w": 12,
         "x": 0,
-        "y": 160
+        "y": 204
       }
     },
     {
-      "id": 35,
+      "id": 47,
       "type": "timeseries",
       "title": "【Workload】沒用到的記憶體 Request Top 10",
       "description": "**視角**：叢集內每一個 Workload（該 Workload 所有 Pod 合計）\n\n**這是什麼**：Request − 實際用量（只算有設 Request 的容器，所有 Pod 加總）。\n\n**怎麼看**：時間範圍拉長（例如 7 天）看長期：兩條線差距一直很大 → Request 普遍設太高；差距只在離峰時很大 → 正常的日夜起伏。一直在 Top 10 的，到上方表格看是哪個容器。",
@@ -6817,7 +9583,7 @@
         "h": 8,
         "w": 12,
         "x": 12,
-        "y": 160
+        "y": 204
       }
     }
   ]

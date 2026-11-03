@@ -56,7 +56,8 @@ OCP 沒有特別設定時，不會限制 Pod 的網路頻寬與磁碟讀寫速�
 | 2.【Workload】共用資源與重啟 | 重啟、網路流量與丟包、磁碟寫入、可寫層用量 |
 | 3.【Workload】Limit 相關 Top 10 | CPU / 記憶體用量 ÷ Limit、throttling、重啟隨時間的變化 |
 | 4.【Workload】共用資源 Top 10 | 沒設 Limit 的容器 CPU、記憶體用量，網路、磁碟這些 limit 管不到、會影響同 Node 鄰居的指標隨時間的變化 |
-| 5.【浪費】長期用量遠低於 Request | 上方「浪費分析平均區間」選 1 / 7 / 14 / 30 天（預設 7 天）。Node 表：Request ÷ 可分配 vs 平均用量 ÷ 可分配、佔住沒用；CPU、記憶體各一張容器表：平均用量、尖峰、Request（每個 Pod）、平均 / 尖峰 ÷ Request、沒用到的 Request（全部 Pod）；叢集 Request 總和 vs 實際用量、沒用到的 Request Top 10 趨勢 |
+| 5.【容量】Request 是不是真的快滿 | 排不進來的 Pod、排程失敗次數、排得下最大 Pod 的 Node 數、最大 Pod 的 Request、叢集 Request ÷ 可分配；CPU、記憶體各一張 Node 表：可排程狀態、Pod 數 ÷ 上限、可分配、Request / 目前 / 平均 / 尖峰 / Limit ÷ 可分配、佔住沒用、剩餘可排、**判定**；排不進來的 Pod 明細與趨勢、各 Node Request ÷ 可分配 Top 10；上方「Node」選一台看每個 Pod 的 Request / 用量 / 尖峰 / Limit |
+| 6.【浪費】長期用量遠低於 Request | 上方「長期分析區間」選 1 / 7 / 14 / 30 天（預設 7 天）。CPU、記憶體各一張容器表：平均用量、尖峰、Request（每個 Pod）、平均 / 尖峰 ÷ Request、沒用到的 Request（全部 Pod）；叢集 Request 總和 vs 實際用量、沒用到的 Request Top 10 趨勢 |
 
 注意事項：
 
@@ -74,11 +75,17 @@ OCP 沒有特別設定時，不會限制 Pod 的網路頻寬與磁碟讀寫速�
 - **預設排除系統 namespace**：`openshift.*|kube-.*`，可在上方「排除的 Namespace」修改或清空。
 - **點擊跳轉只支援 Deployment**：細節 Dashboard 以 Pod 名稱規則對應 Deployment，StatefulSet、DaemonSet 點進去會沒有資料。
 - **使用 hostNetwork 的 Pod**：網路指標會是整台 Node 的流量，排名可能偏高。
-- **第 5 區浪費分析看的是長期平均**，不是結束前 5 分鐘：
-  - 從時間範圍結束點往回推「浪費分析平均區間」；容器表只列**平均用量不到 Request 一半**的容器，依「沒用到的 Request」排序。
+- **第 5 區容量：先確定真的排不下，再砍 Request**：
+  - 排程器只看 Request，不看用量：Request ÷ 可分配滿了，新 Pod 就排不進這台 Node，就算機器很閒。**剩餘可排** = 可分配 − Request，新 Pod 的 Request 要小於它。
+  - **判定**：Request ≥ 90% 且過去 N 天尖峰 ≥ 70% → 真的滿，加 Node；Request ≥ 90% 但尖峰 < 70% → 佔住沒用，砍 Request；Request ≥ 80% → 快滿。
+  - 只有一兩台滿、沒有排不進來的 Pod、還有 Node 排得下最大的 Pod → 排程器會放到別台，偶爾 Request 設高不用急著砍；很多台滿、開始有 Pod 排不進來，才要動手（到 Node 明細或第 6 區找對象）。
+  - 排不進來的 Pod 來自 kube-state-metrics（`kube_pod_status_unschedulable`）；排程失敗次數來自排程器（`scheduler_schedule_attempts_total`、`scheduler_pending_pods`），資料來源沒收集排程器指標時顯示「沒收集」。原因文字（例如 `Insufficient cpu`）只在事件裡：`oc get events -A --field-selector reason=FailedScheduling`。
+  - 可排程：有 NoSchedule / NoExecute taint（例如 master）或被 cordon 的 Node 不算進「排得下最大 Pod 的 Node 數」、「叢集 Request ÷ 可分配」。用量是整台 Node（含系統程序），可能超過可分配的 100%。
+  - Node 層級（Node 表、Node 明細、排不進來的 Pod）不受 namespace 篩選影響；「最大 Pod 的 Request」只看篩選內的 namespace。
+- **第 6 區浪費分析看的是長期平均**，不是結束前 5 分鐘：
+  - 從時間範圍結束點往回推「長期分析區間」；容器表只列**平均用量不到 Request 一半**的容器，依「沒用到的 Request」排序。
   - 平均是**每個 Pod 的平均再取平均**，rollout 換掉的舊 Pod 也算，Pod 數變動不會讓數字加倍；新上線不滿區間的 Pod 只算它活著的時間。CPU 是每 5 分鐘的 rate 取平均（直接 `rate(...[7d])` 會除以整個 7 天，換過 Pod 的會被低估）。
   - **沒用到的 Request** = (Request − 平均用量) × 目前 Pod 數。CPU 不夠只會變慢，Request 可以調到平均附近、靠 Limit 衝；記憶體不夠會被驅逐，Request 建議調到**尖峰**附近再留餘裕。
-  - Node 表不受 namespace 篩選影響：排程器看所有 Pod 的 Request，Request ÷ 可分配滿了就排不進新 Pod，就算機器其實很閒。
   - 選 30 天前先確認 Prometheus 保留期（OCP 預設 15 天），超過的部分沒有資料，只會算有資料的那段；區間越長查詢越久。
 
 ## Kong → Router → AP 延遲鏈路分析

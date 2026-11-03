@@ -19,7 +19,7 @@ DEV = 'device=~"sd[a-z]+|nvme[0-9]+n[0-9]+|vd[a-z]+|xvd[a-z]+"'
 NIC = 'device=~"(ens|eth|eno|enp|bond)[a-z0-9]*"'
 FS = 'mountpoint=~"/sysroot|/var|/", fstype!~"tmpfs|overlay|squashfs"'
 
-WIN = "$waste_window"    # waste section: averages over this many days before the end of the time range
+WIN = "$waste_window"    # capacity / waste sections: averages and peaks over this many days before the end of the time range
 
 
 def pod_to_wl(seen=lambda sel: sel):
@@ -328,7 +328,33 @@ def ts(line, title, expr, legend, unit, description, w=12, h=8):
     }, w, h)
 
 
-KEY_WIDTH = {"namespace": 120, "workload": 150, "workload_type": 100, "instance": 140, "container": 130}
+def stat(line, title, expr, unit, thr, description, w=4, h=4, legend=None, decimals=None, no_value=None):
+    """expr can also be a list (one value per query); unit / decimals then can be lists too."""
+    exprs = expr if isinstance(expr, list) else [expr]
+    units = unit if isinstance(unit, list) else [unit] * len(exprs)
+    decs = decimals if isinstance(decimals, list) else [decimals] * len(exprs)
+    overrides = []
+    for i, (u, d) in enumerate(zip(units, decs)):
+        props = [{"id": "unit", "value": u}] + ([{"id": "decimals", "value": d}] if d is not None else [])
+        overrides.append({"matcher": {"id": "byFrameRefID", "options": chr(65 + i)}, "properties": props})
+    defaults = {"color": {"mode": "thresholds"},
+                "thresholds": {"mode": "absolute", "steps": thr or steps(base="text")}}
+    if no_value:
+        defaults["noValue"] = no_value
+    line.add({
+        "id": nid(), "type": "stat", "title": title, "description": description, "datasource": DS,
+        "targets": [{"refId": chr(65 + i), "datasource": DS, "expr": e, "legendFormat": lg,
+                     "range": False, "instant": True}
+                    for i, (e, lg) in enumerate(zip(exprs, legend or [""] * len(exprs)))],
+        "fieldConfig": {"defaults": defaults, "overrides": overrides},
+        "options": {"reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": False},
+                    "colorMode": "background" if thr else "none", "graphMode": "none",
+                    "textMode": "value_and_name" if len(exprs) > 1 else "value",
+                    "justifyMode": "center", "orientation": "horizontal"},
+    }, w, h)
+
+
+KEY_WIDTH = {"namespace": 120, "workload": 150, "workload_type": 100, "instance": 140, "container": 130, "pod": 220}
 
 
 def table(line, title, key_cols, columns, description, sort_by, w=24, h=12, key_rename=None, key_links=None, base=None,
@@ -403,9 +429,10 @@ text(L, """**叢集風險總覽**：先找出嫌疑的 Node 與 Workload，再�
 1. **哪台 Node 吃緊** → 第 1 區
 2. **哪個 Workload 用量大、快碰到 Limit、Pod 之間不平均** → 第 2 區（點表頭排序、名稱欄的漏斗篩選，紅 / 黃格要注意）
 3. **是什麼時候飆起來的** → 第 3、4 區 Top 10 趨勢
-4. **誰長期用很少、Request 卻設很高（浪費）** → 第 5 區，上方「浪費分析平均區間」選幾天（預設 7 天）
+4. **Request 是不是真的快滿、有沒有 Pod 排不進來、該加 Node 還是該砍 Request** → 第 5 區（上方「Node」選一台看每個 Pod 的明細）
+5. **誰長期用很少、Request 卻設很高（浪費）** → 第 6 區
 
-表格是時間範圍**結束前 5 分鐘**的值（第 5 區是結束前 N 天的平均）；百分比都是 **用量 ÷ 欄名寫的分母**；預設排除 `openshift*`、`kube-*` namespace。""", h=7)
+上方「長期分析區間」選幾天（預設 7 天），第 5 區的平均 / 尖峰和第 6 區都用它。表格是時間範圍**結束前 5 分鐘**的值（另有寫「過去 N 天」的除外）；百分比都是 **用量 ÷ 欄名寫的分母**；預設排除 `openshift*`、`kube-*` namespace（第 5 區的 Node 層級不排除）。""", h=8)
 L.newline()
 
 # ---------------------------------------------------------------- 1 nodes
@@ -621,65 +648,233 @@ ts(L, "【Workload】可寫層用量 Top 10",
    desc(V_CLUSTER_WL, "容器在 Node 本機磁碟上佔用的空間，持續成長可能把 Node 磁碟寫滿。", WL_HOW))
 L.newline()
 
-# ---------------------------------------------------------------- 5 waste
-row("5. 【浪費】長期用量遠低於 Request：Request 佔住 Node，別人排不進來（過去 $waste_window 平均）")
+# ---------------------------------------------------------------- 5 capacity
+row("5. 【容量】Request 是不是真的快滿：有沒有 Pod 排不進來、該加 Node 還是該砍 Request")
 
 
 # Node 層級不套 namespace 篩選:不管誰的 Request,都會佔住 Node 的可分配量
+def on_node(metric):
+    """kube-state-metrics node series, relabelled to instance = node name (same as node-exporter)."""
+    return f'max by (instance) (label_replace({metric}, "instance", "$1", "node", "(.*)"))'
+
+
 def n_alloc(resource):
-    return (f'max by (instance) (label_replace(kube_node_status_allocatable{{resource="{resource}"}},'
-            ' "instance", "$1", "node", "(.*)"))')
+    return on_node(f'kube_node_status_allocatable{{resource="{resource}"}}')
 
 
-def n_requested(resource):
-    """Requests of the pods on each node that are still pending or running (finished pods do not hold any)."""
-    req = f'max by (namespace, pod, container) (kube_pod_container_resource_requests{{resource="{resource}"}})'
-    live = 'max by (namespace, pod) (kube_pod_status_phase{phase=~"Pending|Running"}) == 1'
-    node = ('label_replace(max by (namespace, pod, node) (kube_pod_info{node!=""}),'
-            ' "instance", "$1", "node", "(.*)")')
-    return (f'sum by (instance) (({req} and on (namespace, pod) ({live}))'
-            f' * on (namespace, pod) group_left (instance) {node})')
+# 還沒結束的 Pod (Pending / Running) 才會佔住 Request
+LIVE = 'max by (namespace, pod) (kube_pod_status_phase{phase=~"Pending|Running"}) == 1'
 
 
+def pods_on(node):
+    """Live pods on the nodes matching `node` (labels: namespace, pod, instance; value 1)."""
+    return (f'(max by (namespace, pod, instance) (label_replace(kube_pod_info{{node=~"{node}"}},'
+            f' "instance", "$1", "node", "(.*)")) and on (namespace, pod) ({LIVE}))')
+
+
+PODS_ON_ANY = pods_on(".+")
+
+
+def n_requested(resource, kind="requests"):
+    """Requests (or limits) of the live pods on each node; 0 on a node without any."""
+    spec_ct = f'max by (namespace, pod, container) (kube_pod_container_resource_{kind}{{resource="{resource}"}})'
+    return (f'(sum by (instance) ({spec_ct} * on (namespace, pod) group_left (instance) {PODS_ON_ANY})'
+            f' or {n_alloc(resource)} * 0)')
+
+
+N_LIVE_PODS = f'(count by (instance) ({PODS_ON_ANY}) or {n_alloc("pods")} * 0)'
+CORDON = on_node('kube_node_spec_unschedulable')
+TAINT = on_node('kube_node_spec_taint{effect=~"NoSchedule|NoExecute"}')
+# 0 可排程、1 有 NoSchedule / NoExecute taint (一般 Pod 排不上)、2 被 cordon
+SCHED = f'((({CORDON}) == 1) * 2 or ({TAINT}) * 0 + 1 or ({CORDON}) * 0)'
+SCHED_OK = f'({SCHED} == 0)'
+SCHED_MAP = [{"type": "value", "options": {"0": {"text": "可排程"}, "1": {"text": "有 taint"},
+                                           "2": {"text": "停止排程", "color": "yellow"}}}]
+
+N_CPU_NOW = f'({N_CORES}) * ({n_cpu(W5)})'
 N_CPU_AVG = f'({N_CORES}) * ({n_cpu(WIN)})'
+N_CPU_PEAK = f'max_over_time((({N_CORES}) * ({n_cpu("5m")}))[{WIN}:5m])'
+N_MEM_NOW = 'max by (instance) (node_memory_MemTotal_bytes - node_memory_MemAvailable_bytes)'
 N_MEM_AVG = (f'max by (instance) (avg_over_time(node_memory_MemTotal_bytes[{WIN}])'
              f' - avg_over_time(node_memory_MemAvailable_bytes[{WIN}]))')
+N_MEM_PEAK = f'max_over_time(({N_MEM_NOW})[{WIN}:5m])'
 
 
-def n_waste(used_avg, resource):
-    """(Request ÷ allocatable, average usage ÷ allocatable, the part held by requests but not used)."""
-    req = f'({n_requested(resource)}) / ({n_alloc(resource)})'
-    used = f'({used_avg}) / ({n_alloc(resource)})'
-    return req, used, f'clamp_min({req} - {used}, 0)'
+def n_free(resource):
+    """Allocatable not yet taken by requests: what a new pod can still ask for on this node."""
+    return f'clamp_min(({n_alloc(resource)}) - {n_requested(resource)}, 0)'
 
 
-N_CPU_REQ, N_CPU_USED, N_CPU_IDLE = n_waste(N_CPU_AVG, "cpu")
-N_MEM_REQ, N_MEM_USED, N_MEM_IDLE = n_waste(N_MEM_AVG, "memory")
 FULL = steps((Y, 0.8), (RD, 0.9))
 HELD = steps((Y, 0.3), (RD, 0.5))
-L = Line()
-table(L, "【Node】Request 佔住多少 vs 過去 $waste_window 平均實際用多少", ["instance"], [
-    ("CPU 可分配（核）", n_alloc("cpu"), "none", None, 1, None),
-    ("CPU Request ÷ 可分配", N_CPU_REQ, "percentunit", FULL, 0, None),
-    ("CPU 平均用量 ÷ 可分配", N_CPU_USED, "percentunit", None, 0, None),
-    ("CPU 佔住沒用", N_CPU_IDLE, "percentunit", HELD, 0, None),
-    ("記憶體可分配", n_alloc("memory"), "bytes", None, 1, None),
-    ("記憶體 Request ÷ 可分配", N_MEM_REQ, "percentunit", FULL, 0, None),
-    ("記憶體平均用量 ÷ 可分配", N_MEM_USED, "percentunit", None, 0, None),
-    ("記憶體佔住沒用", N_MEM_IDLE, "percentunit", HELD, 0, None),
-], desc("叢集內每一台 Node（所有 namespace 的 Pod 都算，不受上方 namespace 篩選影響）",
-        "排程器只看 Request：Request ÷ 可分配滿了，新的 Pod 就排不進這台 Node，就算機器其實很閒。"
-        "**Request ÷ 可分配** = 這台 Node 上還在跑（Pending / Running）的 Pod 的 Request 加總 ÷ 可分配量（目前）；"
-        "**平均用量 ÷ 可分配** = 整台 Node 過去 $waste_window 的平均用量（CPU：非 idle 時間；記憶體：總量 − 可用）÷ 可分配量；"
-        "**佔住沒用** = 兩者相減：被 Request 保留起來、卻沒有在用的比例。",
-        "Request ÷ 可分配是紅 / 黃、佔住沒用也很高 → 這台 Node 是被「Request 設太高」塞滿，不是真的忙；"
-        "到下方兩張表找是哪些容器，把 Request 調低就能空出位置。"),
-    sort_by="記憶體佔住沒用", h=8, key_rename={"instance": "Node"},
-    base="max by (instance) (node_memory_MemTotal_bytes) * 0")
-L.newline()
-
 LOW_USE = steps((Y, 0.2), (G, 0.5), base=RD)
 PEAK_USE = steps((Y, 0.5), (G, 1.0), base=RD)
+VERDICT = steps((Y, 1), ("orange", 2), (RD, 3))
+VERDICT_MAP = [{"type": "value", "options": {
+    "0": {"text": "還有空間"}, "1": {"text": "快滿"},
+    "2": {"text": "Request 滿、沒在用 → 砍 Request"}, "3": {"text": "真的滿 → 加 Node"}}}]
+
+
+def capacity_cols(resource, now, avg, peak, unit, decimals, suffix, limit_thr):
+    alloc = n_alloc(resource)
+
+    def r(e):
+        return f'({e}) / ({alloc})'
+
+    req, peak_r = r(n_requested(resource)), r(peak)
+    # 3 = Request 滿而且尖峰也高 (真的滿)、2 = Request 滿但尖峰不高 (佔住沒用)、1 = Request 快滿 (或沒有用量資料)
+    verdict = (f'(({req} >= 0.9) and ({peak_r} >= 0.7)) * 0 + 3'
+               f' or (({req} >= 0.9) and ({peak_r} < 0.7)) * 0 + 2'
+               f' or ({req} >= 0.8) * 0 + 1 or {req} * 0')
+    return [
+        ("可排程", SCHED, "none", None, 0, SCHED_MAP),
+        ("Pod 數 ÷ 上限", f'({N_LIVE_PODS}) / ({n_alloc("pods")})', "percentunit", FULL, 0, None),
+        (f"可分配{suffix}", alloc, unit, None, decimals, None),
+        ("Request ÷ 可分配", req, "percentunit", FULL, 0, None),
+        ("目前用量 ÷ 可分配", r(now), "percentunit", FULL, 0, None),
+        ("平均用量 ÷ 可分配", r(avg), "percentunit", None, 0, None),
+        ("尖峰 ÷ 可分配", peak_r, "percentunit", FULL, 0, None),
+        ("Limit ÷ 可分配", r(n_requested(resource, "limits")), "percentunit", limit_thr, 0, None),
+        ("佔住沒用", f'clamp_min({req} - {r(avg)}, 0)', "percentunit", HELD, 0, None),
+        (f"剩餘可排{suffix}", n_free(resource), unit, None, decimals, None),
+        ("判定", verdict, "none", VERDICT, 0, VERDICT_MAP),
+    ]
+
+
+V_NODE_ALL = "叢集內每一台 Node（所有 namespace 的 Pod 都算，不受上方 namespace 篩選影響）"
+CAP_WHAT = ("排程器只看 Request：Request ÷ 可分配滿了，新的 Pod 就排不進這台 Node，就算機器其實很閒。"
+            "**可分配** = Node 扣掉系統保留後給 Pod 用的量（排程的真實上限）；"
+            "**Request ÷ 可分配** = 這台 Node 上還沒結束（Pending / Running）的 Pod 的 Request 加總 ÷ 可分配（目前）；"
+            "**目前 / 平均 / 尖峰用量** = 整台 Node 結束前 5 分鐘 / 過去 $waste_window 平均 / 過去 $waste_window 最高{peak}"
+            "（含系統程序，所以可能超過 100%）；"
+            "**Limit ÷ 可分配** = Limit 加總（只算有設的容器），超過 100% 代表大家同時衝到 Limit 時 Node 會不夠{limit}；"
+            "**佔住沒用** = Request ÷ 可分配 − 平均用量 ÷ 可分配；**剩餘可排** = 可分配 − Request，新 Pod 的 Request 要小於它才排得進來。")
+CAP_HOW = ("看「判定」：**真的滿 → 加 Node**（Request ≥ 90% 而且尖峰 ≥ 70%）；"
+           "**Request 滿、沒在用 → 砍 Request**（Request ≥ 90% 但尖峰 < 70%），到第 6 區找是哪些容器，或在下方選這台 Node 看明細；"
+           "**快滿** = Request ≥ 80%。只有一兩台滿、上方「排不進來的 Pod」是 0、還有 Node 排得下最大的 Pod → 排程器會放到別台，不急著砍；"
+           "很多台滿而且開始有 Pod 排不進來，才是要動手的時候。")
+L = Line()
+stat(L, "排不進來的 Pod（目前）", f'count(max by (namespace, pod) (kube_pod_status_unschedulable) == 1) or vector(0)',
+     "none", steps((RD, 1)),
+     desc("叢集內所有 namespace", "排程器找不到任何一台 Node 放得下的 Pod（kube-state-metrics 的 PodScheduled=False、reason=Unschedulable）。"
+          "原因可能是 Request 不夠、taint、affinity、PVC 所在區域。",
+          "大於 0 就看下方「排不進來的 Pod」表。原因文字（例如 Insufficient cpu）只在事件裡，不是指標："
+          "`oc get events -A --field-selector reason=FailedScheduling`"))
+stat(L, "排程失敗次數（時間範圍內）",
+     'sum(increase(scheduler_schedule_attempts_total{result="unschedulable"}[$__range]))', "none", steps((Y, 1)),
+     desc("叢集的排程器（openshift-kube-scheduler）",
+          "排程器嘗試排 Pod 卻找不到 Node 的次數。同一個 Pod 會一直重試，所以次數會比 Pod 數多。",
+          "時間範圍拉長（例如 7 天）看最近有沒有發生過，「排不進來的 Pod」只看得到現在。沒資料代表這個資料來源沒有收集排程器指標，改看下方趨勢圖的 kube-state-metrics 那條線。"),
+     no_value="沒收集")
+MAX_POD = {r: f'max(sum by (namespace, pod) ({spec("requests", r)} and on (namespace, pod) ({LIVE})))'
+           for r in ("cpu", "memory")}
+FIT = (f'count(({n_free("cpu")} >= scalar({MAX_POD["cpu"]})) and on (instance) ({n_free("memory")} >= scalar({MAX_POD["memory"]}))'
+       f' and on (instance) {SCHED_OK}) or vector(0)')
+stat(L, "排得下最大 Pod 的 Node 數", FIT, "none", steps((Y, 1), (G, 3), base=RD),
+     desc("可排程（沒有 cordon、沒有 NoSchedule taint）的 Node",
+          "剩餘可排的 CPU 和記憶體都大於右邊「最大的 Pod」的 Node 有幾台。",
+          "0 台 → 目前最大的 Workload 一 rollout 或擴容，新 Pod 就會排不進來；1–2 台 → 快沒位置了。"))
+stat(L, "最大 Pod 的 Request", [MAX_POD["cpu"], MAX_POD["memory"]], ["none", "bytes"], None,
+     desc("上方 namespace 篩選內，還沒結束的 Pod", "單一 Pod 的 Request（所有容器加總）最大是多少，CPU 和記憶體分開取。",
+          "跟下方 Node 表的「剩餘可排」比：剩餘可排比它小的 Node，排不下這種大小的 Pod。"),
+     legend=["CPU（核）", "記憶體"], decimals=[2, 1])
+CL_REQ = {r: f'sum({n_requested(r)} and on (instance) {SCHED_OK}) / sum({n_alloc(r)} and on (instance) {SCHED_OK})'
+          for r in ("cpu", "memory")}
+stat(L, "叢集 Request ÷ 可分配", [CL_REQ["cpu"], CL_REQ["memory"]], "percentunit", FULL,
+     desc("可排程的 Node 加總", "所有可排程 Node 的 Request 加總 ÷ 可分配加總。", "接近 80% 以上，代表整個叢集都快排不下，不只是單一 Node。"),
+     legend=["CPU", "記憶體"], decimals=0, w=8)
+L.newline()
+
+L = Line()
+table(L, "【Node】CPU：Request vs 用量 vs 可分配（Request、目前是結束前 5 分鐘；平均、尖峰是過去 $waste_window）", ["instance"],
+      capacity_cols("cpu", N_CPU_NOW, N_CPU_AVG, N_CPU_PEAK, "none", 1, "（核）", steps((Y, 2), (RD, 3))),
+      desc(V_NODE_ALL, CAP_WHAT.format(peak="（每 5 分鐘的平均）", limit="，CPU 只會變慢、被 throttling"), CAP_HOW),
+      sort_by="判定", h=9, key_rename={"instance": "Node"}, base=f'({n_alloc("pods")}) * 0')
+L.newline()
+L = Line()
+table(L, "【Node】記憶體：Request vs 用量 vs 可分配（Request、目前是結束前 5 分鐘；平均、尖峰是過去 $waste_window）", ["instance"],
+      capacity_cols("memory", N_MEM_NOW, N_MEM_AVG, N_MEM_PEAK, "bytes", 1, "", steps((Y, 1.0), (RD, 1.5))),
+      desc(V_NODE_ALL, CAP_WHAT.format(peak="", limit="，記憶體會 OOMKilled 或被驅逐"),
+           CAP_HOW + "記憶體不像 CPU 可以借，尖峰 ÷ 可分配很高的 Node 不要再砍 Request 塞更多 Pod。"),
+      sort_by="判定", h=9, key_rename={"instance": "Node"}, base=f'({n_alloc("pods")}) * 0')
+L.newline()
+
+ALL_CT = 'container!="", container!="POD"'
+
+
+def pod_spec_all(kind, resource):
+    """Request or limit per pod in every namespace (only containers that set one)."""
+    return 'sum by (namespace, pod) (%s)' % one(f'kube_pod_container_resource_{kind}{{resource="{resource}"}} > 0')
+
+
+UNSCHED = 'max by (namespace, pod) (kube_pod_status_unschedulable) == 1'
+L = Line()
+table(L, "【Pod】排不進來的 Pod（目前）", ["namespace", "pod"], [
+    ("已經等了", f'time() - max by (namespace, pod) (kube_pod_created)', "s", None, 0, None),
+    ("CPU Request（核）", pod_spec_all("requests", "cpu"), "none", None, 2, None, NOT_SET),
+    ("記憶體 Request", pod_spec_all("requests", "memory"), "bytes", None, 1, None, NOT_SET),
+], desc("叢集內所有 namespace", "排程器找不到 Node 放得下的 Pod，跟它要的 Request。",
+        "跟上方 Node 表的「剩餘可排」比：每台都比它小 → 是 Request 不夠；有 Node 夠大卻還是排不進來 → 是 taint、affinity、PVC 區域這類限制，"
+        "用 `oc describe pod` 看 Events。沒有資料就是沒有排不進來的 Pod。"),
+    sort_by="已經等了", w=12, h=8, base=f'({UNSCHED}) * 0')
+ts(L, "【叢集】排不進來的 Pod 與排程失敗",
+   [f'count({UNSCHED}) or vector(0)',
+    'sum(scheduler_pending_pods{queue="unschedulable"})',
+    f'sum(rate(scheduler_schedule_attempts_total{{result="unschedulable"}}[{WR}])) * 60'],
+   ["排不進來的 Pod（kube-state-metrics）", "排程器 unschedulable 佇列", "排程失敗次數／分鐘"], "none",
+   desc("叢集內所有 namespace",
+        "前兩條是當下排不進來的 Pod 數（兩個來源，應該差不多），第三條是排程器每分鐘找不到 Node 的次數。",
+        "時間範圍拉長看最近有沒有發生過、發生在什麼時候（rollout、擴容、Node 維護）。排程器的兩條線沒資料代表沒有收集排程器指標。"))
+L.newline()
+
+L = Line()
+NODE_TREND_HOW = "時間範圍拉長看是一直很滿，還是只有 rollout 時短暫衝高（rollout 時新舊 Pod 同時存在，Request 會暫時變多）。"
+for name, res in (("CPU", "cpu"), ("記憶體", "memory")):
+    ts(L, f"【Node】{name} Request ÷ 可分配 Top 10",
+       f'topk(10, ({n_requested(res)}) / ({n_alloc(res)}))', "{{instance}}", "percentunit",
+       desc(V_NODE_ALL, "每台 Node 上還沒結束的 Pod 的 Request 加總 ÷ 可分配。", NODE_TREND_HOW))
+L.newline()
+
+# 選定 Node 上每個 Pod 的明細 (所有 namespace,加起來才會等於 Node 表的數字)
+NODE_SEL = pods_on("$node")
+
+
+def on_sel(per_pod_expr):
+    return f'(({per_pod_expr}) * on (namespace, pod) group_left (instance) {NODE_SEL})'
+
+
+def node_pod_cols(resource, now, peak5m, unit, decimals, prefix):
+    req, lim = on_sel(pod_spec_all("requests", resource)), on_sel(pod_spec_all("limits", resource))
+    peak = f'max_over_time({on_sel(peak5m)}[{WIN}:5m])'
+    return [
+        (f"{prefix} Request", req, unit, None, decimals, None, NOT_SET),
+        (f"{prefix} 目前用量", on_sel(now), unit, None, decimals, None),
+        (f"{prefix} 尖峰", peak, unit, None, decimals, None),
+        (f"{prefix} Limit", lim, unit, None, decimals, None, NOT_SET),
+        (f"{prefix} 尖峰 ÷ Request", f'{peak} / {req}', "percentunit", PEAK_USE, 0, None, NOT_SET),
+        (f"{prefix} Request 佔 Node", f'{req} / on (instance) group_left () ({n_alloc(resource)})',
+         "percentunit", None, 1, None, NOT_SET),
+    ]
+
+
+# W5 也是 5m,目前用量跟尖峰 (每 5 分鐘的平均) 用同一個查詢
+CPU_POD_ALL = 'sum by (namespace, pod) (%s)' % one(f'rate(container_cpu_usage_seconds_total{{{ALL_CT}}}[{W5}])')
+MEM_POD_ALL = 'sum by (namespace, pod) (%s)' % one(f'container_memory_working_set_bytes{{{ALL_CT}}}')
+L = Line()
+table(L, "【Node】$node 上每個 Pod：Request / 用量 / 尖峰 / Limit（尖峰是過去 $waste_window）", ["namespace", "pod"],
+      node_pod_cols("cpu", CPU_POD_ALL, CPU_POD_ALL, "none", 2, "CPU（核）")
+      + node_pod_cols("memory", MEM_POD_ALL, MEM_POD_ALL, "bytes", 1, "記憶體"),
+      desc("上方「Node」選的那台 Node 上還沒結束的每個 Pod（所有 namespace，加起來等於 Node 表的 Request）",
+           "**Request 佔 Node** = 這個 Pod 的 Request ÷ Node 可分配；**尖峰** = 過去 $waste_window 最高（CPU 是每 5 分鐘的平均）；"
+           "Request、Limit 是所有容器加總（沒設的容器不算）。",
+           "Node 表判定「砍 Request」時，看這裡誰的 Request 佔 Node 最多、尖峰 ÷ Request 又很低（紅）：那就是該砍的，"
+           "CPU 可以調到尖峰附近，記憶體調到尖峰再留一點餘裕。尖峰 ÷ Request 接近或超過 100% 的不要砍，他偶爾真的用得到。"),
+      sort_by="記憶體 Request 佔 Node", h=12, base=f'({NODE_SEL}) * 0', hide=("instance",))
+L.newline()
+
+# ---------------------------------------------------------------- 6 waste
+row("6. 【浪費】長期用量遠低於 Request：找出可以調低 Request 的容器（過去 $waste_window 平均）")
+
 
 
 def per_pod_win(per_ct, agg):
@@ -770,7 +965,7 @@ dash = {
     "tags": ["ocp", "loadtest", "capacity", "overview"],
     "timezone": "browser",
     "schemaVersion": 39,
-    "version": 5,
+    "version": 6,
     "editable": True,
     "graphTooltip": 1,
     "refresh": "1m",
@@ -790,7 +985,10 @@ dash = {
         {"type": "textbox", "name": "exclude", "label": "排除的 Namespace（regex）",
          "query": "openshift.*|kube-.*",
          "current": {"text": "openshift.*|kube-.*", "value": "openshift.*|kube-.*"}, "hide": 0},
-        {"type": "custom", "name": "waste_window", "label": "浪費分析平均區間（第 5 區）",
+        {"type": "query", "name": "node", "label": "Node（第 5 區明細）", "datasource": DS,
+         "query": "label_values(kube_node_info, node)", "definition": "label_values(kube_node_info, node)",
+         "refresh": 2, "sort": 1, "multi": False, "includeAll": False, "current": {}, "hide": 0},
+        {"type": "custom", "name": "waste_window", "label": "長期分析區間（第 5、6 區）",
          "query": "1d,7d,14d,30d", "current": {"text": "7d", "value": "7d"},
          "options": [{"text": v, "value": v, "selected": v == "7d"} for v in ("1d", "7d", "14d", "30d")],
          "multi": False, "includeAll": False, "hide": 0},
