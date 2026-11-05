@@ -11,12 +11,13 @@ Pod 已經有 CPU / 記憶體 limit，但下面這些是**整台 Node 共用、l
 
 OCP 沒有特別設定時，不會限制 Pod 的網路頻寬與磁碟讀寫速度，一個 Pod 可以用到整台 Node 的上限。
 
-## 兩個 Dashboard 的分工
+## Dashboard 的分工
 
 | Dashboard | 用途 |
 |---|---|
 | **OCP 叢集風險總覽** | 全叢集每台 Node、每個 Workload 的排行，先找出嫌疑對象 |
 | **OCP 壓測影響評估** | 針對單一 Deployment，查證它有沒有拖慢所在 Node 上的其他服務 |
+| **OCP 雙叢集差異比對** | 兩個應該一樣的叢集（AA 架構）Request % 不同時，找出差在哪：Node、部署內容、Pod 數、每個容器的 Request / Limit |
 
 使用流程：在總覽看哪台 Node 變吃緊、哪個 Workload 排名前面 → 點表格中的 `workload` 名稱 → 自動帶著 namespace、workload 與時間範圍開啟細節 Dashboard。細節 Dashboard 右上角也有連結可以回到總覽。
 
@@ -27,7 +28,8 @@ OCP 沒有特別設定時，不會限制 Pod 的網路頻寬與磁碟讀寫速�
 | `ocp-cluster-risk-overview-dashboard.json` | 叢集風險總覽 |
 | `ocp-loadtest-impact-dashboard.json` | 單一 Workload 細節 |
 | `kong-router-ocp.json` | Kong → Router → AP 延遲鏈路分析 |
-| `gen_overview_dashboard.py`、`gen_dashboard.py`、`gen_kong_chain_dashboard.py` | 產生上面 JSON 的腳本。要改面板就改腳本，再執行 `python <腳本>` 重新產生 |
+| `ocp-cluster-diff-dashboard.json` | 雙叢集差異比對（A vs B） |
+| `gen_overview_dashboard.py`、`gen_dashboard.py`、`gen_kong_chain_dashboard.py`、`gen_cluster_diff_dashboard.py` | 產生上面 JSON 的腳本。要改面板就改腳本，再執行 `python <腳本>` 重新產生 |
 
 ## 百分比一定要看分母
 
@@ -89,6 +91,28 @@ OCP 沒有特別設定時，不會限制 Pod 的網路頻寬與磁碟讀寫速�
   - 平均是**每個 Pod 的平均再取平均**，rollout 換掉的舊 Pod 也算，Pod 數變動不會讓數字加倍；新上線不滿區間的 Pod 只算它活著的時間。CPU 是每 5 分鐘的 rate 取平均（直接 `rate(...[7d])` 會除以整個 7 天，換過 Pod 的會被低估）。
   - **沒用到的 Request** = (Request − 平均用量) × 目前 Pod 數。CPU 不夠只會變慢，Request 可以調到平均附近、靠 Limit 衝；記憶體不夠會被驅逐，Request 建議調到**尖峰**附近再留餘裕。
   - 選 30 天前先確認 Prometheus 保留期（OCP 預設 15 天），超過的部分沒有資料，只會算有資料的那段；區間越長查詢越久。
+
+## 雙叢集差異比對（A vs B）
+
+兩個叢集照理說部署一樣的東西（AA 架構），Request % 卻差很多時用。上方選 **叢集 A**、**叢集 B**（兩個都是 `Prometheus.*OCP` 的資料來源），每張表把兩邊一列一列對齊。
+
+Request % = Request 加總 ÷ 可分配，差異只會來自下面幾個地方，由上往下查：
+
+| 區塊 | 回答的問題 |
+|---|---|
+| 1.【叢集】總量對照 | 差在分母還是分子：Node 數、可排程 Node 數、可分配、Request 加總、Request ÷ 可分配（全部 Node / 可排程 Node）、排不進來的 Pod；依 Node 角色分組對照；兩邊 Request ÷ 可分配的趨勢；兩邊每台 Node 的明細 |
+| 2.【部署】只在一邊有 | 只有 A 或只有 B 在跑的 Namespace、Workload，依 CPU Request 差距排序 |
+| 3.【對照】Namespace / Workload | 每個 Namespace、Workload 兩邊的 Pod 數、CPU / 記憶體 Request 加總：**Pod B − A ≠ 0** → replicas、HPA 不同；Pod 數一樣 Request 還是不同 → 看第 4 區 |
+| 4.【設定】設定不一樣的容器 | 只列出每個 Pod 的 Request / Limit 不一樣、只有一邊有設、或容器只有一邊有（例如 sidecar 只在一邊注入）的容器 |
+
+注意事項：
+
+- **只算已排程、還沒結束（Pending / Running）的 Pod**，跟排程器佔住 Node 的方式一樣；Completed 的 Job Pod、排不進來的 Pod 不算 Request。
+- **預設不排除任何 namespace**：Request % 是整個叢集算的，`openshift-*` 系統元件也可能就是差異來源。只看自己的服務，在「排除的 Namespace」填 `openshift.*|kube-.*`。Namespace 用 regex 文字框，因為兩個叢集的 namespace 不一定一樣，下拉選單只能從其中一個取值。第 1 區總量表前 12 列、Node 表不受篩選影響。
+- **Workload 名稱怎麼對齊**：Deployment 用 Deployment 名稱（ReplicaSet 的 hash 不同沒關係）；DeploymentConfig、Job 去掉名稱最後的流水號（`app-3` 和 `app-7` 是同一個、CronJob 產生的 Job 也一樣）；Node 擁有的靜態 Pod（名稱帶 Node 名稱）每個 namespace 合成一列 `(static pods)`；沒有 owner 的 Pod 用 Pod 名稱。同一個服務兩邊類型不同（一邊 Deployment、一邊 DeploymentConfig）會變成「只有 A」「只有 B」兩列。
+- **差距** = |A − B|，一邊沒有這一列或沒設就當 0 算；**B − A** 正數（橘）= B 比較多，負數（藍）= A 比較多。
+- **比對在 Grafana 裡做**：每個面板用 Mixed 資料來源，同一個查詢對 A、B 各跑一次，再用 merge 轉換依 label 對齊；差距用「每列加總」算（缺的格子當 0），不用 Prometheus 跨叢集查詢。
+- 已用兩個 Prometheus v3.2.0＋假的 kube-state-metrics（埋好 replicas 不同、Request 不同、sidecar 只在一邊、只在一邊部署的 DaemonSet、DeploymentConfig 版本號不同、Completed / Pending Pod、重複抓取）加 Grafana 11.3 實際算圖驗證。
 
 ## Kong → Router → AP 延遲鏈路分析
 
