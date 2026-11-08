@@ -18,6 +18,7 @@ OCP 沒有特別設定時，不會限制 Pod 的網路頻寬與磁碟讀寫速�
 | **OCP 叢集風險總覽** | 全叢集每台 Node、每個 Workload 的排行，先找出嫌疑對象 |
 | **OCP 壓測影響評估** | 針對單一 Deployment，查證它有沒有拖慢所在 Node 上的其他服務 |
 | **OCP 雙叢集差異比對** | 兩個應該一樣的叢集（AA 架構）Request % 不同時，找出差在哪：Node、部署內容、Pod 數、每個容器的 Request / Limit |
+| **OCP Workload 異常狀態** | 所有叢集一頁看完：Image pull、排程失敗、副本不足、Rollout 卡住、Readiness、重啟、CrashLoop / OOM、ContainerCreating 卡住，紅色 = 目前有異常 |
 
 使用流程：在總覽看哪台 Node 變吃緊、哪個 Workload 排名前面 → 點表格中的 `workload` 名稱 → 自動帶著 namespace、workload 與時間範圍開啟細節 Dashboard。細節 Dashboard 右上角也有連結可以回到總覽。
 
@@ -29,7 +30,8 @@ OCP 沒有特別設定時，不會限制 Pod 的網路頻寬與磁碟讀寫速�
 | `ocp-loadtest-impact-dashboard.json` | 單一 Workload 細節 |
 | `kong-router-ocp.json` | Kong → Router → AP 延遲鏈路分析 |
 | `ocp-cluster-diff-dashboard.json` | 雙叢集差異比對（A vs B） |
-| `gen_overview_dashboard.py`、`gen_dashboard.py`、`gen_kong_chain_dashboard.py`、`gen_cluster_diff_dashboard.py` | 產生上面 JSON 的腳本。要改面板就改腳本，再執行 `python <腳本>` 重新產生 |
+| `ocp-workload-health-dashboard.json` | Workload 異常狀態（所有叢集一頁看完） |
+| `gen_overview_dashboard.py`、`gen_dashboard.py`、`gen_kong_chain_dashboard.py`、`gen_cluster_diff_dashboard.py`、`gen_workload_health_dashboard.py` | 產生上面 JSON 的腳本。要改面板就改腳本，再執行 `python <腳本>` 重新產生 |
 
 ## 百分比一定要看分母
 
@@ -113,6 +115,29 @@ Request % = Request 加總 ÷ 可分配，差異只會來自下面幾個地方�
 - **差距** = |A − B|，一邊沒有這一列或沒設就當 0 算；**B − A** 正數（橘）= B 比較多，負數（藍）= A 比較多。
 - **比對在 Grafana 裡做**：每個面板用 Mixed 資料來源，同一個查詢對 A、B 各跑一次，再用 merge 轉換依 label 對齊；差距用「每列加總」算（缺的格子當 0），不用 Prometheus 跨叢集查詢。
 - 已用兩個 Prometheus v3.2.0＋假的 kube-state-metrics（埋好 replicas 不同、Request 不同、sidecar 只在一邊、只在一邊部署的 DaemonSet、DeploymentConfig 版本號不同、Completed / Pending Pod、重複抓取）加 Grafana 11.3 實際算圖驗證。
+
+## Workload 異常狀態（所有叢集）
+
+一頁同時看所有叢集「哪個 namespace / pod 出了什麼問題」，不用一個個切資料來源。只用 kube-state-metrics，延遲約 1–2 分鐘；**原因訊息不在儀表板，到 OCP console 看該 Pod 的 Events**（表格的 Pod / Deployment 名稱點下去就是 Events 頁）。
+
+- **叢集名稱篩選（regex）**：資料來源名稱任一處符合就列入，例如 `prod`、`dev|uat`；預設 `.*`。只會列出名稱是 `Prometheus…OCP` 的資料來源。
+- **資料來源（可多選）**：預設 All = 篩選後的全部叢集。每個叢集自動產生一列：
+  - **① 叢集名稱**：8 個計數，紅色 = 目前有異常；「沒資料」= 查不到 kube-state-metrics。
+  - **② 明細：叢集名稱**（預設折疊，展開才查詢）：8 張明細表＋各 Namespace 重啟趨勢。
+- **Namespace / 排除的 Namespace**：regex 文字框（各叢集 namespace 不同，所以不用下拉選單）；預設排除 `openshift.*|kube-.*`。
+
+| # | 計數 | 條件 |
+|---|---|---|
+| 1 | Image 拉不下來 | 等待原因 ErrImagePull / ImagePullBackOff / InvalidImageName |
+| 2 | 排不進 Node | `kube_pod_status_unschedulable == 1` |
+| 3 | Deployment 副本不足 | `kube_deployment_status_replicas_unavailable > 0`（滾動更新中短暫出現是正常的） |
+| 4 | Rollout 卡住 | Progressing 條件為 False（超過 progressDeadlineSeconds） |
+| 5 | Readiness 不過 | Pod Running、容器在跑但 Ready=false（CrashLoop 歸第 7 類） |
+| 6 | 5 分鐘內有重啟 | 重啟次數 5 分鐘內增加；明細列近 1 小時有重啟的容器與上次終止原因 |
+| 7 | CrashLoop / OOM | CrashLoopBackOff 中，或上次終止 OOMKilled **且 1 小時內有重啟**（舊的 OOM 不算） |
+| 8 | 建立超過 5 分鐘 | Pod 建立 > 5 分鐘仍 ContainerCreating（常見是 PVC 掛載失敗） |
+
+Pod 連結用 OCP 內建的 `console_url` 指標取得各叢集 console 網址；資料來源沒有這個指標時連結會失效，表格內容不受影響。
 
 ## Kong → Router → AP 延遲鏈路分析
 

@@ -1,0 +1,2927 @@
+{
+  "uid": "ocp-workload-health",
+  "title": "OCP Workload 異常狀態（所有叢集）",
+  "description": "用 kube-state-metrics 監控 Image pull、排程失敗、副本不足、Rollout 卡住、Readiness、重啟、CrashLoop / OOM、ContainerCreating 卡住；每個叢集一列。",
+  "tags": [
+    "ocp",
+    "workload",
+    "health",
+    "multi-cluster"
+  ],
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 1,
+  "editable": true,
+  "graphTooltip": 1,
+  "refresh": "1m",
+  "time": {
+    "from": "now-1h",
+    "to": "now"
+  },
+  "links": [
+    {
+      "title": "叢集風險總覽",
+      "type": "link",
+      "icon": "dashboard",
+      "url": "/d/ocp-cluster-risk-overview/",
+      "keepTime": true,
+      "targetBlank": false
+    }
+  ],
+  "templating": {
+    "list": [
+      {
+        "type": "textbox",
+        "name": "ds_filter",
+        "label": "叢集名稱篩選（regex）",
+        "query": ".*",
+        "current": {
+          "text": ".*",
+          "value": ".*"
+        },
+        "hide": 0
+      },
+      {
+        "type": "datasource",
+        "name": "datasource",
+        "label": "資料來源（叢集，可多選）",
+        "query": "prometheus",
+        "regex": "/^(?=.*(?:${ds_filter}))Prometheus.*OCP$/",
+        "multi": true,
+        "includeAll": true,
+        "current": {
+          "text": [
+            "All"
+          ],
+          "value": [
+            "$__all"
+          ]
+        },
+        "hide": 0,
+        "refresh": 1
+      },
+      {
+        "type": "textbox",
+        "name": "namespace",
+        "label": "Namespace（regex）",
+        "query": ".*",
+        "current": {
+          "text": ".*",
+          "value": ".*"
+        },
+        "hide": 0
+      },
+      {
+        "type": "textbox",
+        "name": "exclude",
+        "label": "排除的 Namespace（regex）",
+        "query": "openshift.*|kube-.*",
+        "current": {
+          "text": "openshift.*|kube-.*",
+          "value": "openshift.*|kube-.*"
+        },
+        "hide": 0
+      }
+    ]
+  },
+  "annotations": {
+    "list": [
+      {
+        "builtIn": 1,
+        "datasource": {
+          "type": "grafana",
+          "uid": "-- Grafana --"
+        },
+        "enable": true,
+        "hide": true,
+        "iconColor": "rgba(0, 211, 255, 1)",
+        "name": "Annotations & Alerts",
+        "type": "dashboard"
+      }
+    ]
+  },
+  "panels": [
+    {
+      "id": 1,
+      "type": "text",
+      "title": "",
+      "options": {
+        "mode": "markdown",
+        "content": "**OCP Workload 異常狀態（所有叢集）**　每個叢集一列，紅色 = 目前有異常（資料延遲約 1–2 分鐘）。上方「叢集名稱篩選」填 regex（例如 `prod`、`dev|uat`）縮小範圍，「資料來源」選 All 就是篩選後的全部叢集。往下展開「② 明細：叢集名稱」看是哪個 Namespace / Pod；**原因訊息在 OCP console 的 Events**，表格的 Pod / Deployment 名稱可直接點過去。「沒資料」= 這個資料來源查不到 kube-state-metrics。"
+      },
+      "gridPos": {
+        "h": 3,
+        "w": 24,
+        "x": 0,
+        "y": 0
+      }
+    },
+    {
+      "id": 2,
+      "type": "row",
+      "title": "① ${datasource:text}",
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 3
+      },
+      "panels": [],
+      "repeat": "datasource"
+    },
+    {
+      "id": 3,
+      "type": "stat",
+      "title": "1 Image 拉不下來",
+      "description": "**這是什麼**：容器在等待，原因是 ErrImagePull / ImagePullBackOff / InvalidImageName 的數量。\n\n**怎麼看**：常見：image 名稱或 tag 打錯、registry 認證（pull secret）失效、registry 連不到。\n\n詳細原因請到 OCP console 查看該 Pod 的 Events（表格的 Pod 名稱可直接點過去）。",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${datasource}"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "expr": "count((max by (namespace, pod, container, reason) (kube_pod_container_status_waiting_reason{reason=~\"ErrImagePull|ImagePullBackOff|InvalidImageName\", namespace=~\"$namespace\", namespace!~\"$exclude\"} == 1))) or (0 * count(kube_namespace_created))",
+          "legendFormat": "",
+          "range": false,
+          "instant": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "unit": "none",
+          "decimals": 0,
+          "noValue": "沒資料",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "red",
+                "value": 1
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "background",
+        "graphMode": "none",
+        "textMode": "value",
+        "justifyMode": "center",
+        "orientation": "horizontal"
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 3,
+        "x": 0,
+        "y": 4
+      }
+    },
+    {
+      "id": 4,
+      "type": "stat",
+      "title": "2 排不進 Node",
+      "description": "**這是什麼**：Pending 且排程器判定無法排程（PodScheduled=False, Unschedulable）的 Pod 數。\n\n**怎麼看**：常見：資源不足（Insufficient cpu / memory）、nodeSelector / affinity / taint 不符、PVC 綁不到。\n\n詳細原因請到 OCP console 查看該 Pod 的 Events（表格的 Pod 名稱可直接點過去）。",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${datasource}"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "expr": "count((max by (namespace, pod) (kube_pod_status_unschedulable{namespace=~\"$namespace\", namespace!~\"$exclude\"} == 1))) or (0 * count(kube_namespace_created))",
+          "legendFormat": "",
+          "range": false,
+          "instant": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "unit": "none",
+          "decimals": 0,
+          "noValue": "沒資料",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "red",
+                "value": 1
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "background",
+        "graphMode": "none",
+        "textMode": "value",
+        "justifyMode": "center",
+        "orientation": "horizontal"
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 3,
+        "x": 3,
+        "y": 4
+      }
+    },
+    {
+      "id": 5,
+      "type": "stat",
+      "title": "3 Deployment 副本不足",
+      "description": "**這是什麼**：不可用副本 > 0 的 Deployment 數。\n\n**怎麼看**：滾動更新中短暫出現是正常的；一直不消失通常是 Pod 建不出來（quota、SCC、LimitRange）或建出來起不來（看第 1、5、7、8 類）。Pod 建不出來時 Pod 頁沒有 Events，要看 Deployment / ReplicaSet 的 Events。\n\n詳細原因請到 OCP console 查看該 Pod 的 Events（表格的 Pod 名稱可直接點過去）。",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${datasource}"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "expr": "count((max by (namespace, deployment) (kube_deployment_status_replicas_unavailable{namespace=~\"$namespace\", namespace!~\"$exclude\"} > 0))) or (0 * count(kube_namespace_created))",
+          "legendFormat": "",
+          "range": false,
+          "instant": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "unit": "none",
+          "decimals": 0,
+          "noValue": "沒資料",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "red",
+                "value": 1
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "background",
+        "graphMode": "none",
+        "textMode": "value",
+        "justifyMode": "center",
+        "orientation": "horizontal"
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 3,
+        "x": 6,
+        "y": 4
+      }
+    },
+    {
+      "id": 6,
+      "type": "stat",
+      "title": "4 Rollout 卡住",
+      "description": "**這是什麼**：Progressing 條件為 False 的 Deployment 數（超過 progressDeadlineSeconds，預設 10 分鐘，新版還沒好）。\n\n**怎麼看**：通常跟第 3 類一起出現；看 Deployment 的 Events 與新 ReplicaSet 的 Pod。\n\n詳細原因請到 OCP console 查看該 Pod 的 Events（表格的 Pod 名稱可直接點過去）。",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${datasource}"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "expr": "count((max by (namespace, deployment) (kube_deployment_status_condition{condition=\"Progressing\", status=\"false\", namespace=~\"$namespace\", namespace!~\"$exclude\"} == 1))) or (0 * count(kube_namespace_created))",
+          "legendFormat": "",
+          "range": false,
+          "instant": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "unit": "none",
+          "decimals": 0,
+          "noValue": "沒資料",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "red",
+                "value": 1
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "background",
+        "graphMode": "none",
+        "textMode": "value",
+        "justifyMode": "center",
+        "orientation": "horizontal"
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 3,
+        "x": 9,
+        "y": 4
+      }
+    },
+    {
+      "id": 7,
+      "type": "stat",
+      "title": "5 Readiness 不過",
+      "description": "**這是什麼**：Pod 是 Running、容器也在跑，但 Ready=false 的容器數（CrashLoop 不算在這，歸第 7 類）。\n\n**怎麼看**：Pod 剛啟動、還在 initialDelay 時會短暫出現；明細表的「持續」超過幾分鐘才需要處理。\n\n詳細原因請到 OCP console 查看該 Pod 的 Events（表格的 Pod 名稱可直接點過去）。",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${datasource}"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "expr": "count((max by (namespace, pod, container) ((kube_pod_container_status_ready{namespace=~\"$namespace\", namespace!~\"$exclude\"} == 0) and on (namespace, pod) (kube_pod_status_phase{phase=\"Running\", namespace=~\"$namespace\", namespace!~\"$exclude\"} == 1) and on (namespace, pod, container) (kube_pod_container_status_running{namespace=~\"$namespace\", namespace!~\"$exclude\"} == 1)))) or (0 * count(kube_namespace_created))",
+          "legendFormat": "",
+          "range": false,
+          "instant": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "unit": "none",
+          "decimals": 0,
+          "noValue": "沒資料",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "red",
+                "value": 1
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "background",
+        "graphMode": "none",
+        "textMode": "value",
+        "justifyMode": "center",
+        "orientation": "horizontal"
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 3,
+        "x": 12,
+        "y": 4
+      }
+    },
+    {
+      "id": 8,
+      "type": "stat",
+      "title": "6 5 分鐘內有重啟",
+      "description": "**這是什麼**：過去 5 分鐘重啟次數 > 0 的容器數（liveness 失敗、程式自己結束、OOM 都會重啟）。\n\n**怎麼看**：明細表列近 1 小時有重啟的容器與上次終止原因；下方趨勢圖看是哪個 Namespace 一直在重啟。\n\n詳細原因請到 OCP console 查看該 Pod 的 Events（表格的 Pod 名稱可直接點過去）。",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${datasource}"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "expr": "count((max by (namespace, pod, container) (increase(kube_pod_container_status_restarts_total{namespace=~\"$namespace\", namespace!~\"$exclude\"}[5m]) > 0))) or (0 * count(kube_namespace_created))",
+          "legendFormat": "",
+          "range": false,
+          "instant": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "unit": "none",
+          "decimals": 0,
+          "noValue": "沒資料",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "red",
+                "value": 1
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "background",
+        "graphMode": "none",
+        "textMode": "value",
+        "justifyMode": "center",
+        "orientation": "horizontal"
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 3,
+        "x": 15,
+        "y": 4
+      }
+    },
+    {
+      "id": 9,
+      "type": "stat",
+      "title": "7 CrashLoop / OOM",
+      "description": "**這是什麼**：CrashLoopBackOff 中，或上次終止是 OOMKilled 且 1 小時內有重啟的容器數。\n\n**怎麼看**：OOMKilled → 記憶體 Limit 太小或程式記憶體洩漏；CrashLoop → 看容器上一次的 log（oc logs --previous）。\n\n詳細原因請到 OCP console 查看該 Pod 的 Events（表格的 Pod 名稱可直接點過去）。",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${datasource}"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "expr": "count(count by (namespace, pod, container) ((max by (namespace, pod, container, reason) (kube_pod_container_status_waiting_reason{reason=~\"CrashLoopBackOff\", namespace=~\"$namespace\", namespace!~\"$exclude\"} == 1)) or (max by (namespace, pod, container, reason) (kube_pod_container_status_last_terminated_reason{reason=\"OOMKilled\", namespace=~\"$namespace\", namespace!~\"$exclude\"} == 1) and on (namespace, pod, container) max by (namespace, pod, container) (increase(kube_pod_container_status_restarts_total{namespace=~\"$namespace\", namespace!~\"$exclude\"}[1h]) > 0)))) or (0 * count(kube_namespace_created))",
+          "legendFormat": "",
+          "range": false,
+          "instant": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "unit": "none",
+          "decimals": 0,
+          "noValue": "沒資料",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "red",
+                "value": 1
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "background",
+        "graphMode": "none",
+        "textMode": "value",
+        "justifyMode": "center",
+        "orientation": "horizontal"
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 3,
+        "x": 18,
+        "y": 4
+      }
+    },
+    {
+      "id": 10,
+      "type": "stat",
+      "title": "8 建立超過 5 分鐘",
+      "description": "**這是什麼**：Pod 建立超過 5 分鐘，容器還在 ContainerCreating 的數量。\n\n**怎麼看**：常見：PVC 掛載失敗（FailedMount / FailedAttachVolume）、Secret / ConfigMap 不存在、CNI 網路配置失敗。\n\n詳細原因請到 OCP console 查看該 Pod 的 Events（表格的 Pod 名稱可直接點過去）。",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${datasource}"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "expr": "count((max by (namespace, pod, container) (kube_pod_container_status_waiting_reason{reason=\"ContainerCreating\", namespace=~\"$namespace\", namespace!~\"$exclude\"} == 1) and on (namespace, pod) (time() - kube_pod_created{namespace=~\"$namespace\", namespace!~\"$exclude\"} > 300))) or (0 * count(kube_namespace_created))",
+          "legendFormat": "",
+          "range": false,
+          "instant": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "unit": "none",
+          "decimals": 0,
+          "noValue": "沒資料",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "red",
+                "value": 1
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "background",
+        "graphMode": "none",
+        "textMode": "value",
+        "justifyMode": "center",
+        "orientation": "horizontal"
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 3,
+        "x": 21,
+        "y": 4
+      }
+    },
+    {
+      "id": 11,
+      "type": "row",
+      "title": "② 明細：${datasource:text}",
+      "collapsed": true,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 8
+      },
+      "panels": [
+        {
+          "id": 12,
+          "type": "table",
+          "title": "1 Image 拉不下來",
+          "description": "**這是什麼**：容器在等待，原因是 ErrImagePull / ImagePullBackOff / InvalidImageName 的數量。\n\n**怎麼看**：常見：image 名稱或 tag 打錯、registry 認證（pull secret）失效、registry 連不到。\n\n詳細原因請到 OCP console 查看該 Pod 的 Events（表格的 Pod 名稱可直接點過去）。",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "${datasource}"
+              },
+              "expr": "(max by (namespace, pod, container) (count_over_time((max by (namespace, pod, container) (max by (namespace, pod, container, reason) (kube_pod_container_status_waiting_reason{reason=~\"ErrImagePull|ImagePullBackOff|InvalidImageName\", namespace=~\"$namespace\", namespace!~\"$exclude\"} == 1)))[1h:1m])) * on (namespace, pod, container) group_right () (0 * (((max by (namespace, pod, container, reason) (kube_pod_container_status_waiting_reason{reason=~\"ErrImagePull|ImagePullBackOff|InvalidImageName\", namespace=~\"$namespace\", namespace!~\"$exclude\"} == 1) * on (namespace, pod, container) group_left (image) max by (namespace, pod, container, image) (kube_pod_container_info{namespace=~\"$namespace\", namespace!~\"$exclude\"})) * on () group_left (url) topk(1, max by (url) (console_url))) or on (namespace, pod, container, reason, image) (max by (namespace, pod, container, reason) (kube_pod_container_status_waiting_reason{reason=~\"ErrImagePull|ImagePullBackOff|InvalidImageName\", namespace=~\"$namespace\", namespace!~\"$exclude\"} == 1) * on (namespace, pod, container) group_left (image) max by (namespace, pod, container, image) (kube_pod_container_info{namespace=~\"$namespace\", namespace!~\"$exclude\"}))) + 1)) or (0 * (((max by (namespace, pod, container, reason) (kube_pod_container_status_waiting_reason{reason=~\"ErrImagePull|ImagePullBackOff|InvalidImageName\", namespace=~\"$namespace\", namespace!~\"$exclude\"} == 1) * on (namespace, pod, container) group_left (image) max by (namespace, pod, container, image) (kube_pod_container_info{namespace=~\"$namespace\", namespace!~\"$exclude\"})) * on () group_left (url) topk(1, max by (url) (console_url))) or on (namespace, pod, container, reason, image) (max by (namespace, pod, container, reason) (kube_pod_container_status_waiting_reason{reason=~\"ErrImagePull|ImagePullBackOff|InvalidImageName\", namespace=~\"$namespace\", namespace!~\"$exclude\"} == 1) * on (namespace, pod, container) group_left (image) max by (namespace, pod, container, image) (kube_pod_container_info{namespace=~\"$namespace\", namespace!~\"$exclude\"}))) - 1)",
+              "legendFormat": "",
+              "range": false,
+              "instant": true,
+              "format": "table"
+            },
+            {
+              "refId": "B",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "${datasource}"
+              },
+              "expr": "(max by (namespace, pod) (time() - kube_pod_created{namespace=~\"$namespace\", namespace!~\"$exclude\"}) * on (namespace, pod) group_right () (0 * (((max by (namespace, pod, container, reason) (kube_pod_container_status_waiting_reason{reason=~\"ErrImagePull|ImagePullBackOff|InvalidImageName\", namespace=~\"$namespace\", namespace!~\"$exclude\"} == 1) * on (namespace, pod, container) group_left (image) max by (namespace, pod, container, image) (kube_pod_container_info{namespace=~\"$namespace\", namespace!~\"$exclude\"})) * on () group_left (url) topk(1, max by (url) (console_url))) or on (namespace, pod, container, reason, image) (max by (namespace, pod, container, reason) (kube_pod_container_status_waiting_reason{reason=~\"ErrImagePull|ImagePullBackOff|InvalidImageName\", namespace=~\"$namespace\", namespace!~\"$exclude\"} == 1) * on (namespace, pod, container) group_left (image) max by (namespace, pod, container, image) (kube_pod_container_info{namespace=~\"$namespace\", namespace!~\"$exclude\"}))) + 1)) or (0 * (((max by (namespace, pod, container, reason) (kube_pod_container_status_waiting_reason{reason=~\"ErrImagePull|ImagePullBackOff|InvalidImageName\", namespace=~\"$namespace\", namespace!~\"$exclude\"} == 1) * on (namespace, pod, container) group_left (image) max by (namespace, pod, container, image) (kube_pod_container_info{namespace=~\"$namespace\", namespace!~\"$exclude\"})) * on () group_left (url) topk(1, max by (url) (console_url))) or on (namespace, pod, container, reason, image) (max by (namespace, pod, container, reason) (kube_pod_container_status_waiting_reason{reason=~\"ErrImagePull|ImagePullBackOff|InvalidImageName\", namespace=~\"$namespace\", namespace!~\"$exclude\"} == 1) * on (namespace, pod, container) group_left (image) max by (namespace, pod, container, image) (kube_pod_container_info{namespace=~\"$namespace\", namespace!~\"$exclude\"}))) - 1)",
+              "legendFormat": "",
+              "range": false,
+              "instant": true,
+              "format": "table"
+            }
+          ],
+          "transformations": [
+            {
+              "id": "merge",
+              "options": {}
+            },
+            {
+              "id": "organize",
+              "options": {
+                "excludeByName": {
+                  "Time": true
+                },
+                "renameByName": {
+                  "Value #A": "持續（近 1h 分鐘）",
+                  "Value #B": "Pod 建立多久"
+                },
+                "indexByName": {
+                  "namespace": 0,
+                  "pod": 1,
+                  "container": 2,
+                  "reason": 3,
+                  "image": 4,
+                  "持續（近 1h 分鐘）": 5,
+                  "Pod 建立多久": 6
+                }
+              }
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "custom": {
+                "align": "auto",
+                "minWidth": 80,
+                "wrapHeaderText": true
+              },
+              "noValue": "沒有異常"
+            },
+            "overrides": [
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "持續（近 1h 分鐘）"
+                },
+                "properties": [
+                  {
+                    "id": "unit",
+                    "value": "m"
+                  },
+                  {
+                    "id": "mappings",
+                    "value": [
+                      {
+                        "type": "value",
+                        "options": {
+                          "-1": {
+                            "text": "—",
+                            "color": "#8e8e8e",
+                            "index": 0
+                          }
+                        }
+                      }
+                    ]
+                  },
+                  {
+                    "id": "decimals",
+                    "value": 0
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "Pod 建立多久"
+                },
+                "properties": [
+                  {
+                    "id": "unit",
+                    "value": "s"
+                  },
+                  {
+                    "id": "mappings",
+                    "value": [
+                      {
+                        "type": "value",
+                        "options": {
+                          "-1": {
+                            "text": "—",
+                            "color": "#8e8e8e",
+                            "index": 0
+                          }
+                        }
+                      }
+                    ]
+                  },
+                  {
+                    "id": "decimals",
+                    "value": 0
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "namespace"
+                },
+                "properties": [
+                  {
+                    "id": "custom.width",
+                    "value": 150
+                  },
+                  {
+                    "id": "custom.filterable",
+                    "value": true
+                  },
+                  {
+                    "id": "displayName",
+                    "value": "Namespace"
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "pod"
+                },
+                "properties": [
+                  {
+                    "id": "custom.width",
+                    "value": 260
+                  },
+                  {
+                    "id": "custom.filterable",
+                    "value": true
+                  },
+                  {
+                    "id": "links",
+                    "value": [
+                      {
+                        "title": "在 OCP console 看 Events",
+                        "url": "${__data.fields.url}/k8s/ns/${__data.fields.namespace}/pods/${__value.raw}/events",
+                        "targetBlank": true
+                      }
+                    ]
+                  },
+                  {
+                    "id": "displayName",
+                    "value": "Pod"
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "container"
+                },
+                "properties": [
+                  {
+                    "id": "custom.width",
+                    "value": 140
+                  },
+                  {
+                    "id": "custom.filterable",
+                    "value": true
+                  },
+                  {
+                    "id": "displayName",
+                    "value": "Container"
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "reason"
+                },
+                "properties": [
+                  {
+                    "id": "custom.width",
+                    "value": 150
+                  },
+                  {
+                    "id": "custom.filterable",
+                    "value": true
+                  },
+                  {
+                    "id": "displayName",
+                    "value": "原因"
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "image"
+                },
+                "properties": [
+                  {
+                    "id": "custom.width",
+                    "value": 260
+                  },
+                  {
+                    "id": "custom.filterable",
+                    "value": true
+                  },
+                  {
+                    "id": "displayName",
+                    "value": "Image"
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "url"
+                },
+                "properties": [
+                  {
+                    "id": "custom.hidden",
+                    "value": true
+                  }
+                ]
+              }
+            ]
+          },
+          "options": {
+            "showHeader": true,
+            "cellHeight": "sm",
+            "sortBy": [
+              {
+                "displayName": "持續（近 1h 分鐘）",
+                "desc": true
+              }
+            ],
+            "footer": {
+              "show": false
+            }
+          },
+          "gridPos": {
+            "h": 8,
+            "w": 12,
+            "x": 0,
+            "y": 9
+          }
+        },
+        {
+          "id": 13,
+          "type": "table",
+          "title": "2 排不進 Node",
+          "description": "**這是什麼**：Pending 且排程器判定無法排程（PodScheduled=False, Unschedulable）的 Pod 數。\n\n**怎麼看**：常見：資源不足（Insufficient cpu / memory）、nodeSelector / affinity / taint 不符、PVC 綁不到。\n\n詳細原因請到 OCP console 查看該 Pod 的 Events（表格的 Pod 名稱可直接點過去）。",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "${datasource}"
+              },
+              "expr": "(max by (namespace, pod) (time() - kube_pod_created{namespace=~\"$namespace\", namespace!~\"$exclude\"}) * on (namespace, pod) group_right () (0 * (((max by (namespace, pod) (kube_pod_status_unschedulable{namespace=~\"$namespace\", namespace!~\"$exclude\"} == 1)) * on () group_left (url) topk(1, max by (url) (console_url))) or on (namespace, pod) (max by (namespace, pod) (kube_pod_status_unschedulable{namespace=~\"$namespace\", namespace!~\"$exclude\"} == 1))) + 1)) or (0 * (((max by (namespace, pod) (kube_pod_status_unschedulable{namespace=~\"$namespace\", namespace!~\"$exclude\"} == 1)) * on () group_left (url) topk(1, max by (url) (console_url))) or on (namespace, pod) (max by (namespace, pod) (kube_pod_status_unschedulable{namespace=~\"$namespace\", namespace!~\"$exclude\"} == 1))) - 1)",
+              "legendFormat": "",
+              "range": false,
+              "instant": true,
+              "format": "table"
+            },
+            {
+              "refId": "B",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "${datasource}"
+              },
+              "expr": "(max by (namespace, pod) (sum by (namespace, pod) (kube_pod_container_resource_requests{resource=\"cpu\", namespace=~\"$namespace\", namespace!~\"$exclude\"})) * on (namespace, pod) group_right () (0 * (((max by (namespace, pod) (kube_pod_status_unschedulable{namespace=~\"$namespace\", namespace!~\"$exclude\"} == 1)) * on () group_left (url) topk(1, max by (url) (console_url))) or on (namespace, pod) (max by (namespace, pod) (kube_pod_status_unschedulable{namespace=~\"$namespace\", namespace!~\"$exclude\"} == 1))) + 1)) or (0 * (((max by (namespace, pod) (kube_pod_status_unschedulable{namespace=~\"$namespace\", namespace!~\"$exclude\"} == 1)) * on () group_left (url) topk(1, max by (url) (console_url))) or on (namespace, pod) (max by (namespace, pod) (kube_pod_status_unschedulable{namespace=~\"$namespace\", namespace!~\"$exclude\"} == 1))) - 1)",
+              "legendFormat": "",
+              "range": false,
+              "instant": true,
+              "format": "table"
+            },
+            {
+              "refId": "C",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "${datasource}"
+              },
+              "expr": "(max by (namespace, pod) (sum by (namespace, pod) (kube_pod_container_resource_requests{resource=\"memory\", namespace=~\"$namespace\", namespace!~\"$exclude\"})) * on (namespace, pod) group_right () (0 * (((max by (namespace, pod) (kube_pod_status_unschedulable{namespace=~\"$namespace\", namespace!~\"$exclude\"} == 1)) * on () group_left (url) topk(1, max by (url) (console_url))) or on (namespace, pod) (max by (namespace, pod) (kube_pod_status_unschedulable{namespace=~\"$namespace\", namespace!~\"$exclude\"} == 1))) + 1)) or (0 * (((max by (namespace, pod) (kube_pod_status_unschedulable{namespace=~\"$namespace\", namespace!~\"$exclude\"} == 1)) * on () group_left (url) topk(1, max by (url) (console_url))) or on (namespace, pod) (max by (namespace, pod) (kube_pod_status_unschedulable{namespace=~\"$namespace\", namespace!~\"$exclude\"} == 1))) - 1)",
+              "legendFormat": "",
+              "range": false,
+              "instant": true,
+              "format": "table"
+            }
+          ],
+          "transformations": [
+            {
+              "id": "merge",
+              "options": {}
+            },
+            {
+              "id": "organize",
+              "options": {
+                "excludeByName": {
+                  "Time": true
+                },
+                "renameByName": {
+                  "Value #A": "Pending 多久",
+                  "Value #B": "CPU Request",
+                  "Value #C": "記憶體 Request"
+                },
+                "indexByName": {
+                  "namespace": 0,
+                  "pod": 1,
+                  "Pending 多久": 2,
+                  "CPU Request": 3,
+                  "記憶體 Request": 4
+                }
+              }
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "custom": {
+                "align": "auto",
+                "minWidth": 80,
+                "wrapHeaderText": true
+              },
+              "noValue": "沒有異常"
+            },
+            "overrides": [
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "Pending 多久"
+                },
+                "properties": [
+                  {
+                    "id": "unit",
+                    "value": "s"
+                  },
+                  {
+                    "id": "mappings",
+                    "value": [
+                      {
+                        "type": "value",
+                        "options": {
+                          "-1": {
+                            "text": "—",
+                            "color": "#8e8e8e",
+                            "index": 0
+                          }
+                        }
+                      }
+                    ]
+                  },
+                  {
+                    "id": "decimals",
+                    "value": 0
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "CPU Request"
+                },
+                "properties": [
+                  {
+                    "id": "unit",
+                    "value": "none"
+                  },
+                  {
+                    "id": "mappings",
+                    "value": [
+                      {
+                        "type": "value",
+                        "options": {
+                          "-1": {
+                            "text": "未設",
+                            "color": "#8e8e8e",
+                            "index": 0
+                          }
+                        }
+                      }
+                    ]
+                  },
+                  {
+                    "id": "decimals",
+                    "value": 2
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "記憶體 Request"
+                },
+                "properties": [
+                  {
+                    "id": "unit",
+                    "value": "bytes"
+                  },
+                  {
+                    "id": "mappings",
+                    "value": [
+                      {
+                        "type": "value",
+                        "options": {
+                          "-1": {
+                            "text": "未設",
+                            "color": "#8e8e8e",
+                            "index": 0
+                          }
+                        }
+                      }
+                    ]
+                  },
+                  {
+                    "id": "decimals",
+                    "value": 1
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "namespace"
+                },
+                "properties": [
+                  {
+                    "id": "custom.width",
+                    "value": 150
+                  },
+                  {
+                    "id": "custom.filterable",
+                    "value": true
+                  },
+                  {
+                    "id": "displayName",
+                    "value": "Namespace"
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "pod"
+                },
+                "properties": [
+                  {
+                    "id": "custom.width",
+                    "value": 260
+                  },
+                  {
+                    "id": "custom.filterable",
+                    "value": true
+                  },
+                  {
+                    "id": "links",
+                    "value": [
+                      {
+                        "title": "在 OCP console 看 Events",
+                        "url": "${__data.fields.url}/k8s/ns/${__data.fields.namespace}/pods/${__value.raw}/events",
+                        "targetBlank": true
+                      }
+                    ]
+                  },
+                  {
+                    "id": "displayName",
+                    "value": "Pod"
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "url"
+                },
+                "properties": [
+                  {
+                    "id": "custom.hidden",
+                    "value": true
+                  }
+                ]
+              }
+            ]
+          },
+          "options": {
+            "showHeader": true,
+            "cellHeight": "sm",
+            "sortBy": [
+              {
+                "displayName": "Pending 多久",
+                "desc": true
+              }
+            ],
+            "footer": {
+              "show": false
+            }
+          },
+          "gridPos": {
+            "h": 8,
+            "w": 12,
+            "x": 12,
+            "y": 9
+          }
+        },
+        {
+          "id": 14,
+          "type": "table",
+          "title": "3 Deployment 副本不足",
+          "description": "**這是什麼**：不可用副本 > 0 的 Deployment 數。\n\n**怎麼看**：滾動更新中短暫出現是正常的；一直不消失通常是 Pod 建不出來（quota、SCC、LimitRange）或建出來起不來（看第 1、5、7、8 類）。Pod 建不出來時 Pod 頁沒有 Events，要看 Deployment / ReplicaSet 的 Events。\n\n詳細原因請到 OCP console 查看該 Pod 的 Events（表格的 Pod 名稱可直接點過去）。",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "${datasource}"
+              },
+              "expr": "(max by (namespace, deployment) (kube_deployment_spec_replicas{namespace=~\"$namespace\", namespace!~\"$exclude\"}) * on (namespace, deployment) group_right () (0 * (((max by (namespace, deployment) (kube_deployment_status_replicas_unavailable{namespace=~\"$namespace\", namespace!~\"$exclude\"} > 0)) * on () group_left (url) topk(1, max by (url) (console_url))) or on (namespace, deployment) (max by (namespace, deployment) (kube_deployment_status_replicas_unavailable{namespace=~\"$namespace\", namespace!~\"$exclude\"} > 0))) + 1)) or (0 * (((max by (namespace, deployment) (kube_deployment_status_replicas_unavailable{namespace=~\"$namespace\", namespace!~\"$exclude\"} > 0)) * on () group_left (url) topk(1, max by (url) (console_url))) or on (namespace, deployment) (max by (namespace, deployment) (kube_deployment_status_replicas_unavailable{namespace=~\"$namespace\", namespace!~\"$exclude\"} > 0))) - 1)",
+              "legendFormat": "",
+              "range": false,
+              "instant": true,
+              "format": "table"
+            },
+            {
+              "refId": "B",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "${datasource}"
+              },
+              "expr": "(max by (namespace, deployment) (kube_deployment_status_replicas_available{namespace=~\"$namespace\", namespace!~\"$exclude\"}) * on (namespace, deployment) group_right () (0 * (((max by (namespace, deployment) (kube_deployment_status_replicas_unavailable{namespace=~\"$namespace\", namespace!~\"$exclude\"} > 0)) * on () group_left (url) topk(1, max by (url) (console_url))) or on (namespace, deployment) (max by (namespace, deployment) (kube_deployment_status_replicas_unavailable{namespace=~\"$namespace\", namespace!~\"$exclude\"} > 0))) + 1)) or (0 * (((max by (namespace, deployment) (kube_deployment_status_replicas_unavailable{namespace=~\"$namespace\", namespace!~\"$exclude\"} > 0)) * on () group_left (url) topk(1, max by (url) (console_url))) or on (namespace, deployment) (max by (namespace, deployment) (kube_deployment_status_replicas_unavailable{namespace=~\"$namespace\", namespace!~\"$exclude\"} > 0))) - 1)",
+              "legendFormat": "",
+              "range": false,
+              "instant": true,
+              "format": "table"
+            },
+            {
+              "refId": "C",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "${datasource}"
+              },
+              "expr": "(max by (namespace, deployment) (kube_deployment_status_replicas_unavailable{namespace=~\"$namespace\", namespace!~\"$exclude\"}) * on (namespace, deployment) group_right () (0 * (((max by (namespace, deployment) (kube_deployment_status_replicas_unavailable{namespace=~\"$namespace\", namespace!~\"$exclude\"} > 0)) * on () group_left (url) topk(1, max by (url) (console_url))) or on (namespace, deployment) (max by (namespace, deployment) (kube_deployment_status_replicas_unavailable{namespace=~\"$namespace\", namespace!~\"$exclude\"} > 0))) + 1)) or (0 * (((max by (namespace, deployment) (kube_deployment_status_replicas_unavailable{namespace=~\"$namespace\", namespace!~\"$exclude\"} > 0)) * on () group_left (url) topk(1, max by (url) (console_url))) or on (namespace, deployment) (max by (namespace, deployment) (kube_deployment_status_replicas_unavailable{namespace=~\"$namespace\", namespace!~\"$exclude\"} > 0))) - 1)",
+              "legendFormat": "",
+              "range": false,
+              "instant": true,
+              "format": "table"
+            },
+            {
+              "refId": "D",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "${datasource}"
+              },
+              "expr": "(max by (namespace, deployment) (count_over_time((max by (namespace, deployment) (kube_deployment_status_replicas_unavailable{namespace=~\"$namespace\", namespace!~\"$exclude\"} > 0))[1h:1m])) * on (namespace, deployment) group_right () (0 * (((max by (namespace, deployment) (kube_deployment_status_replicas_unavailable{namespace=~\"$namespace\", namespace!~\"$exclude\"} > 0)) * on () group_left (url) topk(1, max by (url) (console_url))) or on (namespace, deployment) (max by (namespace, deployment) (kube_deployment_status_replicas_unavailable{namespace=~\"$namespace\", namespace!~\"$exclude\"} > 0))) + 1)) or (0 * (((max by (namespace, deployment) (kube_deployment_status_replicas_unavailable{namespace=~\"$namespace\", namespace!~\"$exclude\"} > 0)) * on () group_left (url) topk(1, max by (url) (console_url))) or on (namespace, deployment) (max by (namespace, deployment) (kube_deployment_status_replicas_unavailable{namespace=~\"$namespace\", namespace!~\"$exclude\"} > 0))) - 1)",
+              "legendFormat": "",
+              "range": false,
+              "instant": true,
+              "format": "table"
+            }
+          ],
+          "transformations": [
+            {
+              "id": "merge",
+              "options": {}
+            },
+            {
+              "id": "organize",
+              "options": {
+                "excludeByName": {
+                  "Time": true
+                },
+                "renameByName": {
+                  "Value #A": "期望",
+                  "Value #B": "可用",
+                  "Value #C": "不可用",
+                  "Value #D": "持續（近 1h 分鐘）"
+                },
+                "indexByName": {
+                  "namespace": 0,
+                  "deployment": 1,
+                  "期望": 2,
+                  "可用": 3,
+                  "不可用": 4,
+                  "持續（近 1h 分鐘）": 5
+                }
+              }
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "custom": {
+                "align": "auto",
+                "minWidth": 80,
+                "wrapHeaderText": true
+              },
+              "noValue": "沒有異常"
+            },
+            "overrides": [
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "期望"
+                },
+                "properties": [
+                  {
+                    "id": "unit",
+                    "value": "none"
+                  },
+                  {
+                    "id": "mappings",
+                    "value": [
+                      {
+                        "type": "value",
+                        "options": {
+                          "-1": {
+                            "text": "—",
+                            "color": "#8e8e8e",
+                            "index": 0
+                          }
+                        }
+                      }
+                    ]
+                  },
+                  {
+                    "id": "decimals",
+                    "value": 0
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "可用"
+                },
+                "properties": [
+                  {
+                    "id": "unit",
+                    "value": "none"
+                  },
+                  {
+                    "id": "mappings",
+                    "value": [
+                      {
+                        "type": "value",
+                        "options": {
+                          "-1": {
+                            "text": "—",
+                            "color": "#8e8e8e",
+                            "index": 0
+                          }
+                        }
+                      }
+                    ]
+                  },
+                  {
+                    "id": "decimals",
+                    "value": 0
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "不可用"
+                },
+                "properties": [
+                  {
+                    "id": "unit",
+                    "value": "none"
+                  },
+                  {
+                    "id": "mappings",
+                    "value": [
+                      {
+                        "type": "value",
+                        "options": {
+                          "-1": {
+                            "text": "—",
+                            "color": "#8e8e8e",
+                            "index": 0
+                          }
+                        }
+                      }
+                    ]
+                  },
+                  {
+                    "id": "decimals",
+                    "value": 0
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "持續（近 1h 分鐘）"
+                },
+                "properties": [
+                  {
+                    "id": "unit",
+                    "value": "m"
+                  },
+                  {
+                    "id": "mappings",
+                    "value": [
+                      {
+                        "type": "value",
+                        "options": {
+                          "-1": {
+                            "text": "—",
+                            "color": "#8e8e8e",
+                            "index": 0
+                          }
+                        }
+                      }
+                    ]
+                  },
+                  {
+                    "id": "decimals",
+                    "value": 0
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "namespace"
+                },
+                "properties": [
+                  {
+                    "id": "custom.width",
+                    "value": 150
+                  },
+                  {
+                    "id": "custom.filterable",
+                    "value": true
+                  },
+                  {
+                    "id": "displayName",
+                    "value": "Namespace"
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "deployment"
+                },
+                "properties": [
+                  {
+                    "id": "custom.width",
+                    "value": 220
+                  },
+                  {
+                    "id": "custom.filterable",
+                    "value": true
+                  },
+                  {
+                    "id": "links",
+                    "value": [
+                      {
+                        "title": "在 OCP console 看 Events",
+                        "url": "${__data.fields.url}/k8s/ns/${__data.fields.namespace}/deployments/${__value.raw}/events",
+                        "targetBlank": true
+                      }
+                    ]
+                  },
+                  {
+                    "id": "displayName",
+                    "value": "Deployment"
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "url"
+                },
+                "properties": [
+                  {
+                    "id": "custom.hidden",
+                    "value": true
+                  }
+                ]
+              }
+            ]
+          },
+          "options": {
+            "showHeader": true,
+            "cellHeight": "sm",
+            "sortBy": [
+              {
+                "displayName": "持續（近 1h 分鐘）",
+                "desc": true
+              }
+            ],
+            "footer": {
+              "show": false
+            }
+          },
+          "gridPos": {
+            "h": 8,
+            "w": 12,
+            "x": 0,
+            "y": 17
+          }
+        },
+        {
+          "id": 15,
+          "type": "table",
+          "title": "4 Rollout 卡住",
+          "description": "**這是什麼**：Progressing 條件為 False 的 Deployment 數（超過 progressDeadlineSeconds，預設 10 分鐘，新版還沒好）。\n\n**怎麼看**：通常跟第 3 類一起出現；看 Deployment 的 Events 與新 ReplicaSet 的 Pod。\n\n詳細原因請到 OCP console 查看該 Pod 的 Events（表格的 Pod 名稱可直接點過去）。",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "${datasource}"
+              },
+              "expr": "(max by (namespace, deployment) (kube_deployment_spec_replicas{namespace=~\"$namespace\", namespace!~\"$exclude\"}) * on (namespace, deployment) group_right () (0 * (((max by (namespace, deployment) (kube_deployment_status_condition{condition=\"Progressing\", status=\"false\", namespace=~\"$namespace\", namespace!~\"$exclude\"} == 1)) * on () group_left (url) topk(1, max by (url) (console_url))) or on (namespace, deployment) (max by (namespace, deployment) (kube_deployment_status_condition{condition=\"Progressing\", status=\"false\", namespace=~\"$namespace\", namespace!~\"$exclude\"} == 1))) + 1)) or (0 * (((max by (namespace, deployment) (kube_deployment_status_condition{condition=\"Progressing\", status=\"false\", namespace=~\"$namespace\", namespace!~\"$exclude\"} == 1)) * on () group_left (url) topk(1, max by (url) (console_url))) or on (namespace, deployment) (max by (namespace, deployment) (kube_deployment_status_condition{condition=\"Progressing\", status=\"false\", namespace=~\"$namespace\", namespace!~\"$exclude\"} == 1))) - 1)",
+              "legendFormat": "",
+              "range": false,
+              "instant": true,
+              "format": "table"
+            },
+            {
+              "refId": "B",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "${datasource}"
+              },
+              "expr": "(max by (namespace, deployment) (kube_deployment_status_replicas_updated{namespace=~\"$namespace\", namespace!~\"$exclude\"}) * on (namespace, deployment) group_right () (0 * (((max by (namespace, deployment) (kube_deployment_status_condition{condition=\"Progressing\", status=\"false\", namespace=~\"$namespace\", namespace!~\"$exclude\"} == 1)) * on () group_left (url) topk(1, max by (url) (console_url))) or on (namespace, deployment) (max by (namespace, deployment) (kube_deployment_status_condition{condition=\"Progressing\", status=\"false\", namespace=~\"$namespace\", namespace!~\"$exclude\"} == 1))) + 1)) or (0 * (((max by (namespace, deployment) (kube_deployment_status_condition{condition=\"Progressing\", status=\"false\", namespace=~\"$namespace\", namespace!~\"$exclude\"} == 1)) * on () group_left (url) topk(1, max by (url) (console_url))) or on (namespace, deployment) (max by (namespace, deployment) (kube_deployment_status_condition{condition=\"Progressing\", status=\"false\", namespace=~\"$namespace\", namespace!~\"$exclude\"} == 1))) - 1)",
+              "legendFormat": "",
+              "range": false,
+              "instant": true,
+              "format": "table"
+            },
+            {
+              "refId": "C",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "${datasource}"
+              },
+              "expr": "(max by (namespace, deployment) (kube_deployment_status_replicas_available{namespace=~\"$namespace\", namespace!~\"$exclude\"}) * on (namespace, deployment) group_right () (0 * (((max by (namespace, deployment) (kube_deployment_status_condition{condition=\"Progressing\", status=\"false\", namespace=~\"$namespace\", namespace!~\"$exclude\"} == 1)) * on () group_left (url) topk(1, max by (url) (console_url))) or on (namespace, deployment) (max by (namespace, deployment) (kube_deployment_status_condition{condition=\"Progressing\", status=\"false\", namespace=~\"$namespace\", namespace!~\"$exclude\"} == 1))) + 1)) or (0 * (((max by (namespace, deployment) (kube_deployment_status_condition{condition=\"Progressing\", status=\"false\", namespace=~\"$namespace\", namespace!~\"$exclude\"} == 1)) * on () group_left (url) topk(1, max by (url) (console_url))) or on (namespace, deployment) (max by (namespace, deployment) (kube_deployment_status_condition{condition=\"Progressing\", status=\"false\", namespace=~\"$namespace\", namespace!~\"$exclude\"} == 1))) - 1)",
+              "legendFormat": "",
+              "range": false,
+              "instant": true,
+              "format": "table"
+            },
+            {
+              "refId": "D",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "${datasource}"
+              },
+              "expr": "(max by (namespace, deployment) (count_over_time((max by (namespace, deployment) (kube_deployment_status_condition{condition=\"Progressing\", status=\"false\", namespace=~\"$namespace\", namespace!~\"$exclude\"} == 1))[1h:1m])) * on (namespace, deployment) group_right () (0 * (((max by (namespace, deployment) (kube_deployment_status_condition{condition=\"Progressing\", status=\"false\", namespace=~\"$namespace\", namespace!~\"$exclude\"} == 1)) * on () group_left (url) topk(1, max by (url) (console_url))) or on (namespace, deployment) (max by (namespace, deployment) (kube_deployment_status_condition{condition=\"Progressing\", status=\"false\", namespace=~\"$namespace\", namespace!~\"$exclude\"} == 1))) + 1)) or (0 * (((max by (namespace, deployment) (kube_deployment_status_condition{condition=\"Progressing\", status=\"false\", namespace=~\"$namespace\", namespace!~\"$exclude\"} == 1)) * on () group_left (url) topk(1, max by (url) (console_url))) or on (namespace, deployment) (max by (namespace, deployment) (kube_deployment_status_condition{condition=\"Progressing\", status=\"false\", namespace=~\"$namespace\", namespace!~\"$exclude\"} == 1))) - 1)",
+              "legendFormat": "",
+              "range": false,
+              "instant": true,
+              "format": "table"
+            }
+          ],
+          "transformations": [
+            {
+              "id": "merge",
+              "options": {}
+            },
+            {
+              "id": "organize",
+              "options": {
+                "excludeByName": {
+                  "Time": true
+                },
+                "renameByName": {
+                  "Value #A": "期望",
+                  "Value #B": "已更新",
+                  "Value #C": "可用",
+                  "Value #D": "持續（近 1h 分鐘）"
+                },
+                "indexByName": {
+                  "namespace": 0,
+                  "deployment": 1,
+                  "期望": 2,
+                  "已更新": 3,
+                  "可用": 4,
+                  "持續（近 1h 分鐘）": 5
+                }
+              }
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "custom": {
+                "align": "auto",
+                "minWidth": 80,
+                "wrapHeaderText": true
+              },
+              "noValue": "沒有異常"
+            },
+            "overrides": [
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "期望"
+                },
+                "properties": [
+                  {
+                    "id": "unit",
+                    "value": "none"
+                  },
+                  {
+                    "id": "mappings",
+                    "value": [
+                      {
+                        "type": "value",
+                        "options": {
+                          "-1": {
+                            "text": "—",
+                            "color": "#8e8e8e",
+                            "index": 0
+                          }
+                        }
+                      }
+                    ]
+                  },
+                  {
+                    "id": "decimals",
+                    "value": 0
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "已更新"
+                },
+                "properties": [
+                  {
+                    "id": "unit",
+                    "value": "none"
+                  },
+                  {
+                    "id": "mappings",
+                    "value": [
+                      {
+                        "type": "value",
+                        "options": {
+                          "-1": {
+                            "text": "—",
+                            "color": "#8e8e8e",
+                            "index": 0
+                          }
+                        }
+                      }
+                    ]
+                  },
+                  {
+                    "id": "decimals",
+                    "value": 0
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "可用"
+                },
+                "properties": [
+                  {
+                    "id": "unit",
+                    "value": "none"
+                  },
+                  {
+                    "id": "mappings",
+                    "value": [
+                      {
+                        "type": "value",
+                        "options": {
+                          "-1": {
+                            "text": "—",
+                            "color": "#8e8e8e",
+                            "index": 0
+                          }
+                        }
+                      }
+                    ]
+                  },
+                  {
+                    "id": "decimals",
+                    "value": 0
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "持續（近 1h 分鐘）"
+                },
+                "properties": [
+                  {
+                    "id": "unit",
+                    "value": "m"
+                  },
+                  {
+                    "id": "mappings",
+                    "value": [
+                      {
+                        "type": "value",
+                        "options": {
+                          "-1": {
+                            "text": "—",
+                            "color": "#8e8e8e",
+                            "index": 0
+                          }
+                        }
+                      }
+                    ]
+                  },
+                  {
+                    "id": "decimals",
+                    "value": 0
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "namespace"
+                },
+                "properties": [
+                  {
+                    "id": "custom.width",
+                    "value": 150
+                  },
+                  {
+                    "id": "custom.filterable",
+                    "value": true
+                  },
+                  {
+                    "id": "displayName",
+                    "value": "Namespace"
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "deployment"
+                },
+                "properties": [
+                  {
+                    "id": "custom.width",
+                    "value": 220
+                  },
+                  {
+                    "id": "custom.filterable",
+                    "value": true
+                  },
+                  {
+                    "id": "links",
+                    "value": [
+                      {
+                        "title": "在 OCP console 看 Events",
+                        "url": "${__data.fields.url}/k8s/ns/${__data.fields.namespace}/deployments/${__value.raw}/events",
+                        "targetBlank": true
+                      }
+                    ]
+                  },
+                  {
+                    "id": "displayName",
+                    "value": "Deployment"
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "url"
+                },
+                "properties": [
+                  {
+                    "id": "custom.hidden",
+                    "value": true
+                  }
+                ]
+              }
+            ]
+          },
+          "options": {
+            "showHeader": true,
+            "cellHeight": "sm",
+            "sortBy": [
+              {
+                "displayName": "持續（近 1h 分鐘）",
+                "desc": true
+              }
+            ],
+            "footer": {
+              "show": false
+            }
+          },
+          "gridPos": {
+            "h": 8,
+            "w": 12,
+            "x": 12,
+            "y": 17
+          }
+        },
+        {
+          "id": 16,
+          "type": "table",
+          "title": "5 Readiness 不過",
+          "description": "**這是什麼**：Pod 是 Running、容器也在跑，但 Ready=false 的容器數（CrashLoop 不算在這，歸第 7 類）。\n\n**怎麼看**：Pod 剛啟動、還在 initialDelay 時會短暫出現；明細表的「持續」超過幾分鐘才需要處理。\n\n詳細原因請到 OCP console 查看該 Pod 的 Events（表格的 Pod 名稱可直接點過去）。",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "${datasource}"
+              },
+              "expr": "(max by (namespace, pod, container) (count_over_time((max by (namespace, pod, container) ((kube_pod_container_status_ready{namespace=~\"$namespace\", namespace!~\"$exclude\"} == 0) and on (namespace, pod) (kube_pod_status_phase{phase=\"Running\", namespace=~\"$namespace\", namespace!~\"$exclude\"} == 1) and on (namespace, pod, container) (kube_pod_container_status_running{namespace=~\"$namespace\", namespace!~\"$exclude\"} == 1)))[1h:1m])) * on (namespace, pod, container) group_right () (0 * (((max by (namespace, pod, container) ((kube_pod_container_status_ready{namespace=~\"$namespace\", namespace!~\"$exclude\"} == 0) and on (namespace, pod) (kube_pod_status_phase{phase=\"Running\", namespace=~\"$namespace\", namespace!~\"$exclude\"} == 1) and on (namespace, pod, container) (kube_pod_container_status_running{namespace=~\"$namespace\", namespace!~\"$exclude\"} == 1))) * on () group_left (url) topk(1, max by (url) (console_url))) or on (namespace, pod, container) (max by (namespace, pod, container) ((kube_pod_container_status_ready{namespace=~\"$namespace\", namespace!~\"$exclude\"} == 0) and on (namespace, pod) (kube_pod_status_phase{phase=\"Running\", namespace=~\"$namespace\", namespace!~\"$exclude\"} == 1) and on (namespace, pod, container) (kube_pod_container_status_running{namespace=~\"$namespace\", namespace!~\"$exclude\"} == 1)))) + 1)) or (0 * (((max by (namespace, pod, container) ((kube_pod_container_status_ready{namespace=~\"$namespace\", namespace!~\"$exclude\"} == 0) and on (namespace, pod) (kube_pod_status_phase{phase=\"Running\", namespace=~\"$namespace\", namespace!~\"$exclude\"} == 1) and on (namespace, pod, container) (kube_pod_container_status_running{namespace=~\"$namespace\", namespace!~\"$exclude\"} == 1))) * on () group_left (url) topk(1, max by (url) (console_url))) or on (namespace, pod, container) (max by (namespace, pod, container) ((kube_pod_container_status_ready{namespace=~\"$namespace\", namespace!~\"$exclude\"} == 0) and on (namespace, pod) (kube_pod_status_phase{phase=\"Running\", namespace=~\"$namespace\", namespace!~\"$exclude\"} == 1) and on (namespace, pod, container) (kube_pod_container_status_running{namespace=~\"$namespace\", namespace!~\"$exclude\"} == 1)))) - 1)",
+              "legendFormat": "",
+              "range": false,
+              "instant": true,
+              "format": "table"
+            },
+            {
+              "refId": "B",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "${datasource}"
+              },
+              "expr": "(max by (namespace, pod, container) (increase(kube_pod_container_status_restarts_total{namespace=~\"$namespace\", namespace!~\"$exclude\"}[1h])) * on (namespace, pod, container) group_right () (0 * (((max by (namespace, pod, container) ((kube_pod_container_status_ready{namespace=~\"$namespace\", namespace!~\"$exclude\"} == 0) and on (namespace, pod) (kube_pod_status_phase{phase=\"Running\", namespace=~\"$namespace\", namespace!~\"$exclude\"} == 1) and on (namespace, pod, container) (kube_pod_container_status_running{namespace=~\"$namespace\", namespace!~\"$exclude\"} == 1))) * on () group_left (url) topk(1, max by (url) (console_url))) or on (namespace, pod, container) (max by (namespace, pod, container) ((kube_pod_container_status_ready{namespace=~\"$namespace\", namespace!~\"$exclude\"} == 0) and on (namespace, pod) (kube_pod_status_phase{phase=\"Running\", namespace=~\"$namespace\", namespace!~\"$exclude\"} == 1) and on (namespace, pod, container) (kube_pod_container_status_running{namespace=~\"$namespace\", namespace!~\"$exclude\"} == 1)))) + 1)) or (0 * (((max by (namespace, pod, container) ((kube_pod_container_status_ready{namespace=~\"$namespace\", namespace!~\"$exclude\"} == 0) and on (namespace, pod) (kube_pod_status_phase{phase=\"Running\", namespace=~\"$namespace\", namespace!~\"$exclude\"} == 1) and on (namespace, pod, container) (kube_pod_container_status_running{namespace=~\"$namespace\", namespace!~\"$exclude\"} == 1))) * on () group_left (url) topk(1, max by (url) (console_url))) or on (namespace, pod, container) (max by (namespace, pod, container) ((kube_pod_container_status_ready{namespace=~\"$namespace\", namespace!~\"$exclude\"} == 0) and on (namespace, pod) (kube_pod_status_phase{phase=\"Running\", namespace=~\"$namespace\", namespace!~\"$exclude\"} == 1) and on (namespace, pod, container) (kube_pod_container_status_running{namespace=~\"$namespace\", namespace!~\"$exclude\"} == 1)))) - 1)",
+              "legendFormat": "",
+              "range": false,
+              "instant": true,
+              "format": "table"
+            }
+          ],
+          "transformations": [
+            {
+              "id": "merge",
+              "options": {}
+            },
+            {
+              "id": "organize",
+              "options": {
+                "excludeByName": {
+                  "Time": true
+                },
+                "renameByName": {
+                  "Value #A": "持續（近 1h 分鐘）",
+                  "Value #B": "1h 內重啟"
+                },
+                "indexByName": {
+                  "namespace": 0,
+                  "pod": 1,
+                  "container": 2,
+                  "持續（近 1h 分鐘）": 3,
+                  "1h 內重啟": 4
+                }
+              }
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "custom": {
+                "align": "auto",
+                "minWidth": 80,
+                "wrapHeaderText": true
+              },
+              "noValue": "沒有異常"
+            },
+            "overrides": [
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "持續（近 1h 分鐘）"
+                },
+                "properties": [
+                  {
+                    "id": "unit",
+                    "value": "m"
+                  },
+                  {
+                    "id": "mappings",
+                    "value": [
+                      {
+                        "type": "value",
+                        "options": {
+                          "-1": {
+                            "text": "—",
+                            "color": "#8e8e8e",
+                            "index": 0
+                          }
+                        }
+                      }
+                    ]
+                  },
+                  {
+                    "id": "decimals",
+                    "value": 0
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "1h 內重啟"
+                },
+                "properties": [
+                  {
+                    "id": "unit",
+                    "value": "none"
+                  },
+                  {
+                    "id": "mappings",
+                    "value": [
+                      {
+                        "type": "value",
+                        "options": {
+                          "-1": {
+                            "text": "—",
+                            "color": "#8e8e8e",
+                            "index": 0
+                          }
+                        }
+                      }
+                    ]
+                  },
+                  {
+                    "id": "decimals",
+                    "value": 0
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "namespace"
+                },
+                "properties": [
+                  {
+                    "id": "custom.width",
+                    "value": 150
+                  },
+                  {
+                    "id": "custom.filterable",
+                    "value": true
+                  },
+                  {
+                    "id": "displayName",
+                    "value": "Namespace"
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "pod"
+                },
+                "properties": [
+                  {
+                    "id": "custom.width",
+                    "value": 260
+                  },
+                  {
+                    "id": "custom.filterable",
+                    "value": true
+                  },
+                  {
+                    "id": "links",
+                    "value": [
+                      {
+                        "title": "在 OCP console 看 Events",
+                        "url": "${__data.fields.url}/k8s/ns/${__data.fields.namespace}/pods/${__value.raw}/events",
+                        "targetBlank": true
+                      }
+                    ]
+                  },
+                  {
+                    "id": "displayName",
+                    "value": "Pod"
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "container"
+                },
+                "properties": [
+                  {
+                    "id": "custom.width",
+                    "value": 140
+                  },
+                  {
+                    "id": "custom.filterable",
+                    "value": true
+                  },
+                  {
+                    "id": "displayName",
+                    "value": "Container"
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "url"
+                },
+                "properties": [
+                  {
+                    "id": "custom.hidden",
+                    "value": true
+                  }
+                ]
+              }
+            ]
+          },
+          "options": {
+            "showHeader": true,
+            "cellHeight": "sm",
+            "sortBy": [
+              {
+                "displayName": "持續（近 1h 分鐘）",
+                "desc": true
+              }
+            ],
+            "footer": {
+              "show": false
+            }
+          },
+          "gridPos": {
+            "h": 8,
+            "w": 12,
+            "x": 0,
+            "y": 25
+          }
+        },
+        {
+          "id": 17,
+          "type": "table",
+          "title": "6 近 1 小時有重啟",
+          "description": "**這是什麼**：近 1 小時有重啟的容器；原因 = 上次終止原因（Error、OOMKilled、Completed…）。\n\n**怎麼看**：「5 分鐘內」> 0 的就是上方紅色計數裡的容器；只有「1 小時內」有數字的是剛剛重啟過、目前已恢復。\n\n詳細原因請到 OCP console 查看該 Pod 的 Events（表格的 Pod 名稱可直接點過去）。",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "${datasource}"
+              },
+              "expr": "(max by (namespace, pod, container) (increase(kube_pod_container_status_restarts_total{namespace=~\"$namespace\", namespace!~\"$exclude\"}[5m])) * on (namespace, pod, container) group_right () (0 * ((((max by (namespace, pod, container) (increase(kube_pod_container_status_restarts_total{namespace=~\"$namespace\", namespace!~\"$exclude\"}[1h]) > 0) * on (namespace, pod, container) group_left (reason) max by (namespace, pod, container, reason) (kube_pod_container_status_last_terminated_reason{namespace=~\"$namespace\", namespace!~\"$exclude\"} == 1)) or on (namespace, pod, container) label_replace(max by (namespace, pod, container) (increase(kube_pod_container_status_restarts_total{namespace=~\"$namespace\", namespace!~\"$exclude\"}[1h]) > 0), \"reason\", \"—\", \"\", \"\")) * on () group_left (url) topk(1, max by (url) (console_url))) or on (namespace, pod, container, reason) ((max by (namespace, pod, container) (increase(kube_pod_container_status_restarts_total{namespace=~\"$namespace\", namespace!~\"$exclude\"}[1h]) > 0) * on (namespace, pod, container) group_left (reason) max by (namespace, pod, container, reason) (kube_pod_container_status_last_terminated_reason{namespace=~\"$namespace\", namespace!~\"$exclude\"} == 1)) or on (namespace, pod, container) label_replace(max by (namespace, pod, container) (increase(kube_pod_container_status_restarts_total{namespace=~\"$namespace\", namespace!~\"$exclude\"}[1h]) > 0), \"reason\", \"—\", \"\", \"\"))) + 1)) or (0 * ((((max by (namespace, pod, container) (increase(kube_pod_container_status_restarts_total{namespace=~\"$namespace\", namespace!~\"$exclude\"}[1h]) > 0) * on (namespace, pod, container) group_left (reason) max by (namespace, pod, container, reason) (kube_pod_container_status_last_terminated_reason{namespace=~\"$namespace\", namespace!~\"$exclude\"} == 1)) or on (namespace, pod, container) label_replace(max by (namespace, pod, container) (increase(kube_pod_container_status_restarts_total{namespace=~\"$namespace\", namespace!~\"$exclude\"}[1h]) > 0), \"reason\", \"—\", \"\", \"\")) * on () group_left (url) topk(1, max by (url) (console_url))) or on (namespace, pod, container, reason) ((max by (namespace, pod, container) (increase(kube_pod_container_status_restarts_total{namespace=~\"$namespace\", namespace!~\"$exclude\"}[1h]) > 0) * on (namespace, pod, container) group_left (reason) max by (namespace, pod, container, reason) (kube_pod_container_status_last_terminated_reason{namespace=~\"$namespace\", namespace!~\"$exclude\"} == 1)) or on (namespace, pod, container) label_replace(max by (namespace, pod, container) (increase(kube_pod_container_status_restarts_total{namespace=~\"$namespace\", namespace!~\"$exclude\"}[1h]) > 0), \"reason\", \"—\", \"\", \"\"))) - 1)",
+              "legendFormat": "",
+              "range": false,
+              "instant": true,
+              "format": "table"
+            },
+            {
+              "refId": "B",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "${datasource}"
+              },
+              "expr": "(max by (namespace, pod, container) (increase(kube_pod_container_status_restarts_total{namespace=~\"$namespace\", namespace!~\"$exclude\"}[1h])) * on (namespace, pod, container) group_right () (0 * ((((max by (namespace, pod, container) (increase(kube_pod_container_status_restarts_total{namespace=~\"$namespace\", namespace!~\"$exclude\"}[1h]) > 0) * on (namespace, pod, container) group_left (reason) max by (namespace, pod, container, reason) (kube_pod_container_status_last_terminated_reason{namespace=~\"$namespace\", namespace!~\"$exclude\"} == 1)) or on (namespace, pod, container) label_replace(max by (namespace, pod, container) (increase(kube_pod_container_status_restarts_total{namespace=~\"$namespace\", namespace!~\"$exclude\"}[1h]) > 0), \"reason\", \"—\", \"\", \"\")) * on () group_left (url) topk(1, max by (url) (console_url))) or on (namespace, pod, container, reason) ((max by (namespace, pod, container) (increase(kube_pod_container_status_restarts_total{namespace=~\"$namespace\", namespace!~\"$exclude\"}[1h]) > 0) * on (namespace, pod, container) group_left (reason) max by (namespace, pod, container, reason) (kube_pod_container_status_last_terminated_reason{namespace=~\"$namespace\", namespace!~\"$exclude\"} == 1)) or on (namespace, pod, container) label_replace(max by (namespace, pod, container) (increase(kube_pod_container_status_restarts_total{namespace=~\"$namespace\", namespace!~\"$exclude\"}[1h]) > 0), \"reason\", \"—\", \"\", \"\"))) + 1)) or (0 * ((((max by (namespace, pod, container) (increase(kube_pod_container_status_restarts_total{namespace=~\"$namespace\", namespace!~\"$exclude\"}[1h]) > 0) * on (namespace, pod, container) group_left (reason) max by (namespace, pod, container, reason) (kube_pod_container_status_last_terminated_reason{namespace=~\"$namespace\", namespace!~\"$exclude\"} == 1)) or on (namespace, pod, container) label_replace(max by (namespace, pod, container) (increase(kube_pod_container_status_restarts_total{namespace=~\"$namespace\", namespace!~\"$exclude\"}[1h]) > 0), \"reason\", \"—\", \"\", \"\")) * on () group_left (url) topk(1, max by (url) (console_url))) or on (namespace, pod, container, reason) ((max by (namespace, pod, container) (increase(kube_pod_container_status_restarts_total{namespace=~\"$namespace\", namespace!~\"$exclude\"}[1h]) > 0) * on (namespace, pod, container) group_left (reason) max by (namespace, pod, container, reason) (kube_pod_container_status_last_terminated_reason{namespace=~\"$namespace\", namespace!~\"$exclude\"} == 1)) or on (namespace, pod, container) label_replace(max by (namespace, pod, container) (increase(kube_pod_container_status_restarts_total{namespace=~\"$namespace\", namespace!~\"$exclude\"}[1h]) > 0), \"reason\", \"—\", \"\", \"\"))) - 1)",
+              "legendFormat": "",
+              "range": false,
+              "instant": true,
+              "format": "table"
+            },
+            {
+              "refId": "C",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "${datasource}"
+              },
+              "expr": "(max by (namespace, pod, container) (kube_pod_container_status_restarts_total{namespace=~\"$namespace\", namespace!~\"$exclude\"}) * on (namespace, pod, container) group_right () (0 * ((((max by (namespace, pod, container) (increase(kube_pod_container_status_restarts_total{namespace=~\"$namespace\", namespace!~\"$exclude\"}[1h]) > 0) * on (namespace, pod, container) group_left (reason) max by (namespace, pod, container, reason) (kube_pod_container_status_last_terminated_reason{namespace=~\"$namespace\", namespace!~\"$exclude\"} == 1)) or on (namespace, pod, container) label_replace(max by (namespace, pod, container) (increase(kube_pod_container_status_restarts_total{namespace=~\"$namespace\", namespace!~\"$exclude\"}[1h]) > 0), \"reason\", \"—\", \"\", \"\")) * on () group_left (url) topk(1, max by (url) (console_url))) or on (namespace, pod, container, reason) ((max by (namespace, pod, container) (increase(kube_pod_container_status_restarts_total{namespace=~\"$namespace\", namespace!~\"$exclude\"}[1h]) > 0) * on (namespace, pod, container) group_left (reason) max by (namespace, pod, container, reason) (kube_pod_container_status_last_terminated_reason{namespace=~\"$namespace\", namespace!~\"$exclude\"} == 1)) or on (namespace, pod, container) label_replace(max by (namespace, pod, container) (increase(kube_pod_container_status_restarts_total{namespace=~\"$namespace\", namespace!~\"$exclude\"}[1h]) > 0), \"reason\", \"—\", \"\", \"\"))) + 1)) or (0 * ((((max by (namespace, pod, container) (increase(kube_pod_container_status_restarts_total{namespace=~\"$namespace\", namespace!~\"$exclude\"}[1h]) > 0) * on (namespace, pod, container) group_left (reason) max by (namespace, pod, container, reason) (kube_pod_container_status_last_terminated_reason{namespace=~\"$namespace\", namespace!~\"$exclude\"} == 1)) or on (namespace, pod, container) label_replace(max by (namespace, pod, container) (increase(kube_pod_container_status_restarts_total{namespace=~\"$namespace\", namespace!~\"$exclude\"}[1h]) > 0), \"reason\", \"—\", \"\", \"\")) * on () group_left (url) topk(1, max by (url) (console_url))) or on (namespace, pod, container, reason) ((max by (namespace, pod, container) (increase(kube_pod_container_status_restarts_total{namespace=~\"$namespace\", namespace!~\"$exclude\"}[1h]) > 0) * on (namespace, pod, container) group_left (reason) max by (namespace, pod, container, reason) (kube_pod_container_status_last_terminated_reason{namespace=~\"$namespace\", namespace!~\"$exclude\"} == 1)) or on (namespace, pod, container) label_replace(max by (namespace, pod, container) (increase(kube_pod_container_status_restarts_total{namespace=~\"$namespace\", namespace!~\"$exclude\"}[1h]) > 0), \"reason\", \"—\", \"\", \"\"))) - 1)",
+              "legendFormat": "",
+              "range": false,
+              "instant": true,
+              "format": "table"
+            }
+          ],
+          "transformations": [
+            {
+              "id": "merge",
+              "options": {}
+            },
+            {
+              "id": "organize",
+              "options": {
+                "excludeByName": {
+                  "Time": true
+                },
+                "renameByName": {
+                  "Value #A": "5 分鐘內",
+                  "Value #B": "1 小時內",
+                  "Value #C": "累計"
+                },
+                "indexByName": {
+                  "namespace": 0,
+                  "pod": 1,
+                  "container": 2,
+                  "reason": 3,
+                  "5 分鐘內": 4,
+                  "1 小時內": 5,
+                  "累計": 6
+                }
+              }
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "custom": {
+                "align": "auto",
+                "minWidth": 80,
+                "wrapHeaderText": true
+              },
+              "noValue": "沒有異常"
+            },
+            "overrides": [
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "5 分鐘內"
+                },
+                "properties": [
+                  {
+                    "id": "unit",
+                    "value": "none"
+                  },
+                  {
+                    "id": "mappings",
+                    "value": [
+                      {
+                        "type": "value",
+                        "options": {
+                          "-1": {
+                            "text": "—",
+                            "color": "#8e8e8e",
+                            "index": 0
+                          }
+                        }
+                      }
+                    ]
+                  },
+                  {
+                    "id": "decimals",
+                    "value": 0
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "1 小時內"
+                },
+                "properties": [
+                  {
+                    "id": "unit",
+                    "value": "none"
+                  },
+                  {
+                    "id": "mappings",
+                    "value": [
+                      {
+                        "type": "value",
+                        "options": {
+                          "-1": {
+                            "text": "—",
+                            "color": "#8e8e8e",
+                            "index": 0
+                          }
+                        }
+                      }
+                    ]
+                  },
+                  {
+                    "id": "decimals",
+                    "value": 0
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "累計"
+                },
+                "properties": [
+                  {
+                    "id": "unit",
+                    "value": "none"
+                  },
+                  {
+                    "id": "mappings",
+                    "value": [
+                      {
+                        "type": "value",
+                        "options": {
+                          "-1": {
+                            "text": "—",
+                            "color": "#8e8e8e",
+                            "index": 0
+                          }
+                        }
+                      }
+                    ]
+                  },
+                  {
+                    "id": "decimals",
+                    "value": 0
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "namespace"
+                },
+                "properties": [
+                  {
+                    "id": "custom.width",
+                    "value": 150
+                  },
+                  {
+                    "id": "custom.filterable",
+                    "value": true
+                  },
+                  {
+                    "id": "displayName",
+                    "value": "Namespace"
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "pod"
+                },
+                "properties": [
+                  {
+                    "id": "custom.width",
+                    "value": 260
+                  },
+                  {
+                    "id": "custom.filterable",
+                    "value": true
+                  },
+                  {
+                    "id": "links",
+                    "value": [
+                      {
+                        "title": "在 OCP console 看 Events",
+                        "url": "${__data.fields.url}/k8s/ns/${__data.fields.namespace}/pods/${__value.raw}/events",
+                        "targetBlank": true
+                      }
+                    ]
+                  },
+                  {
+                    "id": "displayName",
+                    "value": "Pod"
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "container"
+                },
+                "properties": [
+                  {
+                    "id": "custom.width",
+                    "value": 140
+                  },
+                  {
+                    "id": "custom.filterable",
+                    "value": true
+                  },
+                  {
+                    "id": "displayName",
+                    "value": "Container"
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "reason"
+                },
+                "properties": [
+                  {
+                    "id": "custom.width",
+                    "value": 150
+                  },
+                  {
+                    "id": "custom.filterable",
+                    "value": true
+                  },
+                  {
+                    "id": "displayName",
+                    "value": "原因"
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "url"
+                },
+                "properties": [
+                  {
+                    "id": "custom.hidden",
+                    "value": true
+                  }
+                ]
+              }
+            ]
+          },
+          "options": {
+            "showHeader": true,
+            "cellHeight": "sm",
+            "sortBy": [
+              {
+                "displayName": "5 分鐘內",
+                "desc": true
+              }
+            ],
+            "footer": {
+              "show": false
+            }
+          },
+          "gridPos": {
+            "h": 8,
+            "w": 12,
+            "x": 12,
+            "y": 25
+          }
+        },
+        {
+          "id": 18,
+          "type": "table",
+          "title": "7 CrashLoop / OOM",
+          "description": "**這是什麼**：CrashLoopBackOff 中，或上次終止是 OOMKilled 且 1 小時內有重啟的容器數。\n\n**怎麼看**：OOMKilled → 記憶體 Limit 太小或程式記憶體洩漏；CrashLoop → 看容器上一次的 log（oc logs --previous）。\n\n詳細原因請到 OCP console 查看該 Pod 的 Events（表格的 Pod 名稱可直接點過去）。",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "${datasource}"
+              },
+              "expr": "(max by (namespace, pod, container) (increase(kube_pod_container_status_restarts_total{namespace=~\"$namespace\", namespace!~\"$exclude\"}[1h])) * on (namespace, pod, container) group_right () (0 * ((((max by (namespace, pod, container, reason) (kube_pod_container_status_waiting_reason{reason=~\"CrashLoopBackOff\", namespace=~\"$namespace\", namespace!~\"$exclude\"} == 1)) or (max by (namespace, pod, container, reason) (kube_pod_container_status_last_terminated_reason{reason=\"OOMKilled\", namespace=~\"$namespace\", namespace!~\"$exclude\"} == 1) and on (namespace, pod, container) max by (namespace, pod, container) (increase(kube_pod_container_status_restarts_total{namespace=~\"$namespace\", namespace!~\"$exclude\"}[1h]) > 0))) * on () group_left (url) topk(1, max by (url) (console_url))) or on (namespace, pod, container, reason) ((max by (namespace, pod, container, reason) (kube_pod_container_status_waiting_reason{reason=~\"CrashLoopBackOff\", namespace=~\"$namespace\", namespace!~\"$exclude\"} == 1)) or (max by (namespace, pod, container, reason) (kube_pod_container_status_last_terminated_reason{reason=\"OOMKilled\", namespace=~\"$namespace\", namespace!~\"$exclude\"} == 1) and on (namespace, pod, container) max by (namespace, pod, container) (increase(kube_pod_container_status_restarts_total{namespace=~\"$namespace\", namespace!~\"$exclude\"}[1h]) > 0)))) + 1)) or (0 * ((((max by (namespace, pod, container, reason) (kube_pod_container_status_waiting_reason{reason=~\"CrashLoopBackOff\", namespace=~\"$namespace\", namespace!~\"$exclude\"} == 1)) or (max by (namespace, pod, container, reason) (kube_pod_container_status_last_terminated_reason{reason=\"OOMKilled\", namespace=~\"$namespace\", namespace!~\"$exclude\"} == 1) and on (namespace, pod, container) max by (namespace, pod, container) (increase(kube_pod_container_status_restarts_total{namespace=~\"$namespace\", namespace!~\"$exclude\"}[1h]) > 0))) * on () group_left (url) topk(1, max by (url) (console_url))) or on (namespace, pod, container, reason) ((max by (namespace, pod, container, reason) (kube_pod_container_status_waiting_reason{reason=~\"CrashLoopBackOff\", namespace=~\"$namespace\", namespace!~\"$exclude\"} == 1)) or (max by (namespace, pod, container, reason) (kube_pod_container_status_last_terminated_reason{reason=\"OOMKilled\", namespace=~\"$namespace\", namespace!~\"$exclude\"} == 1) and on (namespace, pod, container) max by (namespace, pod, container) (increase(kube_pod_container_status_restarts_total{namespace=~\"$namespace\", namespace!~\"$exclude\"}[1h]) > 0)))) - 1)",
+              "legendFormat": "",
+              "range": false,
+              "instant": true,
+              "format": "table"
+            },
+            {
+              "refId": "B",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "${datasource}"
+              },
+              "expr": "(max by (namespace, pod, container) (kube_pod_container_status_restarts_total{namespace=~\"$namespace\", namespace!~\"$exclude\"}) * on (namespace, pod, container) group_right () (0 * ((((max by (namespace, pod, container, reason) (kube_pod_container_status_waiting_reason{reason=~\"CrashLoopBackOff\", namespace=~\"$namespace\", namespace!~\"$exclude\"} == 1)) or (max by (namespace, pod, container, reason) (kube_pod_container_status_last_terminated_reason{reason=\"OOMKilled\", namespace=~\"$namespace\", namespace!~\"$exclude\"} == 1) and on (namespace, pod, container) max by (namespace, pod, container) (increase(kube_pod_container_status_restarts_total{namespace=~\"$namespace\", namespace!~\"$exclude\"}[1h]) > 0))) * on () group_left (url) topk(1, max by (url) (console_url))) or on (namespace, pod, container, reason) ((max by (namespace, pod, container, reason) (kube_pod_container_status_waiting_reason{reason=~\"CrashLoopBackOff\", namespace=~\"$namespace\", namespace!~\"$exclude\"} == 1)) or (max by (namespace, pod, container, reason) (kube_pod_container_status_last_terminated_reason{reason=\"OOMKilled\", namespace=~\"$namespace\", namespace!~\"$exclude\"} == 1) and on (namespace, pod, container) max by (namespace, pod, container) (increase(kube_pod_container_status_restarts_total{namespace=~\"$namespace\", namespace!~\"$exclude\"}[1h]) > 0)))) + 1)) or (0 * ((((max by (namespace, pod, container, reason) (kube_pod_container_status_waiting_reason{reason=~\"CrashLoopBackOff\", namespace=~\"$namespace\", namespace!~\"$exclude\"} == 1)) or (max by (namespace, pod, container, reason) (kube_pod_container_status_last_terminated_reason{reason=\"OOMKilled\", namespace=~\"$namespace\", namespace!~\"$exclude\"} == 1) and on (namespace, pod, container) max by (namespace, pod, container) (increase(kube_pod_container_status_restarts_total{namespace=~\"$namespace\", namespace!~\"$exclude\"}[1h]) > 0))) * on () group_left (url) topk(1, max by (url) (console_url))) or on (namespace, pod, container, reason) ((max by (namespace, pod, container, reason) (kube_pod_container_status_waiting_reason{reason=~\"CrashLoopBackOff\", namespace=~\"$namespace\", namespace!~\"$exclude\"} == 1)) or (max by (namespace, pod, container, reason) (kube_pod_container_status_last_terminated_reason{reason=\"OOMKilled\", namespace=~\"$namespace\", namespace!~\"$exclude\"} == 1) and on (namespace, pod, container) max by (namespace, pod, container) (increase(kube_pod_container_status_restarts_total{namespace=~\"$namespace\", namespace!~\"$exclude\"}[1h]) > 0)))) - 1)",
+              "legendFormat": "",
+              "range": false,
+              "instant": true,
+              "format": "table"
+            },
+            {
+              "refId": "C",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "${datasource}"
+              },
+              "expr": "(max by (namespace, pod, container) (kube_pod_container_resource_limits{resource=\"memory\", namespace=~\"$namespace\", namespace!~\"$exclude\"}) * on (namespace, pod, container) group_right () (0 * ((((max by (namespace, pod, container, reason) (kube_pod_container_status_waiting_reason{reason=~\"CrashLoopBackOff\", namespace=~\"$namespace\", namespace!~\"$exclude\"} == 1)) or (max by (namespace, pod, container, reason) (kube_pod_container_status_last_terminated_reason{reason=\"OOMKilled\", namespace=~\"$namespace\", namespace!~\"$exclude\"} == 1) and on (namespace, pod, container) max by (namespace, pod, container) (increase(kube_pod_container_status_restarts_total{namespace=~\"$namespace\", namespace!~\"$exclude\"}[1h]) > 0))) * on () group_left (url) topk(1, max by (url) (console_url))) or on (namespace, pod, container, reason) ((max by (namespace, pod, container, reason) (kube_pod_container_status_waiting_reason{reason=~\"CrashLoopBackOff\", namespace=~\"$namespace\", namespace!~\"$exclude\"} == 1)) or (max by (namespace, pod, container, reason) (kube_pod_container_status_last_terminated_reason{reason=\"OOMKilled\", namespace=~\"$namespace\", namespace!~\"$exclude\"} == 1) and on (namespace, pod, container) max by (namespace, pod, container) (increase(kube_pod_container_status_restarts_total{namespace=~\"$namespace\", namespace!~\"$exclude\"}[1h]) > 0)))) + 1)) or (0 * ((((max by (namespace, pod, container, reason) (kube_pod_container_status_waiting_reason{reason=~\"CrashLoopBackOff\", namespace=~\"$namespace\", namespace!~\"$exclude\"} == 1)) or (max by (namespace, pod, container, reason) (kube_pod_container_status_last_terminated_reason{reason=\"OOMKilled\", namespace=~\"$namespace\", namespace!~\"$exclude\"} == 1) and on (namespace, pod, container) max by (namespace, pod, container) (increase(kube_pod_container_status_restarts_total{namespace=~\"$namespace\", namespace!~\"$exclude\"}[1h]) > 0))) * on () group_left (url) topk(1, max by (url) (console_url))) or on (namespace, pod, container, reason) ((max by (namespace, pod, container, reason) (kube_pod_container_status_waiting_reason{reason=~\"CrashLoopBackOff\", namespace=~\"$namespace\", namespace!~\"$exclude\"} == 1)) or (max by (namespace, pod, container, reason) (kube_pod_container_status_last_terminated_reason{reason=\"OOMKilled\", namespace=~\"$namespace\", namespace!~\"$exclude\"} == 1) and on (namespace, pod, container) max by (namespace, pod, container) (increase(kube_pod_container_status_restarts_total{namespace=~\"$namespace\", namespace!~\"$exclude\"}[1h]) > 0)))) - 1)",
+              "legendFormat": "",
+              "range": false,
+              "instant": true,
+              "format": "table"
+            }
+          ],
+          "transformations": [
+            {
+              "id": "merge",
+              "options": {}
+            },
+            {
+              "id": "organize",
+              "options": {
+                "excludeByName": {
+                  "Time": true
+                },
+                "renameByName": {
+                  "Value #A": "1h 內重啟",
+                  "Value #B": "累計重啟",
+                  "Value #C": "記憶體 Limit"
+                },
+                "indexByName": {
+                  "namespace": 0,
+                  "pod": 1,
+                  "container": 2,
+                  "reason": 3,
+                  "1h 內重啟": 4,
+                  "累計重啟": 5,
+                  "記憶體 Limit": 6
+                }
+              }
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "custom": {
+                "align": "auto",
+                "minWidth": 80,
+                "wrapHeaderText": true
+              },
+              "noValue": "沒有異常"
+            },
+            "overrides": [
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "1h 內重啟"
+                },
+                "properties": [
+                  {
+                    "id": "unit",
+                    "value": "none"
+                  },
+                  {
+                    "id": "mappings",
+                    "value": [
+                      {
+                        "type": "value",
+                        "options": {
+                          "-1": {
+                            "text": "—",
+                            "color": "#8e8e8e",
+                            "index": 0
+                          }
+                        }
+                      }
+                    ]
+                  },
+                  {
+                    "id": "decimals",
+                    "value": 0
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "累計重啟"
+                },
+                "properties": [
+                  {
+                    "id": "unit",
+                    "value": "none"
+                  },
+                  {
+                    "id": "mappings",
+                    "value": [
+                      {
+                        "type": "value",
+                        "options": {
+                          "-1": {
+                            "text": "—",
+                            "color": "#8e8e8e",
+                            "index": 0
+                          }
+                        }
+                      }
+                    ]
+                  },
+                  {
+                    "id": "decimals",
+                    "value": 0
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "記憶體 Limit"
+                },
+                "properties": [
+                  {
+                    "id": "unit",
+                    "value": "bytes"
+                  },
+                  {
+                    "id": "mappings",
+                    "value": [
+                      {
+                        "type": "value",
+                        "options": {
+                          "-1": {
+                            "text": "未設",
+                            "color": "#8e8e8e",
+                            "index": 0
+                          }
+                        }
+                      }
+                    ]
+                  },
+                  {
+                    "id": "decimals",
+                    "value": 1
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "namespace"
+                },
+                "properties": [
+                  {
+                    "id": "custom.width",
+                    "value": 150
+                  },
+                  {
+                    "id": "custom.filterable",
+                    "value": true
+                  },
+                  {
+                    "id": "displayName",
+                    "value": "Namespace"
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "pod"
+                },
+                "properties": [
+                  {
+                    "id": "custom.width",
+                    "value": 260
+                  },
+                  {
+                    "id": "custom.filterable",
+                    "value": true
+                  },
+                  {
+                    "id": "links",
+                    "value": [
+                      {
+                        "title": "在 OCP console 看 Events",
+                        "url": "${__data.fields.url}/k8s/ns/${__data.fields.namespace}/pods/${__value.raw}/events",
+                        "targetBlank": true
+                      }
+                    ]
+                  },
+                  {
+                    "id": "displayName",
+                    "value": "Pod"
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "container"
+                },
+                "properties": [
+                  {
+                    "id": "custom.width",
+                    "value": 140
+                  },
+                  {
+                    "id": "custom.filterable",
+                    "value": true
+                  },
+                  {
+                    "id": "displayName",
+                    "value": "Container"
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "reason"
+                },
+                "properties": [
+                  {
+                    "id": "custom.width",
+                    "value": 150
+                  },
+                  {
+                    "id": "custom.filterable",
+                    "value": true
+                  },
+                  {
+                    "id": "displayName",
+                    "value": "原因"
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "url"
+                },
+                "properties": [
+                  {
+                    "id": "custom.hidden",
+                    "value": true
+                  }
+                ]
+              }
+            ]
+          },
+          "options": {
+            "showHeader": true,
+            "cellHeight": "sm",
+            "sortBy": [
+              {
+                "displayName": "1h 內重啟",
+                "desc": true
+              }
+            ],
+            "footer": {
+              "show": false
+            }
+          },
+          "gridPos": {
+            "h": 8,
+            "w": 12,
+            "x": 0,
+            "y": 33
+          }
+        },
+        {
+          "id": 19,
+          "type": "table",
+          "title": "8 建立超過 5 分鐘",
+          "description": "**這是什麼**：Pod 建立超過 5 分鐘，容器還在 ContainerCreating 的數量。\n\n**怎麼看**：常見：PVC 掛載失敗（FailedMount / FailedAttachVolume）、Secret / ConfigMap 不存在、CNI 網路配置失敗。\n\n詳細原因請到 OCP console 查看該 Pod 的 Events（表格的 Pod 名稱可直接點過去）。",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "${datasource}"
+              },
+              "expr": "(max by (namespace, pod) (time() - kube_pod_created{namespace=~\"$namespace\", namespace!~\"$exclude\"}) * on (namespace, pod) group_right () (0 * (((max by (namespace, pod, container) (kube_pod_container_status_waiting_reason{reason=\"ContainerCreating\", namespace=~\"$namespace\", namespace!~\"$exclude\"} == 1) and on (namespace, pod) (time() - kube_pod_created{namespace=~\"$namespace\", namespace!~\"$exclude\"} > 300)) * on () group_left (url) topk(1, max by (url) (console_url))) or on (namespace, pod, container) (max by (namespace, pod, container) (kube_pod_container_status_waiting_reason{reason=\"ContainerCreating\", namespace=~\"$namespace\", namespace!~\"$exclude\"} == 1) and on (namespace, pod) (time() - kube_pod_created{namespace=~\"$namespace\", namespace!~\"$exclude\"} > 300))) + 1)) or (0 * (((max by (namespace, pod, container) (kube_pod_container_status_waiting_reason{reason=\"ContainerCreating\", namespace=~\"$namespace\", namespace!~\"$exclude\"} == 1) and on (namespace, pod) (time() - kube_pod_created{namespace=~\"$namespace\", namespace!~\"$exclude\"} > 300)) * on () group_left (url) topk(1, max by (url) (console_url))) or on (namespace, pod, container) (max by (namespace, pod, container) (kube_pod_container_status_waiting_reason{reason=\"ContainerCreating\", namespace=~\"$namespace\", namespace!~\"$exclude\"} == 1) and on (namespace, pod) (time() - kube_pod_created{namespace=~\"$namespace\", namespace!~\"$exclude\"} > 300))) - 1)",
+              "legendFormat": "",
+              "range": false,
+              "instant": true,
+              "format": "table"
+            }
+          ],
+          "transformations": [
+            {
+              "id": "merge",
+              "options": {}
+            },
+            {
+              "id": "organize",
+              "options": {
+                "excludeByName": {
+                  "Time": true
+                },
+                "renameByName": {
+                  "Value #A": "Pod 建立多久"
+                },
+                "indexByName": {
+                  "namespace": 0,
+                  "pod": 1,
+                  "container": 2,
+                  "Pod 建立多久": 3
+                }
+              }
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "custom": {
+                "align": "auto",
+                "minWidth": 80,
+                "wrapHeaderText": true
+              },
+              "noValue": "沒有異常"
+            },
+            "overrides": [
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "Pod 建立多久"
+                },
+                "properties": [
+                  {
+                    "id": "unit",
+                    "value": "s"
+                  },
+                  {
+                    "id": "mappings",
+                    "value": [
+                      {
+                        "type": "value",
+                        "options": {
+                          "-1": {
+                            "text": "—",
+                            "color": "#8e8e8e",
+                            "index": 0
+                          }
+                        }
+                      }
+                    ]
+                  },
+                  {
+                    "id": "decimals",
+                    "value": 0
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "namespace"
+                },
+                "properties": [
+                  {
+                    "id": "custom.width",
+                    "value": 150
+                  },
+                  {
+                    "id": "custom.filterable",
+                    "value": true
+                  },
+                  {
+                    "id": "displayName",
+                    "value": "Namespace"
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "pod"
+                },
+                "properties": [
+                  {
+                    "id": "custom.width",
+                    "value": 260
+                  },
+                  {
+                    "id": "custom.filterable",
+                    "value": true
+                  },
+                  {
+                    "id": "links",
+                    "value": [
+                      {
+                        "title": "在 OCP console 看 Events",
+                        "url": "${__data.fields.url}/k8s/ns/${__data.fields.namespace}/pods/${__value.raw}/events",
+                        "targetBlank": true
+                      }
+                    ]
+                  },
+                  {
+                    "id": "displayName",
+                    "value": "Pod"
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "container"
+                },
+                "properties": [
+                  {
+                    "id": "custom.width",
+                    "value": 140
+                  },
+                  {
+                    "id": "custom.filterable",
+                    "value": true
+                  },
+                  {
+                    "id": "displayName",
+                    "value": "Container"
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "url"
+                },
+                "properties": [
+                  {
+                    "id": "custom.hidden",
+                    "value": true
+                  }
+                ]
+              }
+            ]
+          },
+          "options": {
+            "showHeader": true,
+            "cellHeight": "sm",
+            "sortBy": [
+              {
+                "displayName": "Pod 建立多久",
+                "desc": true
+              }
+            ],
+            "footer": {
+              "show": false
+            }
+          },
+          "gridPos": {
+            "h": 8,
+            "w": 12,
+            "x": 12,
+            "y": 33
+          }
+        },
+        {
+          "id": 20,
+          "type": "timeseries",
+          "title": "各 Namespace 重啟次數（每 5 分鐘）",
+          "description": "**這是什麼**：每個時間點往前 5 分鐘內，該 Namespace 所有容器的重啟次數加總。\n\n**怎麼看**：持續有柱子的 Namespace 是一直在重啟；對照上方第 6、7 類明細找是哪個容器。\n\n詳細原因請到 OCP console 查看該 Pod 的 Events（表格的 Pod 名稱可直接點過去）。",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "interval": "1m",
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "${datasource}"
+              },
+              "expr": "sum by (namespace) (increase(kube_pod_container_status_restarts_total{namespace=~\"$namespace\", namespace!~\"$exclude\"}[5m])) > 0",
+              "legendFormat": "{{namespace}}",
+              "range": true,
+              "instant": false
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "unit": "none",
+              "decimals": 0,
+              "min": 0,
+              "custom": {
+                "drawStyle": "bars",
+                "lineWidth": 1,
+                "fillOpacity": 60,
+                "showPoints": "never",
+                "stacking": {
+                  "mode": "normal"
+                }
+              }
+            },
+            "overrides": []
+          },
+          "options": {
+            "legend": {
+              "displayMode": "table",
+              "placement": "right",
+              "calcs": [
+                "sum",
+                "max"
+              ],
+              "sortBy": "Total",
+              "sortDesc": true
+            },
+            "tooltip": {
+              "mode": "multi",
+              "sort": "desc"
+            }
+          },
+          "gridPos": {
+            "h": 8,
+            "w": 24,
+            "x": 0,
+            "y": 41
+          }
+        }
+      ],
+      "repeat": "datasource"
+    }
+  ]
+}
