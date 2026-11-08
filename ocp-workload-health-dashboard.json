@@ -1,7 +1,7 @@
 {
   "uid": "ocp-workload-health",
   "title": "OCP Workload 異常狀態（所有叢集）",
-  "description": "用 kube-state-metrics 監控 Image pull、排程失敗、副本不足、Rollout 卡住、Readiness、重啟、CrashLoop / OOM、ContainerCreating 卡住；每個叢集一列。",
+  "description": "用 kube-state-metrics 監控 Image pull、排程失敗、副本不足、Rollout 卡住、Readiness、重啟、CrashLoop / OOM、ContainerCreating 卡住；所有叢集合併在同一張表。",
   "tags": [
     "ocp",
     "workload",
@@ -10,7 +10,7 @@
   ],
   "timezone": "browser",
   "schemaVersion": 39,
-  "version": 1,
+  "version": 2,
   "editable": true,
   "graphTooltip": 1,
   "refresh": "1m",
@@ -46,7 +46,7 @@
         "name": "datasource",
         "label": "資料來源（叢集，可多選）",
         "query": "prometheus",
-        "regex": "/^(?=.*(?:${ds_filter}))Prometheus.*OCP$/",
+        "regex": "/^(?=.*(?:${ds_filter:raw}))Prometheus.*OCP$/",
         "multi": true,
         "includeAll": true,
         "current": {
@@ -107,10 +107,10 @@
       "title": "",
       "options": {
         "mode": "markdown",
-        "content": "**OCP Workload 異常狀態（所有叢集）**　每個叢集一列，紅色 = 目前有異常（資料延遲約 1–2 分鐘）。上方「叢集名稱篩選」填 regex（例如 `prod`、`dev|uat`）縮小範圍，「資料來源」選 All 就是篩選後的全部叢集。往下展開「② 明細：叢集名稱」看是哪個 Namespace / Pod；**原因訊息在 OCP console 的 Events**，表格的 Pod / Deployment 名稱可直接點過去。「沒資料」= 這個資料來源查不到 kube-state-metrics。"
+        "content": "**OCP Workload 異常狀態（所有叢集）**　上表每列一個叢集，紅色 = 目前有異常；下表是所有叢集、所有類別的異常清單（資料延遲約 1–2 分鐘）。「叢集名稱篩選」填 regex（例如 `prod`、`dev|uat`）縮小範圍。**原因訊息在 OCP console 的 Events**，清單的「對象」可直接點過去；要看 image、Request、副本數、記憶體 Limit 等欄位，展開最下面的「各類明細」。"
       },
       "gridPos": {
-        "h": 3,
+        "h": 2,
         "w": 24,
         "x": 0,
         "y": 0
@@ -118,26 +118,12 @@
     },
     {
       "id": 2,
-      "type": "row",
-      "title": "① ${datasource:text}",
-      "collapsed": false,
-      "gridPos": {
-        "h": 1,
-        "w": 24,
-        "x": 0,
-        "y": 3
-      },
-      "panels": [],
-      "repeat": "datasource"
-    },
-    {
-      "id": 3,
-      "type": "stat",
-      "title": "1 Image 拉不下來",
-      "description": "**這是什麼**：容器在等待，原因是 ErrImagePull / ImagePullBackOff / InvalidImageName 的數量。\n\n**怎麼看**：常見：image 名稱或 tag 打錯、registry 認證（pull secret）失效、registry 連不到。\n\n詳細原因請到 OCP console 查看該 Pod 的 Events（表格的 Pod 名稱可直接點過去）。",
+      "type": "table",
+      "title": "各叢集目前異常數（紅 = 有異常，點欄名可排序）",
+      "description": "每一列是一個叢集（資料來源），每一欄是一類異常的目前數量，紅色 = 有異常；依「合計」由大到小排序。\n\n叢集整列沒出現 = 這個資料來源查不到 kube-state-metrics。各類的定義看下方異常清單或「各類明細」表的說明。",
       "datasource": {
-        "type": "prometheus",
-        "uid": "${datasource}"
+        "type": "datasource",
+        "uid": "-- Mixed --"
       },
       "targets": [
         {
@@ -146,20 +132,150 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "count((max by (namespace, pod, container, reason) (kube_pod_container_status_waiting_reason{reason=~\"ErrImagePull|ImagePullBackOff|InvalidImageName\", namespace=~\"$namespace\", namespace!~\"$exclude\"} == 1))) or (0 * count(kube_namespace_created))",
+          "expr": "label_replace(count((max by (namespace, pod, container, reason) (kube_pod_container_status_waiting_reason{reason=~\"ErrImagePull|ImagePullBackOff|InvalidImageName\", namespace=~\"$namespace\", namespace!~\"$exclude\"} == 1))) or (0 * count(kube_namespace_created)), \"cluster\", \"${datasource:text}\", \"\", \"\")",
           "legendFormat": "",
           "range": false,
-          "instant": true
+          "instant": true,
+          "format": "table"
+        },
+        {
+          "refId": "B",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "expr": "label_replace(count((max by (namespace, pod) (kube_pod_status_unschedulable{namespace=~\"$namespace\", namespace!~\"$exclude\"} == 1))) or (0 * count(kube_namespace_created)), \"cluster\", \"${datasource:text}\", \"\", \"\")",
+          "legendFormat": "",
+          "range": false,
+          "instant": true,
+          "format": "table"
+        },
+        {
+          "refId": "C",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "expr": "label_replace(count((max by (namespace, deployment) (kube_deployment_status_replicas_unavailable{namespace=~\"$namespace\", namespace!~\"$exclude\"} > 0))) or (0 * count(kube_namespace_created)), \"cluster\", \"${datasource:text}\", \"\", \"\")",
+          "legendFormat": "",
+          "range": false,
+          "instant": true,
+          "format": "table"
+        },
+        {
+          "refId": "D",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "expr": "label_replace(count((max by (namespace, deployment) (kube_deployment_status_condition{condition=\"Progressing\", status=\"false\", namespace=~\"$namespace\", namespace!~\"$exclude\"} == 1))) or (0 * count(kube_namespace_created)), \"cluster\", \"${datasource:text}\", \"\", \"\")",
+          "legendFormat": "",
+          "range": false,
+          "instant": true,
+          "format": "table"
+        },
+        {
+          "refId": "E",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "expr": "label_replace(count((max by (namespace, pod, container) ((kube_pod_container_status_ready{namespace=~\"$namespace\", namespace!~\"$exclude\"} == 0) and on (namespace, pod) (kube_pod_status_phase{phase=\"Running\", namespace=~\"$namespace\", namespace!~\"$exclude\"} == 1) and on (namespace, pod, container) (kube_pod_container_status_running{namespace=~\"$namespace\", namespace!~\"$exclude\"} == 1)))) or (0 * count(kube_namespace_created)), \"cluster\", \"${datasource:text}\", \"\", \"\")",
+          "legendFormat": "",
+          "range": false,
+          "instant": true,
+          "format": "table"
+        },
+        {
+          "refId": "F",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "expr": "label_replace(count((max by (namespace, pod, container) (increase(kube_pod_container_status_restarts_total{namespace=~\"$namespace\", namespace!~\"$exclude\"}[5m]) > 0))) or (0 * count(kube_namespace_created)), \"cluster\", \"${datasource:text}\", \"\", \"\")",
+          "legendFormat": "",
+          "range": false,
+          "instant": true,
+          "format": "table"
+        },
+        {
+          "refId": "G",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "expr": "label_replace(count(count by (namespace, pod, container) ((max by (namespace, pod, container, reason) (kube_pod_container_status_waiting_reason{reason=~\"CrashLoopBackOff\", namespace=~\"$namespace\", namespace!~\"$exclude\"} == 1)) or (max by (namespace, pod, container, reason) (kube_pod_container_status_last_terminated_reason{reason=\"OOMKilled\", namespace=~\"$namespace\", namespace!~\"$exclude\"} == 1) and on (namespace, pod, container) max by (namespace, pod, container) (increase(kube_pod_container_status_restarts_total{namespace=~\"$namespace\", namespace!~\"$exclude\"}[1h]) > 0)))) or (0 * count(kube_namespace_created)), \"cluster\", \"${datasource:text}\", \"\", \"\")",
+          "legendFormat": "",
+          "range": false,
+          "instant": true,
+          "format": "table"
+        },
+        {
+          "refId": "H",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "expr": "label_replace(count((max by (namespace, pod, container) (kube_pod_container_status_waiting_reason{reason=\"ContainerCreating\", namespace=~\"$namespace\", namespace!~\"$exclude\"} == 1) and on (namespace, pod) (time() - kube_pod_created{namespace=~\"$namespace\", namespace!~\"$exclude\"} > 300))) or (0 * count(kube_namespace_created)), \"cluster\", \"${datasource:text}\", \"\", \"\")",
+          "legendFormat": "",
+          "range": false,
+          "instant": true,
+          "format": "table"
+        }
+      ],
+      "transformations": [
+        {
+          "id": "merge",
+          "options": {}
+        },
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": {
+              "Time": true
+            },
+            "renameByName": {
+              "Value #A": "1 Image",
+              "Value #B": "2 排程失敗",
+              "Value #C": "3 副本不足",
+              "Value #D": "4 Rollout 卡住",
+              "Value #E": "5 Readiness",
+              "Value #F": "6 重啟（5 分鐘內）",
+              "Value #G": "7 CrashLoop / OOM",
+              "Value #H": "8 建立卡住"
+            },
+            "indexByName": {
+              "cluster": 0,
+              "Value #A": 1,
+              "Value #B": 2,
+              "Value #C": 3,
+              "Value #D": 4,
+              "Value #E": 5,
+              "Value #F": 6,
+              "Value #G": 7,
+              "Value #H": 8
+            }
+          }
+        },
+        {
+          "id": "calculateField",
+          "options": {
+            "mode": "reduceRow",
+            "reduce": {
+              "reducer": "sum"
+            },
+            "alias": "合計",
+            "replaceFields": false
+          }
         }
       ],
       "fieldConfig": {
         "defaults": {
+          "unit": "none",
+          "decimals": 0,
           "color": {
             "mode": "thresholds"
           },
-          "unit": "none",
-          "decimals": 0,
-          "noValue": "沒資料",
           "thresholds": {
             "mode": "absolute",
             "steps": [
@@ -172,40 +288,325 @@
                 "value": 1
               }
             ]
+          },
+          "custom": {
+            "align": "center",
+            "wrapHeaderText": true,
+            "minWidth": 60,
+            "cellOptions": {
+              "type": "color-background",
+              "mode": "basic"
+            }
           }
         },
-        "overrides": []
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "cluster"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "叢集"
+              },
+              {
+                "id": "custom.width",
+                "value": 220
+              },
+              {
+                "id": "custom.align",
+                "value": "left"
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "auto"
+                }
+              }
+            ]
+          }
+        ]
       },
       "options": {
-        "reduceOptions": {
-          "calcs": [
-            "lastNotNull"
-          ],
-          "fields": "",
-          "values": false
-        },
-        "colorMode": "background",
-        "graphMode": "none",
-        "textMode": "value",
-        "justifyMode": "center",
-        "orientation": "horizontal"
+        "showHeader": true,
+        "cellHeight": "sm",
+        "sortBy": [
+          {
+            "displayName": "合計",
+            "desc": true
+          }
+        ],
+        "footer": {
+          "show": false
+        }
       },
       "gridPos": {
-        "h": 4,
-        "w": 3,
+        "h": 6,
+        "w": 24,
         "x": 0,
-        "y": 4
+        "y": 2
+      }
+    },
+    {
+      "id": 3,
+      "type": "table",
+      "title": "異常清單（所有叢集）",
+      "description": "**這是什麼**：所有選到的叢集、8 類異常合在一張表，一列一個問題；類別編號對應上表的欄位。**持續** = 近 1 小時內有幾分鐘處於這個狀態（最多 60；第 6 類是有重啟的分鐘數）。第 6 類的原因是上次終止原因（Error、OOMKilled、Completed…）。\n\n**怎麼看**：點欄名排序、點漏斗篩選；同一個容器可能同時出現在第 5、6、7 類。第 3、4 類的對象是 Deployment，Pod 建不出來（quota、SCC）時要看 Deployment / ReplicaSet 的 Events。\n\n詳細原因請到 OCP console 查看該 Pod 的 Events（表格的 Pod 名稱可直接點過去）。",
+      "datasource": {
+        "type": "datasource",
+        "uid": "-- Mixed --"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "expr": "label_replace(((max by (category, kind, namespace, object, container, reason) (label_replace(label_replace(label_replace((max by (namespace, pod, container) (count_over_time((max by (namespace, pod, container) (max by (namespace, pod, container, reason) (kube_pod_container_status_waiting_reason{reason=~\"ErrImagePull|ImagePullBackOff|InvalidImageName\", namespace=~\"$namespace\", namespace!~\"$exclude\"} == 1)))[1h:1m])) * on (namespace, pod, container) group_right () (0 * (max by (namespace, pod, container, reason) (kube_pod_container_status_waiting_reason{reason=~\"ErrImagePull|ImagePullBackOff|InvalidImageName\", namespace=~\"$namespace\", namespace!~\"$exclude\"} == 1)) + 1)) or (0 * (max by (namespace, pod, container, reason) (kube_pod_container_status_waiting_reason{reason=~\"ErrImagePull|ImagePullBackOff|InvalidImageName\", namespace=~\"$namespace\", namespace!~\"$exclude\"} == 1)) - 1), \"category\", \"1 Image\", \"\", \"\"), \"object\", \"$1\", \"pod\", \"(.*)\"), \"kind\", \"pods\", \"\", \"\"))) or (max by (category, kind, namespace, object, container, reason) (label_replace(label_replace(label_replace(label_replace((max by (namespace, pod) (count_over_time((max by (namespace, pod) (kube_pod_status_unschedulable{namespace=~\"$namespace\", namespace!~\"$exclude\"} == 1))[1h:1m])) * on (namespace, pod) group_right () (0 * (max by (namespace, pod) (kube_pod_status_unschedulable{namespace=~\"$namespace\", namespace!~\"$exclude\"} == 1)) + 1)) or (0 * (max by (namespace, pod) (kube_pod_status_unschedulable{namespace=~\"$namespace\", namespace!~\"$exclude\"} == 1)) - 1), \"category\", \"2 排程失敗\", \"\", \"\"), \"object\", \"$1\", \"pod\", \"(.*)\"), \"kind\", \"pods\", \"\", \"\"), \"reason\", \"Unschedulable\", \"reason\", \"\"))) or (max by (category, kind, namespace, object, container, reason) (label_replace(label_replace(label_replace(label_replace((max by (namespace, deployment) (count_over_time((max by (namespace, deployment) (kube_deployment_status_replicas_unavailable{namespace=~\"$namespace\", namespace!~\"$exclude\"} > 0))[1h:1m])) * on (namespace, deployment) group_right () (0 * (max by (namespace, deployment) (kube_deployment_status_replicas_unavailable{namespace=~\"$namespace\", namespace!~\"$exclude\"} > 0)) + 1)) or (0 * (max by (namespace, deployment) (kube_deployment_status_replicas_unavailable{namespace=~\"$namespace\", namespace!~\"$exclude\"} > 0)) - 1), \"category\", \"3 副本不足\", \"\", \"\"), \"object\", \"$1\", \"deployment\", \"(.*)\"), \"kind\", \"deployments\", \"\", \"\"), \"reason\", \"副本不足\", \"reason\", \"\"))) or (max by (category, kind, namespace, object, container, reason) (label_replace(label_replace(label_replace(label_replace((max by (namespace, deployment) (count_over_time((max by (namespace, deployment) (kube_deployment_status_condition{condition=\"Progressing\", status=\"false\", namespace=~\"$namespace\", namespace!~\"$exclude\"} == 1))[1h:1m])) * on (namespace, deployment) group_right () (0 * (max by (namespace, deployment) (kube_deployment_status_condition{condition=\"Progressing\", status=\"false\", namespace=~\"$namespace\", namespace!~\"$exclude\"} == 1)) + 1)) or (0 * (max by (namespace, deployment) (kube_deployment_status_condition{condition=\"Progressing\", status=\"false\", namespace=~\"$namespace\", namespace!~\"$exclude\"} == 1)) - 1), \"category\", \"4 Rollout 卡住\", \"\", \"\"), \"object\", \"$1\", \"deployment\", \"(.*)\"), \"kind\", \"deployments\", \"\", \"\"), \"reason\", \"ProgressDeadlineExceeded\", \"reason\", \"\"))) or (max by (category, kind, namespace, object, container, reason) (label_replace(label_replace(label_replace(label_replace((max by (namespace, pod, container) (count_over_time((max by (namespace, pod, container) ((kube_pod_container_status_ready{namespace=~\"$namespace\", namespace!~\"$exclude\"} == 0) and on (namespace, pod) (kube_pod_status_phase{phase=\"Running\", namespace=~\"$namespace\", namespace!~\"$exclude\"} == 1) and on (namespace, pod, container) (kube_pod_container_status_running{namespace=~\"$namespace\", namespace!~\"$exclude\"} == 1)))[1h:1m])) * on (namespace, pod, container) group_right () (0 * (max by (namespace, pod, container) ((kube_pod_container_status_ready{namespace=~\"$namespace\", namespace!~\"$exclude\"} == 0) and on (namespace, pod) (kube_pod_status_phase{phase=\"Running\", namespace=~\"$namespace\", namespace!~\"$exclude\"} == 1) and on (namespace, pod, container) (kube_pod_container_status_running{namespace=~\"$namespace\", namespace!~\"$exclude\"} == 1))) + 1)) or (0 * (max by (namespace, pod, container) ((kube_pod_container_status_ready{namespace=~\"$namespace\", namespace!~\"$exclude\"} == 0) and on (namespace, pod) (kube_pod_status_phase{phase=\"Running\", namespace=~\"$namespace\", namespace!~\"$exclude\"} == 1) and on (namespace, pod, container) (kube_pod_container_status_running{namespace=~\"$namespace\", namespace!~\"$exclude\"} == 1))) - 1), \"category\", \"5 Readiness\", \"\", \"\"), \"object\", \"$1\", \"pod\", \"(.*)\"), \"kind\", \"pods\", \"\", \"\"), \"reason\", \"NotReady\", \"reason\", \"\"))) or (max by (category, kind, namespace, object, container, reason) (label_replace(label_replace(label_replace(label_replace((max by (namespace, pod, container) (count_over_time((max by (namespace, pod, container) (increase(kube_pod_container_status_restarts_total{namespace=~\"$namespace\", namespace!~\"$exclude\"}[5m]) > 0))[1h:1m])) * on (namespace, pod, container) group_right () (0 * ((max by (namespace, pod, container) (increase(kube_pod_container_status_restarts_total{namespace=~\"$namespace\", namespace!~\"$exclude\"}[5m]) > 0) * on (namespace, pod, container) group_left (reason) max by (namespace, pod, container, reason) (kube_pod_container_status_last_terminated_reason{namespace=~\"$namespace\", namespace!~\"$exclude\"} == 1)) or on (namespace, pod, container) max by (namespace, pod, container) (increase(kube_pod_container_status_restarts_total{namespace=~\"$namespace\", namespace!~\"$exclude\"}[5m]) > 0)) + 1)) or (0 * ((max by (namespace, pod, container) (increase(kube_pod_container_status_restarts_total{namespace=~\"$namespace\", namespace!~\"$exclude\"}[5m]) > 0) * on (namespace, pod, container) group_left (reason) max by (namespace, pod, container, reason) (kube_pod_container_status_last_terminated_reason{namespace=~\"$namespace\", namespace!~\"$exclude\"} == 1)) or on (namespace, pod, container) max by (namespace, pod, container) (increase(kube_pod_container_status_restarts_total{namespace=~\"$namespace\", namespace!~\"$exclude\"}[5m]) > 0)) - 1), \"category\", \"6 重啟（5 分鐘內）\", \"\", \"\"), \"object\", \"$1\", \"pod\", \"(.*)\"), \"kind\", \"pods\", \"\", \"\"), \"reason\", \"—\", \"reason\", \"\"))) or (max by (category, kind, namespace, object, container, reason) (label_replace(label_replace(label_replace((max by (namespace, pod, container) ((count_over_time((max by (namespace, pod, container) (max by (namespace, pod, container, reason) (kube_pod_container_status_waiting_reason{reason=~\"CrashLoopBackOff\", namespace=~\"$namespace\", namespace!~\"$exclude\"} == 1)))[1h:1m])) or (count_over_time((max by (namespace, pod, container) (increase(kube_pod_container_status_restarts_total{namespace=~\"$namespace\", namespace!~\"$exclude\"}[5m]) > 0))[1h:1m]))) * on (namespace, pod, container) group_right () (0 * ((max by (namespace, pod, container, reason) (kube_pod_container_status_waiting_reason{reason=~\"CrashLoopBackOff\", namespace=~\"$namespace\", namespace!~\"$exclude\"} == 1)) or (max by (namespace, pod, container, reason) (kube_pod_container_status_last_terminated_reason{reason=\"OOMKilled\", namespace=~\"$namespace\", namespace!~\"$exclude\"} == 1) and on (namespace, pod, container) max by (namespace, pod, container) (increase(kube_pod_container_status_restarts_total{namespace=~\"$namespace\", namespace!~\"$exclude\"}[1h]) > 0))) + 1)) or (0 * ((max by (namespace, pod, container, reason) (kube_pod_container_status_waiting_reason{reason=~\"CrashLoopBackOff\", namespace=~\"$namespace\", namespace!~\"$exclude\"} == 1)) or (max by (namespace, pod, container, reason) (kube_pod_container_status_last_terminated_reason{reason=\"OOMKilled\", namespace=~\"$namespace\", namespace!~\"$exclude\"} == 1) and on (namespace, pod, container) max by (namespace, pod, container) (increase(kube_pod_container_status_restarts_total{namespace=~\"$namespace\", namespace!~\"$exclude\"}[1h]) > 0))) - 1), \"category\", \"7 CrashLoop / OOM\", \"\", \"\"), \"object\", \"$1\", \"pod\", \"(.*)\"), \"kind\", \"pods\", \"\", \"\"))) or (max by (category, kind, namespace, object, container, reason) (label_replace(label_replace(label_replace(label_replace((max by (namespace, pod, container) (count_over_time((max by (namespace, pod, container) (kube_pod_container_status_waiting_reason{reason=\"ContainerCreating\", namespace=~\"$namespace\", namespace!~\"$exclude\"} == 1) and on (namespace, pod) (time() - kube_pod_created{namespace=~\"$namespace\", namespace!~\"$exclude\"} > 300))[1h:1m])) * on (namespace, pod, container) group_right () (0 * (max by (namespace, pod, container) (kube_pod_container_status_waiting_reason{reason=\"ContainerCreating\", namespace=~\"$namespace\", namespace!~\"$exclude\"} == 1) and on (namespace, pod) (time() - kube_pod_created{namespace=~\"$namespace\", namespace!~\"$exclude\"} > 300)) + 1)) or (0 * (max by (namespace, pod, container) (kube_pod_container_status_waiting_reason{reason=\"ContainerCreating\", namespace=~\"$namespace\", namespace!~\"$exclude\"} == 1) and on (namespace, pod) (time() - kube_pod_created{namespace=~\"$namespace\", namespace!~\"$exclude\"} > 300)) - 1), \"category\", \"8 建立卡住\", \"\", \"\"), \"object\", \"$1\", \"pod\", \"(.*)\"), \"kind\", \"pods\", \"\", \"\"), \"reason\", \"ContainerCreating\", \"reason\", \"\")))) + on () group_left (url) (0 * topk(1, max by (url) (console_url) or vector(0))), \"cluster\", \"${datasource:text}\", \"\", \"\")",
+          "legendFormat": "",
+          "range": false,
+          "instant": true,
+          "format": "table"
+        }
+      ],
+      "transformations": [
+        {
+          "id": "merge",
+          "options": {}
+        },
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": {
+              "Time": true
+            },
+            "renameByName": {
+              "Value": "持續（近 1h 分鐘）"
+            },
+            "indexByName": {
+              "cluster": 0,
+              "category": 1,
+              "namespace": 2,
+              "object": 3,
+              "container": 4,
+              "reason": 5,
+              "Value": 6
+            }
+          }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "align": "auto",
+            "minWidth": 80,
+            "filterable": true
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "cluster"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "叢集"
+              },
+              {
+                "id": "custom.width",
+                "value": 170
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "category"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "類別"
+              },
+              {
+                "id": "custom.width",
+                "value": 150
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "namespace"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "Namespace"
+              },
+              {
+                "id": "custom.width",
+                "value": 160
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "object"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "對象（Pod / Deployment）"
+              },
+              {
+                "id": "custom.width",
+                "value": 280
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "container"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "Container"
+              },
+              {
+                "id": "custom.width",
+                "value": 140
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "reason"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "原因"
+              },
+              {
+                "id": "custom.width",
+                "value": 170
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "container"
+            },
+            "properties": [
+              {
+                "id": "noValue",
+                "value": "—"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "object"
+            },
+            "properties": [
+              {
+                "id": "links",
+                "value": [
+                  {
+                    "title": "在 OCP console 看 Events",
+                    "targetBlank": true,
+                    "url": "${__data.fields.url}/k8s/ns/${__data.fields.namespace}/${__data.fields.kind}/${__value.raw}/events"
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "持續（近 1h 分鐘）"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "m"
+              },
+              {
+                "id": "decimals",
+                "value": 0
+              },
+              {
+                "id": "mappings",
+                "value": [
+                  {
+                    "type": "value",
+                    "options": {
+                      "-1": {
+                        "text": "—",
+                        "color": "#8e8e8e",
+                        "index": 0
+                      }
+                    }
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": "^(url|kind)$"
+            },
+            "properties": [
+              {
+                "id": "custom.hidden",
+                "value": true
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm",
+        "sortBy": [
+          {
+            "displayName": "叢集",
+            "desc": false
+          }
+        ],
+        "footer": {
+          "show": false
+        }
+      },
+      "gridPos": {
+        "h": 10,
+        "w": 24,
+        "x": 0,
+        "y": 8
       }
     },
     {
       "id": 4,
-      "type": "stat",
-      "title": "2 排不進 Node",
-      "description": "**這是什麼**：Pending 且排程器判定無法排程（PodScheduled=False, Unschedulable）的 Pod 數。\n\n**怎麼看**：常見：資源不足（Insufficient cpu / memory）、nodeSelector / affinity / taint 不符、PVC 綁不到。\n\n詳細原因請到 OCP console 查看該 Pod 的 Events（表格的 Pod 名稱可直接點過去）。",
+      "type": "timeseries",
+      "title": "各 Namespace 重啟次數（每 5 分鐘）",
+      "description": "**這是什麼**：每個時間點往前 5 分鐘內，該 Namespace 所有容器的重啟次數加總。\n\n**怎麼看**：持續有柱子的 Namespace 是一直在重啟；對照異常清單第 6、7 類找是哪個容器。\n\n詳細原因請到 OCP console 查看該 Pod 的 Events（表格的 Pod 名稱可直接點過去）。",
       "datasource": {
-        "type": "prometheus",
-        "uid": "${datasource}"
+        "type": "datasource",
+        "uid": "-- Mixed --"
       },
+      "interval": "1m",
       "targets": [
         {
           "refId": "A",
@@ -213,479 +614,72 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "count((max by (namespace, pod) (kube_pod_status_unschedulable{namespace=~\"$namespace\", namespace!~\"$exclude\"} == 1))) or (0 * count(kube_namespace_created))",
-          "legendFormat": "",
-          "range": false,
-          "instant": true
+          "expr": "label_replace(sum by (namespace) (increase(kube_pod_container_status_restarts_total{namespace=~\"$namespace\", namespace!~\"$exclude\"}[5m])) > 0, \"cluster\", \"${datasource:text}\", \"\", \"\")",
+          "legendFormat": "{{cluster}} / {{namespace}}",
+          "range": true,
+          "instant": false
         }
       ],
       "fieldConfig": {
         "defaults": {
-          "color": {
-            "mode": "thresholds"
-          },
           "unit": "none",
           "decimals": 0,
-          "noValue": "沒資料",
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              {
-                "color": "green",
-                "value": null
-              },
-              {
-                "color": "red",
-                "value": 1
-              }
-            ]
+          "min": 0,
+          "custom": {
+            "drawStyle": "bars",
+            "lineWidth": 1,
+            "fillOpacity": 60,
+            "showPoints": "never",
+            "stacking": {
+              "mode": "normal"
+            }
           }
         },
         "overrides": []
       },
       "options": {
-        "reduceOptions": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "right",
           "calcs": [
-            "lastNotNull"
+            "sum",
+            "max"
           ],
-          "fields": "",
-          "values": false
+          "sortBy": "Total",
+          "sortDesc": true
         },
-        "colorMode": "background",
-        "graphMode": "none",
-        "textMode": "value",
-        "justifyMode": "center",
-        "orientation": "horizontal"
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
       },
       "gridPos": {
-        "h": 4,
-        "w": 3,
-        "x": 3,
-        "y": 4
+        "h": 7,
+        "w": 24,
+        "x": 0,
+        "y": 18
       }
     },
     {
       "id": 5,
-      "type": "stat",
-      "title": "3 Deployment 副本不足",
-      "description": "**這是什麼**：不可用副本 > 0 的 Deployment 數。\n\n**怎麼看**：滾動更新中短暫出現是正常的；一直不消失通常是 Pod 建不出來（quota、SCC、LimitRange）或建出來起不來（看第 1、5、7、8 類）。Pod 建不出來時 Pod 頁沒有 Events，要看 Deployment / ReplicaSet 的 Events。\n\n詳細原因請到 OCP console 查看該 Pod 的 Events（表格的 Pod 名稱可直接點過去）。",
-      "datasource": {
-        "type": "prometheus",
-        "uid": "${datasource}"
-      },
-      "targets": [
-        {
-          "refId": "A",
-          "datasource": {
-            "type": "prometheus",
-            "uid": "${datasource}"
-          },
-          "expr": "count((max by (namespace, deployment) (kube_deployment_status_replicas_unavailable{namespace=~\"$namespace\", namespace!~\"$exclude\"} > 0))) or (0 * count(kube_namespace_created))",
-          "legendFormat": "",
-          "range": false,
-          "instant": true
-        }
-      ],
-      "fieldConfig": {
-        "defaults": {
-          "color": {
-            "mode": "thresholds"
-          },
-          "unit": "none",
-          "decimals": 0,
-          "noValue": "沒資料",
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              {
-                "color": "green",
-                "value": null
-              },
-              {
-                "color": "red",
-                "value": 1
-              }
-            ]
-          }
-        },
-        "overrides": []
-      },
-      "options": {
-        "reduceOptions": {
-          "calcs": [
-            "lastNotNull"
-          ],
-          "fields": "",
-          "values": false
-        },
-        "colorMode": "background",
-        "graphMode": "none",
-        "textMode": "value",
-        "justifyMode": "center",
-        "orientation": "horizontal"
-      },
-      "gridPos": {
-        "h": 4,
-        "w": 3,
-        "x": 6,
-        "y": 4
-      }
-    },
-    {
-      "id": 6,
-      "type": "stat",
-      "title": "4 Rollout 卡住",
-      "description": "**這是什麼**：Progressing 條件為 False 的 Deployment 數（超過 progressDeadlineSeconds，預設 10 分鐘，新版還沒好）。\n\n**怎麼看**：通常跟第 3 類一起出現；看 Deployment 的 Events 與新 ReplicaSet 的 Pod。\n\n詳細原因請到 OCP console 查看該 Pod 的 Events（表格的 Pod 名稱可直接點過去）。",
-      "datasource": {
-        "type": "prometheus",
-        "uid": "${datasource}"
-      },
-      "targets": [
-        {
-          "refId": "A",
-          "datasource": {
-            "type": "prometheus",
-            "uid": "${datasource}"
-          },
-          "expr": "count((max by (namespace, deployment) (kube_deployment_status_condition{condition=\"Progressing\", status=\"false\", namespace=~\"$namespace\", namespace!~\"$exclude\"} == 1))) or (0 * count(kube_namespace_created))",
-          "legendFormat": "",
-          "range": false,
-          "instant": true
-        }
-      ],
-      "fieldConfig": {
-        "defaults": {
-          "color": {
-            "mode": "thresholds"
-          },
-          "unit": "none",
-          "decimals": 0,
-          "noValue": "沒資料",
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              {
-                "color": "green",
-                "value": null
-              },
-              {
-                "color": "red",
-                "value": 1
-              }
-            ]
-          }
-        },
-        "overrides": []
-      },
-      "options": {
-        "reduceOptions": {
-          "calcs": [
-            "lastNotNull"
-          ],
-          "fields": "",
-          "values": false
-        },
-        "colorMode": "background",
-        "graphMode": "none",
-        "textMode": "value",
-        "justifyMode": "center",
-        "orientation": "horizontal"
-      },
-      "gridPos": {
-        "h": 4,
-        "w": 3,
-        "x": 9,
-        "y": 4
-      }
-    },
-    {
-      "id": 7,
-      "type": "stat",
-      "title": "5 Readiness 不過",
-      "description": "**這是什麼**：Pod 是 Running、容器也在跑，但 Ready=false 的容器數（CrashLoop 不算在這，歸第 7 類）。\n\n**怎麼看**：Pod 剛啟動、還在 initialDelay 時會短暫出現；明細表的「持續」超過幾分鐘才需要處理。\n\n詳細原因請到 OCP console 查看該 Pod 的 Events（表格的 Pod 名稱可直接點過去）。",
-      "datasource": {
-        "type": "prometheus",
-        "uid": "${datasource}"
-      },
-      "targets": [
-        {
-          "refId": "A",
-          "datasource": {
-            "type": "prometheus",
-            "uid": "${datasource}"
-          },
-          "expr": "count((max by (namespace, pod, container) ((kube_pod_container_status_ready{namespace=~\"$namespace\", namespace!~\"$exclude\"} == 0) and on (namespace, pod) (kube_pod_status_phase{phase=\"Running\", namespace=~\"$namespace\", namespace!~\"$exclude\"} == 1) and on (namespace, pod, container) (kube_pod_container_status_running{namespace=~\"$namespace\", namespace!~\"$exclude\"} == 1)))) or (0 * count(kube_namespace_created))",
-          "legendFormat": "",
-          "range": false,
-          "instant": true
-        }
-      ],
-      "fieldConfig": {
-        "defaults": {
-          "color": {
-            "mode": "thresholds"
-          },
-          "unit": "none",
-          "decimals": 0,
-          "noValue": "沒資料",
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              {
-                "color": "green",
-                "value": null
-              },
-              {
-                "color": "red",
-                "value": 1
-              }
-            ]
-          }
-        },
-        "overrides": []
-      },
-      "options": {
-        "reduceOptions": {
-          "calcs": [
-            "lastNotNull"
-          ],
-          "fields": "",
-          "values": false
-        },
-        "colorMode": "background",
-        "graphMode": "none",
-        "textMode": "value",
-        "justifyMode": "center",
-        "orientation": "horizontal"
-      },
-      "gridPos": {
-        "h": 4,
-        "w": 3,
-        "x": 12,
-        "y": 4
-      }
-    },
-    {
-      "id": 8,
-      "type": "stat",
-      "title": "6 5 分鐘內有重啟",
-      "description": "**這是什麼**：過去 5 分鐘重啟次數 > 0 的容器數（liveness 失敗、程式自己結束、OOM 都會重啟）。\n\n**怎麼看**：明細表列近 1 小時有重啟的容器與上次終止原因；下方趨勢圖看是哪個 Namespace 一直在重啟。\n\n詳細原因請到 OCP console 查看該 Pod 的 Events（表格的 Pod 名稱可直接點過去）。",
-      "datasource": {
-        "type": "prometheus",
-        "uid": "${datasource}"
-      },
-      "targets": [
-        {
-          "refId": "A",
-          "datasource": {
-            "type": "prometheus",
-            "uid": "${datasource}"
-          },
-          "expr": "count((max by (namespace, pod, container) (increase(kube_pod_container_status_restarts_total{namespace=~\"$namespace\", namespace!~\"$exclude\"}[5m]) > 0))) or (0 * count(kube_namespace_created))",
-          "legendFormat": "",
-          "range": false,
-          "instant": true
-        }
-      ],
-      "fieldConfig": {
-        "defaults": {
-          "color": {
-            "mode": "thresholds"
-          },
-          "unit": "none",
-          "decimals": 0,
-          "noValue": "沒資料",
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              {
-                "color": "green",
-                "value": null
-              },
-              {
-                "color": "red",
-                "value": 1
-              }
-            ]
-          }
-        },
-        "overrides": []
-      },
-      "options": {
-        "reduceOptions": {
-          "calcs": [
-            "lastNotNull"
-          ],
-          "fields": "",
-          "values": false
-        },
-        "colorMode": "background",
-        "graphMode": "none",
-        "textMode": "value",
-        "justifyMode": "center",
-        "orientation": "horizontal"
-      },
-      "gridPos": {
-        "h": 4,
-        "w": 3,
-        "x": 15,
-        "y": 4
-      }
-    },
-    {
-      "id": 9,
-      "type": "stat",
-      "title": "7 CrashLoop / OOM",
-      "description": "**這是什麼**：CrashLoopBackOff 中，或上次終止是 OOMKilled 且 1 小時內有重啟的容器數。\n\n**怎麼看**：OOMKilled → 記憶體 Limit 太小或程式記憶體洩漏；CrashLoop → 看容器上一次的 log（oc logs --previous）。\n\n詳細原因請到 OCP console 查看該 Pod 的 Events（表格的 Pod 名稱可直接點過去）。",
-      "datasource": {
-        "type": "prometheus",
-        "uid": "${datasource}"
-      },
-      "targets": [
-        {
-          "refId": "A",
-          "datasource": {
-            "type": "prometheus",
-            "uid": "${datasource}"
-          },
-          "expr": "count(count by (namespace, pod, container) ((max by (namespace, pod, container, reason) (kube_pod_container_status_waiting_reason{reason=~\"CrashLoopBackOff\", namespace=~\"$namespace\", namespace!~\"$exclude\"} == 1)) or (max by (namespace, pod, container, reason) (kube_pod_container_status_last_terminated_reason{reason=\"OOMKilled\", namespace=~\"$namespace\", namespace!~\"$exclude\"} == 1) and on (namespace, pod, container) max by (namespace, pod, container) (increase(kube_pod_container_status_restarts_total{namespace=~\"$namespace\", namespace!~\"$exclude\"}[1h]) > 0)))) or (0 * count(kube_namespace_created))",
-          "legendFormat": "",
-          "range": false,
-          "instant": true
-        }
-      ],
-      "fieldConfig": {
-        "defaults": {
-          "color": {
-            "mode": "thresholds"
-          },
-          "unit": "none",
-          "decimals": 0,
-          "noValue": "沒資料",
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              {
-                "color": "green",
-                "value": null
-              },
-              {
-                "color": "red",
-                "value": 1
-              }
-            ]
-          }
-        },
-        "overrides": []
-      },
-      "options": {
-        "reduceOptions": {
-          "calcs": [
-            "lastNotNull"
-          ],
-          "fields": "",
-          "values": false
-        },
-        "colorMode": "background",
-        "graphMode": "none",
-        "textMode": "value",
-        "justifyMode": "center",
-        "orientation": "horizontal"
-      },
-      "gridPos": {
-        "h": 4,
-        "w": 3,
-        "x": 18,
-        "y": 4
-      }
-    },
-    {
-      "id": 10,
-      "type": "stat",
-      "title": "8 建立超過 5 分鐘",
-      "description": "**這是什麼**：Pod 建立超過 5 分鐘，容器還在 ContainerCreating 的數量。\n\n**怎麼看**：常見：PVC 掛載失敗（FailedMount / FailedAttachVolume）、Secret / ConfigMap 不存在、CNI 網路配置失敗。\n\n詳細原因請到 OCP console 查看該 Pod 的 Events（表格的 Pod 名稱可直接點過去）。",
-      "datasource": {
-        "type": "prometheus",
-        "uid": "${datasource}"
-      },
-      "targets": [
-        {
-          "refId": "A",
-          "datasource": {
-            "type": "prometheus",
-            "uid": "${datasource}"
-          },
-          "expr": "count((max by (namespace, pod, container) (kube_pod_container_status_waiting_reason{reason=\"ContainerCreating\", namespace=~\"$namespace\", namespace!~\"$exclude\"} == 1) and on (namespace, pod) (time() - kube_pod_created{namespace=~\"$namespace\", namespace!~\"$exclude\"} > 300))) or (0 * count(kube_namespace_created))",
-          "legendFormat": "",
-          "range": false,
-          "instant": true
-        }
-      ],
-      "fieldConfig": {
-        "defaults": {
-          "color": {
-            "mode": "thresholds"
-          },
-          "unit": "none",
-          "decimals": 0,
-          "noValue": "沒資料",
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              {
-                "color": "green",
-                "value": null
-              },
-              {
-                "color": "red",
-                "value": 1
-              }
-            ]
-          }
-        },
-        "overrides": []
-      },
-      "options": {
-        "reduceOptions": {
-          "calcs": [
-            "lastNotNull"
-          ],
-          "fields": "",
-          "values": false
-        },
-        "colorMode": "background",
-        "graphMode": "none",
-        "textMode": "value",
-        "justifyMode": "center",
-        "orientation": "horizontal"
-      },
-      "gridPos": {
-        "h": 4,
-        "w": 3,
-        "x": 21,
-        "y": 4
-      }
-    },
-    {
-      "id": 11,
       "type": "row",
-      "title": "② 明細：${datasource:text}",
+      "title": "各類明細（多了 image、Request、副本數、記憶體 Limit 等欄位；展開才查詢）",
       "collapsed": true,
       "gridPos": {
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 8
+        "y": 25
       },
       "panels": [
         {
-          "id": 12,
+          "id": 6,
           "type": "table",
           "title": "1 Image 拉不下來",
           "description": "**這是什麼**：容器在等待，原因是 ErrImagePull / ImagePullBackOff / InvalidImageName 的數量。\n\n**怎麼看**：常見：image 名稱或 tag 打錯、registry 認證（pull secret）失效、registry 連不到。\n\n詳細原因請到 OCP console 查看該 Pod 的 Events（表格的 Pod 名稱可直接點過去）。",
           "datasource": {
-            "type": "prometheus",
-            "uid": "${datasource}"
+            "type": "datasource",
+            "uid": "-- Mixed --"
           },
           "targets": [
             {
@@ -694,7 +688,7 @@
                 "type": "prometheus",
                 "uid": "${datasource}"
               },
-              "expr": "(max by (namespace, pod, container) (count_over_time((max by (namespace, pod, container) (max by (namespace, pod, container, reason) (kube_pod_container_status_waiting_reason{reason=~\"ErrImagePull|ImagePullBackOff|InvalidImageName\", namespace=~\"$namespace\", namespace!~\"$exclude\"} == 1)))[1h:1m])) * on (namespace, pod, container) group_right () (0 * (((max by (namespace, pod, container, reason) (kube_pod_container_status_waiting_reason{reason=~\"ErrImagePull|ImagePullBackOff|InvalidImageName\", namespace=~\"$namespace\", namespace!~\"$exclude\"} == 1) * on (namespace, pod, container) group_left (image) max by (namespace, pod, container, image) (kube_pod_container_info{namespace=~\"$namespace\", namespace!~\"$exclude\"})) * on () group_left (url) topk(1, max by (url) (console_url))) or on (namespace, pod, container, reason, image) (max by (namespace, pod, container, reason) (kube_pod_container_status_waiting_reason{reason=~\"ErrImagePull|ImagePullBackOff|InvalidImageName\", namespace=~\"$namespace\", namespace!~\"$exclude\"} == 1) * on (namespace, pod, container) group_left (image) max by (namespace, pod, container, image) (kube_pod_container_info{namespace=~\"$namespace\", namespace!~\"$exclude\"}))) + 1)) or (0 * (((max by (namespace, pod, container, reason) (kube_pod_container_status_waiting_reason{reason=~\"ErrImagePull|ImagePullBackOff|InvalidImageName\", namespace=~\"$namespace\", namespace!~\"$exclude\"} == 1) * on (namespace, pod, container) group_left (image) max by (namespace, pod, container, image) (kube_pod_container_info{namespace=~\"$namespace\", namespace!~\"$exclude\"})) * on () group_left (url) topk(1, max by (url) (console_url))) or on (namespace, pod, container, reason, image) (max by (namespace, pod, container, reason) (kube_pod_container_status_waiting_reason{reason=~\"ErrImagePull|ImagePullBackOff|InvalidImageName\", namespace=~\"$namespace\", namespace!~\"$exclude\"} == 1) * on (namespace, pod, container) group_left (image) max by (namespace, pod, container, image) (kube_pod_container_info{namespace=~\"$namespace\", namespace!~\"$exclude\"}))) - 1)",
+              "expr": "label_replace((max by (namespace, pod, container) (count_over_time((max by (namespace, pod, container) (max by (namespace, pod, container, reason) (kube_pod_container_status_waiting_reason{reason=~\"ErrImagePull|ImagePullBackOff|InvalidImageName\", namespace=~\"$namespace\", namespace!~\"$exclude\"} == 1)))[1h:1m])) * on (namespace, pod, container) group_right () (0 * (((max by (namespace, pod, container, reason) (kube_pod_container_status_waiting_reason{reason=~\"ErrImagePull|ImagePullBackOff|InvalidImageName\", namespace=~\"$namespace\", namespace!~\"$exclude\"} == 1) * on (namespace, pod, container) group_left (image) max by (namespace, pod, container, image) (kube_pod_container_info{namespace=~\"$namespace\", namespace!~\"$exclude\"})) * on () group_left (url) topk(1, max by (url) (console_url))) or on (namespace, pod, container, reason, image) (max by (namespace, pod, container, reason) (kube_pod_container_status_waiting_reason{reason=~\"ErrImagePull|ImagePullBackOff|InvalidImageName\", namespace=~\"$namespace\", namespace!~\"$exclude\"} == 1) * on (namespace, pod, container) group_left (image) max by (namespace, pod, container, image) (kube_pod_container_info{namespace=~\"$namespace\", namespace!~\"$exclude\"}))) + 1)) or (0 * (((max by (namespace, pod, container, reason) (kube_pod_container_status_waiting_reason{reason=~\"ErrImagePull|ImagePullBackOff|InvalidImageName\", namespace=~\"$namespace\", namespace!~\"$exclude\"} == 1) * on (namespace, pod, container) group_left (image) max by (namespace, pod, container, image) (kube_pod_container_info{namespace=~\"$namespace\", namespace!~\"$exclude\"})) * on () group_left (url) topk(1, max by (url) (console_url))) or on (namespace, pod, container, reason, image) (max by (namespace, pod, container, reason) (kube_pod_container_status_waiting_reason{reason=~\"ErrImagePull|ImagePullBackOff|InvalidImageName\", namespace=~\"$namespace\", namespace!~\"$exclude\"} == 1) * on (namespace, pod, container) group_left (image) max by (namespace, pod, container, image) (kube_pod_container_info{namespace=~\"$namespace\", namespace!~\"$exclude\"}))) - 1), \"cluster\", \"${datasource:text}\", \"\", \"\")",
               "legendFormat": "",
               "range": false,
               "instant": true,
@@ -706,7 +700,7 @@
                 "type": "prometheus",
                 "uid": "${datasource}"
               },
-              "expr": "(max by (namespace, pod) (time() - kube_pod_created{namespace=~\"$namespace\", namespace!~\"$exclude\"}) * on (namespace, pod) group_right () (0 * (((max by (namespace, pod, container, reason) (kube_pod_container_status_waiting_reason{reason=~\"ErrImagePull|ImagePullBackOff|InvalidImageName\", namespace=~\"$namespace\", namespace!~\"$exclude\"} == 1) * on (namespace, pod, container) group_left (image) max by (namespace, pod, container, image) (kube_pod_container_info{namespace=~\"$namespace\", namespace!~\"$exclude\"})) * on () group_left (url) topk(1, max by (url) (console_url))) or on (namespace, pod, container, reason, image) (max by (namespace, pod, container, reason) (kube_pod_container_status_waiting_reason{reason=~\"ErrImagePull|ImagePullBackOff|InvalidImageName\", namespace=~\"$namespace\", namespace!~\"$exclude\"} == 1) * on (namespace, pod, container) group_left (image) max by (namespace, pod, container, image) (kube_pod_container_info{namespace=~\"$namespace\", namespace!~\"$exclude\"}))) + 1)) or (0 * (((max by (namespace, pod, container, reason) (kube_pod_container_status_waiting_reason{reason=~\"ErrImagePull|ImagePullBackOff|InvalidImageName\", namespace=~\"$namespace\", namespace!~\"$exclude\"} == 1) * on (namespace, pod, container) group_left (image) max by (namespace, pod, container, image) (kube_pod_container_info{namespace=~\"$namespace\", namespace!~\"$exclude\"})) * on () group_left (url) topk(1, max by (url) (console_url))) or on (namespace, pod, container, reason, image) (max by (namespace, pod, container, reason) (kube_pod_container_status_waiting_reason{reason=~\"ErrImagePull|ImagePullBackOff|InvalidImageName\", namespace=~\"$namespace\", namespace!~\"$exclude\"} == 1) * on (namespace, pod, container) group_left (image) max by (namespace, pod, container, image) (kube_pod_container_info{namespace=~\"$namespace\", namespace!~\"$exclude\"}))) - 1)",
+              "expr": "label_replace((max by (namespace, pod) (time() - kube_pod_created{namespace=~\"$namespace\", namespace!~\"$exclude\"}) * on (namespace, pod) group_right () (0 * (((max by (namespace, pod, container, reason) (kube_pod_container_status_waiting_reason{reason=~\"ErrImagePull|ImagePullBackOff|InvalidImageName\", namespace=~\"$namespace\", namespace!~\"$exclude\"} == 1) * on (namespace, pod, container) group_left (image) max by (namespace, pod, container, image) (kube_pod_container_info{namespace=~\"$namespace\", namespace!~\"$exclude\"})) * on () group_left (url) topk(1, max by (url) (console_url))) or on (namespace, pod, container, reason, image) (max by (namespace, pod, container, reason) (kube_pod_container_status_waiting_reason{reason=~\"ErrImagePull|ImagePullBackOff|InvalidImageName\", namespace=~\"$namespace\", namespace!~\"$exclude\"} == 1) * on (namespace, pod, container) group_left (image) max by (namespace, pod, container, image) (kube_pod_container_info{namespace=~\"$namespace\", namespace!~\"$exclude\"}))) + 1)) or (0 * (((max by (namespace, pod, container, reason) (kube_pod_container_status_waiting_reason{reason=~\"ErrImagePull|ImagePullBackOff|InvalidImageName\", namespace=~\"$namespace\", namespace!~\"$exclude\"} == 1) * on (namespace, pod, container) group_left (image) max by (namespace, pod, container, image) (kube_pod_container_info{namespace=~\"$namespace\", namespace!~\"$exclude\"})) * on () group_left (url) topk(1, max by (url) (console_url))) or on (namespace, pod, container, reason, image) (max by (namespace, pod, container, reason) (kube_pod_container_status_waiting_reason{reason=~\"ErrImagePull|ImagePullBackOff|InvalidImageName\", namespace=~\"$namespace\", namespace!~\"$exclude\"} == 1) * on (namespace, pod, container) group_left (image) max by (namespace, pod, container, image) (kube_pod_container_info{namespace=~\"$namespace\", namespace!~\"$exclude\"}))) - 1), \"cluster\", \"${datasource:text}\", \"\", \"\")",
               "legendFormat": "",
               "range": false,
               "instant": true,
@@ -729,13 +723,14 @@
                   "Value #B": "Pod 建立多久"
                 },
                 "indexByName": {
-                  "namespace": 0,
-                  "pod": 1,
-                  "container": 2,
-                  "reason": 3,
-                  "image": 4,
-                  "持續（近 1h 分鐘）": 5,
-                  "Pod 建立多久": 6
+                  "cluster": 0,
+                  "namespace": 1,
+                  "pod": 2,
+                  "container": 3,
+                  "reason": 4,
+                  "image": 5,
+                  "持續（近 1h 分鐘）": 6,
+                  "Pod 建立多久": 7
                 }
               }
             }
@@ -809,6 +804,26 @@
                   {
                     "id": "decimals",
                     "value": 0
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "cluster"
+                },
+                "properties": [
+                  {
+                    "id": "custom.width",
+                    "value": 170
+                  },
+                  {
+                    "id": "custom.filterable",
+                    "value": true
+                  },
+                  {
+                    "id": "displayName",
+                    "value": "叢集"
                   }
                 ]
               },
@@ -950,20 +965,20 @@
             }
           },
           "gridPos": {
-            "h": 8,
-            "w": 12,
+            "h": 6,
+            "w": 24,
             "x": 0,
-            "y": 9
+            "y": 26
           }
         },
         {
-          "id": 13,
+          "id": 7,
           "type": "table",
           "title": "2 排不進 Node",
           "description": "**這是什麼**：Pending 且排程器判定無法排程（PodScheduled=False, Unschedulable）的 Pod 數。\n\n**怎麼看**：常見：資源不足（Insufficient cpu / memory）、nodeSelector / affinity / taint 不符、PVC 綁不到。\n\n詳細原因請到 OCP console 查看該 Pod 的 Events（表格的 Pod 名稱可直接點過去）。",
           "datasource": {
-            "type": "prometheus",
-            "uid": "${datasource}"
+            "type": "datasource",
+            "uid": "-- Mixed --"
           },
           "targets": [
             {
@@ -972,7 +987,7 @@
                 "type": "prometheus",
                 "uid": "${datasource}"
               },
-              "expr": "(max by (namespace, pod) (time() - kube_pod_created{namespace=~\"$namespace\", namespace!~\"$exclude\"}) * on (namespace, pod) group_right () (0 * (((max by (namespace, pod) (kube_pod_status_unschedulable{namespace=~\"$namespace\", namespace!~\"$exclude\"} == 1)) * on () group_left (url) topk(1, max by (url) (console_url))) or on (namespace, pod) (max by (namespace, pod) (kube_pod_status_unschedulable{namespace=~\"$namespace\", namespace!~\"$exclude\"} == 1))) + 1)) or (0 * (((max by (namespace, pod) (kube_pod_status_unschedulable{namespace=~\"$namespace\", namespace!~\"$exclude\"} == 1)) * on () group_left (url) topk(1, max by (url) (console_url))) or on (namespace, pod) (max by (namespace, pod) (kube_pod_status_unschedulable{namespace=~\"$namespace\", namespace!~\"$exclude\"} == 1))) - 1)",
+              "expr": "label_replace((max by (namespace, pod) (time() - kube_pod_created{namespace=~\"$namespace\", namespace!~\"$exclude\"}) * on (namespace, pod) group_right () (0 * (((max by (namespace, pod) (kube_pod_status_unschedulable{namespace=~\"$namespace\", namespace!~\"$exclude\"} == 1)) * on () group_left (url) topk(1, max by (url) (console_url))) or on (namespace, pod) (max by (namespace, pod) (kube_pod_status_unschedulable{namespace=~\"$namespace\", namespace!~\"$exclude\"} == 1))) + 1)) or (0 * (((max by (namespace, pod) (kube_pod_status_unschedulable{namespace=~\"$namespace\", namespace!~\"$exclude\"} == 1)) * on () group_left (url) topk(1, max by (url) (console_url))) or on (namespace, pod) (max by (namespace, pod) (kube_pod_status_unschedulable{namespace=~\"$namespace\", namespace!~\"$exclude\"} == 1))) - 1), \"cluster\", \"${datasource:text}\", \"\", \"\")",
               "legendFormat": "",
               "range": false,
               "instant": true,
@@ -984,7 +999,7 @@
                 "type": "prometheus",
                 "uid": "${datasource}"
               },
-              "expr": "(max by (namespace, pod) (sum by (namespace, pod) (kube_pod_container_resource_requests{resource=\"cpu\", namespace=~\"$namespace\", namespace!~\"$exclude\"})) * on (namespace, pod) group_right () (0 * (((max by (namespace, pod) (kube_pod_status_unschedulable{namespace=~\"$namespace\", namespace!~\"$exclude\"} == 1)) * on () group_left (url) topk(1, max by (url) (console_url))) or on (namespace, pod) (max by (namespace, pod) (kube_pod_status_unschedulable{namespace=~\"$namespace\", namespace!~\"$exclude\"} == 1))) + 1)) or (0 * (((max by (namespace, pod) (kube_pod_status_unschedulable{namespace=~\"$namespace\", namespace!~\"$exclude\"} == 1)) * on () group_left (url) topk(1, max by (url) (console_url))) or on (namespace, pod) (max by (namespace, pod) (kube_pod_status_unschedulable{namespace=~\"$namespace\", namespace!~\"$exclude\"} == 1))) - 1)",
+              "expr": "label_replace((max by (namespace, pod) (sum by (namespace, pod) (kube_pod_container_resource_requests{resource=\"cpu\", namespace=~\"$namespace\", namespace!~\"$exclude\"})) * on (namespace, pod) group_right () (0 * (((max by (namespace, pod) (kube_pod_status_unschedulable{namespace=~\"$namespace\", namespace!~\"$exclude\"} == 1)) * on () group_left (url) topk(1, max by (url) (console_url))) or on (namespace, pod) (max by (namespace, pod) (kube_pod_status_unschedulable{namespace=~\"$namespace\", namespace!~\"$exclude\"} == 1))) + 1)) or (0 * (((max by (namespace, pod) (kube_pod_status_unschedulable{namespace=~\"$namespace\", namespace!~\"$exclude\"} == 1)) * on () group_left (url) topk(1, max by (url) (console_url))) or on (namespace, pod) (max by (namespace, pod) (kube_pod_status_unschedulable{namespace=~\"$namespace\", namespace!~\"$exclude\"} == 1))) - 1), \"cluster\", \"${datasource:text}\", \"\", \"\")",
               "legendFormat": "",
               "range": false,
               "instant": true,
@@ -996,7 +1011,7 @@
                 "type": "prometheus",
                 "uid": "${datasource}"
               },
-              "expr": "(max by (namespace, pod) (sum by (namespace, pod) (kube_pod_container_resource_requests{resource=\"memory\", namespace=~\"$namespace\", namespace!~\"$exclude\"})) * on (namespace, pod) group_right () (0 * (((max by (namespace, pod) (kube_pod_status_unschedulable{namespace=~\"$namespace\", namespace!~\"$exclude\"} == 1)) * on () group_left (url) topk(1, max by (url) (console_url))) or on (namespace, pod) (max by (namespace, pod) (kube_pod_status_unschedulable{namespace=~\"$namespace\", namespace!~\"$exclude\"} == 1))) + 1)) or (0 * (((max by (namespace, pod) (kube_pod_status_unschedulable{namespace=~\"$namespace\", namespace!~\"$exclude\"} == 1)) * on () group_left (url) topk(1, max by (url) (console_url))) or on (namespace, pod) (max by (namespace, pod) (kube_pod_status_unschedulable{namespace=~\"$namespace\", namespace!~\"$exclude\"} == 1))) - 1)",
+              "expr": "label_replace((max by (namespace, pod) (sum by (namespace, pod) (kube_pod_container_resource_requests{resource=\"memory\", namespace=~\"$namespace\", namespace!~\"$exclude\"})) * on (namespace, pod) group_right () (0 * (((max by (namespace, pod) (kube_pod_status_unschedulable{namespace=~\"$namespace\", namespace!~\"$exclude\"} == 1)) * on () group_left (url) topk(1, max by (url) (console_url))) or on (namespace, pod) (max by (namespace, pod) (kube_pod_status_unschedulable{namespace=~\"$namespace\", namespace!~\"$exclude\"} == 1))) + 1)) or (0 * (((max by (namespace, pod) (kube_pod_status_unschedulable{namespace=~\"$namespace\", namespace!~\"$exclude\"} == 1)) * on () group_left (url) topk(1, max by (url) (console_url))) or on (namespace, pod) (max by (namespace, pod) (kube_pod_status_unschedulable{namespace=~\"$namespace\", namespace!~\"$exclude\"} == 1))) - 1), \"cluster\", \"${datasource:text}\", \"\", \"\")",
               "legendFormat": "",
               "range": false,
               "instant": true,
@@ -1020,11 +1035,12 @@
                   "Value #C": "記憶體 Request"
                 },
                 "indexByName": {
-                  "namespace": 0,
-                  "pod": 1,
-                  "Pending 多久": 2,
-                  "CPU Request": 3,
-                  "記憶體 Request": 4
+                  "cluster": 0,
+                  "namespace": 1,
+                  "pod": 2,
+                  "Pending 多久": 3,
+                  "CPU Request": 4,
+                  "記憶體 Request": 5
                 }
               }
             }
@@ -1135,6 +1151,26 @@
               {
                 "matcher": {
                   "id": "byName",
+                  "options": "cluster"
+                },
+                "properties": [
+                  {
+                    "id": "custom.width",
+                    "value": 170
+                  },
+                  {
+                    "id": "custom.filterable",
+                    "value": true
+                  },
+                  {
+                    "id": "displayName",
+                    "value": "叢集"
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
                   "options": "namespace"
                 },
                 "properties": [
@@ -1210,20 +1246,20 @@
             }
           },
           "gridPos": {
-            "h": 8,
-            "w": 12,
-            "x": 12,
-            "y": 9
+            "h": 6,
+            "w": 24,
+            "x": 0,
+            "y": 32
           }
         },
         {
-          "id": 14,
+          "id": 8,
           "type": "table",
           "title": "3 Deployment 副本不足",
           "description": "**這是什麼**：不可用副本 > 0 的 Deployment 數。\n\n**怎麼看**：滾動更新中短暫出現是正常的；一直不消失通常是 Pod 建不出來（quota、SCC、LimitRange）或建出來起不來（看第 1、5、7、8 類）。Pod 建不出來時 Pod 頁沒有 Events，要看 Deployment / ReplicaSet 的 Events。\n\n詳細原因請到 OCP console 查看該 Pod 的 Events（表格的 Pod 名稱可直接點過去）。",
           "datasource": {
-            "type": "prometheus",
-            "uid": "${datasource}"
+            "type": "datasource",
+            "uid": "-- Mixed --"
           },
           "targets": [
             {
@@ -1232,7 +1268,7 @@
                 "type": "prometheus",
                 "uid": "${datasource}"
               },
-              "expr": "(max by (namespace, deployment) (kube_deployment_spec_replicas{namespace=~\"$namespace\", namespace!~\"$exclude\"}) * on (namespace, deployment) group_right () (0 * (((max by (namespace, deployment) (kube_deployment_status_replicas_unavailable{namespace=~\"$namespace\", namespace!~\"$exclude\"} > 0)) * on () group_left (url) topk(1, max by (url) (console_url))) or on (namespace, deployment) (max by (namespace, deployment) (kube_deployment_status_replicas_unavailable{namespace=~\"$namespace\", namespace!~\"$exclude\"} > 0))) + 1)) or (0 * (((max by (namespace, deployment) (kube_deployment_status_replicas_unavailable{namespace=~\"$namespace\", namespace!~\"$exclude\"} > 0)) * on () group_left (url) topk(1, max by (url) (console_url))) or on (namespace, deployment) (max by (namespace, deployment) (kube_deployment_status_replicas_unavailable{namespace=~\"$namespace\", namespace!~\"$exclude\"} > 0))) - 1)",
+              "expr": "label_replace((max by (namespace, deployment) (kube_deployment_spec_replicas{namespace=~\"$namespace\", namespace!~\"$exclude\"}) * on (namespace, deployment) group_right () (0 * (((max by (namespace, deployment) (kube_deployment_status_replicas_unavailable{namespace=~\"$namespace\", namespace!~\"$exclude\"} > 0)) * on () group_left (url) topk(1, max by (url) (console_url))) or on (namespace, deployment) (max by (namespace, deployment) (kube_deployment_status_replicas_unavailable{namespace=~\"$namespace\", namespace!~\"$exclude\"} > 0))) + 1)) or (0 * (((max by (namespace, deployment) (kube_deployment_status_replicas_unavailable{namespace=~\"$namespace\", namespace!~\"$exclude\"} > 0)) * on () group_left (url) topk(1, max by (url) (console_url))) or on (namespace, deployment) (max by (namespace, deployment) (kube_deployment_status_replicas_unavailable{namespace=~\"$namespace\", namespace!~\"$exclude\"} > 0))) - 1), \"cluster\", \"${datasource:text}\", \"\", \"\")",
               "legendFormat": "",
               "range": false,
               "instant": true,
@@ -1244,7 +1280,7 @@
                 "type": "prometheus",
                 "uid": "${datasource}"
               },
-              "expr": "(max by (namespace, deployment) (kube_deployment_status_replicas_available{namespace=~\"$namespace\", namespace!~\"$exclude\"}) * on (namespace, deployment) group_right () (0 * (((max by (namespace, deployment) (kube_deployment_status_replicas_unavailable{namespace=~\"$namespace\", namespace!~\"$exclude\"} > 0)) * on () group_left (url) topk(1, max by (url) (console_url))) or on (namespace, deployment) (max by (namespace, deployment) (kube_deployment_status_replicas_unavailable{namespace=~\"$namespace\", namespace!~\"$exclude\"} > 0))) + 1)) or (0 * (((max by (namespace, deployment) (kube_deployment_status_replicas_unavailable{namespace=~\"$namespace\", namespace!~\"$exclude\"} > 0)) * on () group_left (url) topk(1, max by (url) (console_url))) or on (namespace, deployment) (max by (namespace, deployment) (kube_deployment_status_replicas_unavailable{namespace=~\"$namespace\", namespace!~\"$exclude\"} > 0))) - 1)",
+              "expr": "label_replace((max by (namespace, deployment) (kube_deployment_status_replicas_available{namespace=~\"$namespace\", namespace!~\"$exclude\"}) * on (namespace, deployment) group_right () (0 * (((max by (namespace, deployment) (kube_deployment_status_replicas_unavailable{namespace=~\"$namespace\", namespace!~\"$exclude\"} > 0)) * on () group_left (url) topk(1, max by (url) (console_url))) or on (namespace, deployment) (max by (namespace, deployment) (kube_deployment_status_replicas_unavailable{namespace=~\"$namespace\", namespace!~\"$exclude\"} > 0))) + 1)) or (0 * (((max by (namespace, deployment) (kube_deployment_status_replicas_unavailable{namespace=~\"$namespace\", namespace!~\"$exclude\"} > 0)) * on () group_left (url) topk(1, max by (url) (console_url))) or on (namespace, deployment) (max by (namespace, deployment) (kube_deployment_status_replicas_unavailable{namespace=~\"$namespace\", namespace!~\"$exclude\"} > 0))) - 1), \"cluster\", \"${datasource:text}\", \"\", \"\")",
               "legendFormat": "",
               "range": false,
               "instant": true,
@@ -1256,7 +1292,7 @@
                 "type": "prometheus",
                 "uid": "${datasource}"
               },
-              "expr": "(max by (namespace, deployment) (kube_deployment_status_replicas_unavailable{namespace=~\"$namespace\", namespace!~\"$exclude\"}) * on (namespace, deployment) group_right () (0 * (((max by (namespace, deployment) (kube_deployment_status_replicas_unavailable{namespace=~\"$namespace\", namespace!~\"$exclude\"} > 0)) * on () group_left (url) topk(1, max by (url) (console_url))) or on (namespace, deployment) (max by (namespace, deployment) (kube_deployment_status_replicas_unavailable{namespace=~\"$namespace\", namespace!~\"$exclude\"} > 0))) + 1)) or (0 * (((max by (namespace, deployment) (kube_deployment_status_replicas_unavailable{namespace=~\"$namespace\", namespace!~\"$exclude\"} > 0)) * on () group_left (url) topk(1, max by (url) (console_url))) or on (namespace, deployment) (max by (namespace, deployment) (kube_deployment_status_replicas_unavailable{namespace=~\"$namespace\", namespace!~\"$exclude\"} > 0))) - 1)",
+              "expr": "label_replace((max by (namespace, deployment) (kube_deployment_status_replicas_unavailable{namespace=~\"$namespace\", namespace!~\"$exclude\"}) * on (namespace, deployment) group_right () (0 * (((max by (namespace, deployment) (kube_deployment_status_replicas_unavailable{namespace=~\"$namespace\", namespace!~\"$exclude\"} > 0)) * on () group_left (url) topk(1, max by (url) (console_url))) or on (namespace, deployment) (max by (namespace, deployment) (kube_deployment_status_replicas_unavailable{namespace=~\"$namespace\", namespace!~\"$exclude\"} > 0))) + 1)) or (0 * (((max by (namespace, deployment) (kube_deployment_status_replicas_unavailable{namespace=~\"$namespace\", namespace!~\"$exclude\"} > 0)) * on () group_left (url) topk(1, max by (url) (console_url))) or on (namespace, deployment) (max by (namespace, deployment) (kube_deployment_status_replicas_unavailable{namespace=~\"$namespace\", namespace!~\"$exclude\"} > 0))) - 1), \"cluster\", \"${datasource:text}\", \"\", \"\")",
               "legendFormat": "",
               "range": false,
               "instant": true,
@@ -1268,7 +1304,7 @@
                 "type": "prometheus",
                 "uid": "${datasource}"
               },
-              "expr": "(max by (namespace, deployment) (count_over_time((max by (namespace, deployment) (kube_deployment_status_replicas_unavailable{namespace=~\"$namespace\", namespace!~\"$exclude\"} > 0))[1h:1m])) * on (namespace, deployment) group_right () (0 * (((max by (namespace, deployment) (kube_deployment_status_replicas_unavailable{namespace=~\"$namespace\", namespace!~\"$exclude\"} > 0)) * on () group_left (url) topk(1, max by (url) (console_url))) or on (namespace, deployment) (max by (namespace, deployment) (kube_deployment_status_replicas_unavailable{namespace=~\"$namespace\", namespace!~\"$exclude\"} > 0))) + 1)) or (0 * (((max by (namespace, deployment) (kube_deployment_status_replicas_unavailable{namespace=~\"$namespace\", namespace!~\"$exclude\"} > 0)) * on () group_left (url) topk(1, max by (url) (console_url))) or on (namespace, deployment) (max by (namespace, deployment) (kube_deployment_status_replicas_unavailable{namespace=~\"$namespace\", namespace!~\"$exclude\"} > 0))) - 1)",
+              "expr": "label_replace((max by (namespace, deployment) (count_over_time((max by (namespace, deployment) (kube_deployment_status_replicas_unavailable{namespace=~\"$namespace\", namespace!~\"$exclude\"} > 0))[1h:1m])) * on (namespace, deployment) group_right () (0 * (((max by (namespace, deployment) (kube_deployment_status_replicas_unavailable{namespace=~\"$namespace\", namespace!~\"$exclude\"} > 0)) * on () group_left (url) topk(1, max by (url) (console_url))) or on (namespace, deployment) (max by (namespace, deployment) (kube_deployment_status_replicas_unavailable{namespace=~\"$namespace\", namespace!~\"$exclude\"} > 0))) + 1)) or (0 * (((max by (namespace, deployment) (kube_deployment_status_replicas_unavailable{namespace=~\"$namespace\", namespace!~\"$exclude\"} > 0)) * on () group_left (url) topk(1, max by (url) (console_url))) or on (namespace, deployment) (max by (namespace, deployment) (kube_deployment_status_replicas_unavailable{namespace=~\"$namespace\", namespace!~\"$exclude\"} > 0))) - 1), \"cluster\", \"${datasource:text}\", \"\", \"\")",
               "legendFormat": "",
               "range": false,
               "instant": true,
@@ -1293,12 +1329,13 @@
                   "Value #D": "持續（近 1h 分鐘）"
                 },
                 "indexByName": {
-                  "namespace": 0,
-                  "deployment": 1,
-                  "期望": 2,
-                  "可用": 3,
-                  "不可用": 4,
-                  "持續（近 1h 分鐘）": 5
+                  "cluster": 0,
+                  "namespace": 1,
+                  "deployment": 2,
+                  "期望": 3,
+                  "可用": 4,
+                  "不可用": 5,
+                  "持續（近 1h 分鐘）": 6
                 }
               }
             }
@@ -1440,6 +1477,26 @@
               {
                 "matcher": {
                   "id": "byName",
+                  "options": "cluster"
+                },
+                "properties": [
+                  {
+                    "id": "custom.width",
+                    "value": 170
+                  },
+                  {
+                    "id": "custom.filterable",
+                    "value": true
+                  },
+                  {
+                    "id": "displayName",
+                    "value": "叢集"
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
                   "options": "namespace"
                 },
                 "properties": [
@@ -1515,20 +1572,20 @@
             }
           },
           "gridPos": {
-            "h": 8,
-            "w": 12,
+            "h": 6,
+            "w": 24,
             "x": 0,
-            "y": 17
+            "y": 38
           }
         },
         {
-          "id": 15,
+          "id": 9,
           "type": "table",
           "title": "4 Rollout 卡住",
           "description": "**這是什麼**：Progressing 條件為 False 的 Deployment 數（超過 progressDeadlineSeconds，預設 10 分鐘，新版還沒好）。\n\n**怎麼看**：通常跟第 3 類一起出現；看 Deployment 的 Events 與新 ReplicaSet 的 Pod。\n\n詳細原因請到 OCP console 查看該 Pod 的 Events（表格的 Pod 名稱可直接點過去）。",
           "datasource": {
-            "type": "prometheus",
-            "uid": "${datasource}"
+            "type": "datasource",
+            "uid": "-- Mixed --"
           },
           "targets": [
             {
@@ -1537,7 +1594,7 @@
                 "type": "prometheus",
                 "uid": "${datasource}"
               },
-              "expr": "(max by (namespace, deployment) (kube_deployment_spec_replicas{namespace=~\"$namespace\", namespace!~\"$exclude\"}) * on (namespace, deployment) group_right () (0 * (((max by (namespace, deployment) (kube_deployment_status_condition{condition=\"Progressing\", status=\"false\", namespace=~\"$namespace\", namespace!~\"$exclude\"} == 1)) * on () group_left (url) topk(1, max by (url) (console_url))) or on (namespace, deployment) (max by (namespace, deployment) (kube_deployment_status_condition{condition=\"Progressing\", status=\"false\", namespace=~\"$namespace\", namespace!~\"$exclude\"} == 1))) + 1)) or (0 * (((max by (namespace, deployment) (kube_deployment_status_condition{condition=\"Progressing\", status=\"false\", namespace=~\"$namespace\", namespace!~\"$exclude\"} == 1)) * on () group_left (url) topk(1, max by (url) (console_url))) or on (namespace, deployment) (max by (namespace, deployment) (kube_deployment_status_condition{condition=\"Progressing\", status=\"false\", namespace=~\"$namespace\", namespace!~\"$exclude\"} == 1))) - 1)",
+              "expr": "label_replace((max by (namespace, deployment) (kube_deployment_spec_replicas{namespace=~\"$namespace\", namespace!~\"$exclude\"}) * on (namespace, deployment) group_right () (0 * (((max by (namespace, deployment) (kube_deployment_status_condition{condition=\"Progressing\", status=\"false\", namespace=~\"$namespace\", namespace!~\"$exclude\"} == 1)) * on () group_left (url) topk(1, max by (url) (console_url))) or on (namespace, deployment) (max by (namespace, deployment) (kube_deployment_status_condition{condition=\"Progressing\", status=\"false\", namespace=~\"$namespace\", namespace!~\"$exclude\"} == 1))) + 1)) or (0 * (((max by (namespace, deployment) (kube_deployment_status_condition{condition=\"Progressing\", status=\"false\", namespace=~\"$namespace\", namespace!~\"$exclude\"} == 1)) * on () group_left (url) topk(1, max by (url) (console_url))) or on (namespace, deployment) (max by (namespace, deployment) (kube_deployment_status_condition{condition=\"Progressing\", status=\"false\", namespace=~\"$namespace\", namespace!~\"$exclude\"} == 1))) - 1), \"cluster\", \"${datasource:text}\", \"\", \"\")",
               "legendFormat": "",
               "range": false,
               "instant": true,
@@ -1549,7 +1606,7 @@
                 "type": "prometheus",
                 "uid": "${datasource}"
               },
-              "expr": "(max by (namespace, deployment) (kube_deployment_status_replicas_updated{namespace=~\"$namespace\", namespace!~\"$exclude\"}) * on (namespace, deployment) group_right () (0 * (((max by (namespace, deployment) (kube_deployment_status_condition{condition=\"Progressing\", status=\"false\", namespace=~\"$namespace\", namespace!~\"$exclude\"} == 1)) * on () group_left (url) topk(1, max by (url) (console_url))) or on (namespace, deployment) (max by (namespace, deployment) (kube_deployment_status_condition{condition=\"Progressing\", status=\"false\", namespace=~\"$namespace\", namespace!~\"$exclude\"} == 1))) + 1)) or (0 * (((max by (namespace, deployment) (kube_deployment_status_condition{condition=\"Progressing\", status=\"false\", namespace=~\"$namespace\", namespace!~\"$exclude\"} == 1)) * on () group_left (url) topk(1, max by (url) (console_url))) or on (namespace, deployment) (max by (namespace, deployment) (kube_deployment_status_condition{condition=\"Progressing\", status=\"false\", namespace=~\"$namespace\", namespace!~\"$exclude\"} == 1))) - 1)",
+              "expr": "label_replace((max by (namespace, deployment) (kube_deployment_status_replicas_updated{namespace=~\"$namespace\", namespace!~\"$exclude\"}) * on (namespace, deployment) group_right () (0 * (((max by (namespace, deployment) (kube_deployment_status_condition{condition=\"Progressing\", status=\"false\", namespace=~\"$namespace\", namespace!~\"$exclude\"} == 1)) * on () group_left (url) topk(1, max by (url) (console_url))) or on (namespace, deployment) (max by (namespace, deployment) (kube_deployment_status_condition{condition=\"Progressing\", status=\"false\", namespace=~\"$namespace\", namespace!~\"$exclude\"} == 1))) + 1)) or (0 * (((max by (namespace, deployment) (kube_deployment_status_condition{condition=\"Progressing\", status=\"false\", namespace=~\"$namespace\", namespace!~\"$exclude\"} == 1)) * on () group_left (url) topk(1, max by (url) (console_url))) or on (namespace, deployment) (max by (namespace, deployment) (kube_deployment_status_condition{condition=\"Progressing\", status=\"false\", namespace=~\"$namespace\", namespace!~\"$exclude\"} == 1))) - 1), \"cluster\", \"${datasource:text}\", \"\", \"\")",
               "legendFormat": "",
               "range": false,
               "instant": true,
@@ -1561,7 +1618,7 @@
                 "type": "prometheus",
                 "uid": "${datasource}"
               },
-              "expr": "(max by (namespace, deployment) (kube_deployment_status_replicas_available{namespace=~\"$namespace\", namespace!~\"$exclude\"}) * on (namespace, deployment) group_right () (0 * (((max by (namespace, deployment) (kube_deployment_status_condition{condition=\"Progressing\", status=\"false\", namespace=~\"$namespace\", namespace!~\"$exclude\"} == 1)) * on () group_left (url) topk(1, max by (url) (console_url))) or on (namespace, deployment) (max by (namespace, deployment) (kube_deployment_status_condition{condition=\"Progressing\", status=\"false\", namespace=~\"$namespace\", namespace!~\"$exclude\"} == 1))) + 1)) or (0 * (((max by (namespace, deployment) (kube_deployment_status_condition{condition=\"Progressing\", status=\"false\", namespace=~\"$namespace\", namespace!~\"$exclude\"} == 1)) * on () group_left (url) topk(1, max by (url) (console_url))) or on (namespace, deployment) (max by (namespace, deployment) (kube_deployment_status_condition{condition=\"Progressing\", status=\"false\", namespace=~\"$namespace\", namespace!~\"$exclude\"} == 1))) - 1)",
+              "expr": "label_replace((max by (namespace, deployment) (kube_deployment_status_replicas_available{namespace=~\"$namespace\", namespace!~\"$exclude\"}) * on (namespace, deployment) group_right () (0 * (((max by (namespace, deployment) (kube_deployment_status_condition{condition=\"Progressing\", status=\"false\", namespace=~\"$namespace\", namespace!~\"$exclude\"} == 1)) * on () group_left (url) topk(1, max by (url) (console_url))) or on (namespace, deployment) (max by (namespace, deployment) (kube_deployment_status_condition{condition=\"Progressing\", status=\"false\", namespace=~\"$namespace\", namespace!~\"$exclude\"} == 1))) + 1)) or (0 * (((max by (namespace, deployment) (kube_deployment_status_condition{condition=\"Progressing\", status=\"false\", namespace=~\"$namespace\", namespace!~\"$exclude\"} == 1)) * on () group_left (url) topk(1, max by (url) (console_url))) or on (namespace, deployment) (max by (namespace, deployment) (kube_deployment_status_condition{condition=\"Progressing\", status=\"false\", namespace=~\"$namespace\", namespace!~\"$exclude\"} == 1))) - 1), \"cluster\", \"${datasource:text}\", \"\", \"\")",
               "legendFormat": "",
               "range": false,
               "instant": true,
@@ -1573,7 +1630,7 @@
                 "type": "prometheus",
                 "uid": "${datasource}"
               },
-              "expr": "(max by (namespace, deployment) (count_over_time((max by (namespace, deployment) (kube_deployment_status_condition{condition=\"Progressing\", status=\"false\", namespace=~\"$namespace\", namespace!~\"$exclude\"} == 1))[1h:1m])) * on (namespace, deployment) group_right () (0 * (((max by (namespace, deployment) (kube_deployment_status_condition{condition=\"Progressing\", status=\"false\", namespace=~\"$namespace\", namespace!~\"$exclude\"} == 1)) * on () group_left (url) topk(1, max by (url) (console_url))) or on (namespace, deployment) (max by (namespace, deployment) (kube_deployment_status_condition{condition=\"Progressing\", status=\"false\", namespace=~\"$namespace\", namespace!~\"$exclude\"} == 1))) + 1)) or (0 * (((max by (namespace, deployment) (kube_deployment_status_condition{condition=\"Progressing\", status=\"false\", namespace=~\"$namespace\", namespace!~\"$exclude\"} == 1)) * on () group_left (url) topk(1, max by (url) (console_url))) or on (namespace, deployment) (max by (namespace, deployment) (kube_deployment_status_condition{condition=\"Progressing\", status=\"false\", namespace=~\"$namespace\", namespace!~\"$exclude\"} == 1))) - 1)",
+              "expr": "label_replace((max by (namespace, deployment) (count_over_time((max by (namespace, deployment) (kube_deployment_status_condition{condition=\"Progressing\", status=\"false\", namespace=~\"$namespace\", namespace!~\"$exclude\"} == 1))[1h:1m])) * on (namespace, deployment) group_right () (0 * (((max by (namespace, deployment) (kube_deployment_status_condition{condition=\"Progressing\", status=\"false\", namespace=~\"$namespace\", namespace!~\"$exclude\"} == 1)) * on () group_left (url) topk(1, max by (url) (console_url))) or on (namespace, deployment) (max by (namespace, deployment) (kube_deployment_status_condition{condition=\"Progressing\", status=\"false\", namespace=~\"$namespace\", namespace!~\"$exclude\"} == 1))) + 1)) or (0 * (((max by (namespace, deployment) (kube_deployment_status_condition{condition=\"Progressing\", status=\"false\", namespace=~\"$namespace\", namespace!~\"$exclude\"} == 1)) * on () group_left (url) topk(1, max by (url) (console_url))) or on (namespace, deployment) (max by (namespace, deployment) (kube_deployment_status_condition{condition=\"Progressing\", status=\"false\", namespace=~\"$namespace\", namespace!~\"$exclude\"} == 1))) - 1), \"cluster\", \"${datasource:text}\", \"\", \"\")",
               "legendFormat": "",
               "range": false,
               "instant": true,
@@ -1598,12 +1655,13 @@
                   "Value #D": "持續（近 1h 分鐘）"
                 },
                 "indexByName": {
-                  "namespace": 0,
-                  "deployment": 1,
-                  "期望": 2,
-                  "已更新": 3,
-                  "可用": 4,
-                  "持續（近 1h 分鐘）": 5
+                  "cluster": 0,
+                  "namespace": 1,
+                  "deployment": 2,
+                  "期望": 3,
+                  "已更新": 4,
+                  "可用": 5,
+                  "持續（近 1h 分鐘）": 6
                 }
               }
             }
@@ -1745,6 +1803,26 @@
               {
                 "matcher": {
                   "id": "byName",
+                  "options": "cluster"
+                },
+                "properties": [
+                  {
+                    "id": "custom.width",
+                    "value": 170
+                  },
+                  {
+                    "id": "custom.filterable",
+                    "value": true
+                  },
+                  {
+                    "id": "displayName",
+                    "value": "叢集"
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
                   "options": "namespace"
                 },
                 "properties": [
@@ -1820,20 +1898,20 @@
             }
           },
           "gridPos": {
-            "h": 8,
-            "w": 12,
-            "x": 12,
-            "y": 17
+            "h": 6,
+            "w": 24,
+            "x": 0,
+            "y": 44
           }
         },
         {
-          "id": 16,
+          "id": 10,
           "type": "table",
           "title": "5 Readiness 不過",
           "description": "**這是什麼**：Pod 是 Running、容器也在跑，但 Ready=false 的容器數（CrashLoop 不算在這，歸第 7 類）。\n\n**怎麼看**：Pod 剛啟動、還在 initialDelay 時會短暫出現；明細表的「持續」超過幾分鐘才需要處理。\n\n詳細原因請到 OCP console 查看該 Pod 的 Events（表格的 Pod 名稱可直接點過去）。",
           "datasource": {
-            "type": "prometheus",
-            "uid": "${datasource}"
+            "type": "datasource",
+            "uid": "-- Mixed --"
           },
           "targets": [
             {
@@ -1842,7 +1920,7 @@
                 "type": "prometheus",
                 "uid": "${datasource}"
               },
-              "expr": "(max by (namespace, pod, container) (count_over_time((max by (namespace, pod, container) ((kube_pod_container_status_ready{namespace=~\"$namespace\", namespace!~\"$exclude\"} == 0) and on (namespace, pod) (kube_pod_status_phase{phase=\"Running\", namespace=~\"$namespace\", namespace!~\"$exclude\"} == 1) and on (namespace, pod, container) (kube_pod_container_status_running{namespace=~\"$namespace\", namespace!~\"$exclude\"} == 1)))[1h:1m])) * on (namespace, pod, container) group_right () (0 * (((max by (namespace, pod, container) ((kube_pod_container_status_ready{namespace=~\"$namespace\", namespace!~\"$exclude\"} == 0) and on (namespace, pod) (kube_pod_status_phase{phase=\"Running\", namespace=~\"$namespace\", namespace!~\"$exclude\"} == 1) and on (namespace, pod, container) (kube_pod_container_status_running{namespace=~\"$namespace\", namespace!~\"$exclude\"} == 1))) * on () group_left (url) topk(1, max by (url) (console_url))) or on (namespace, pod, container) (max by (namespace, pod, container) ((kube_pod_container_status_ready{namespace=~\"$namespace\", namespace!~\"$exclude\"} == 0) and on (namespace, pod) (kube_pod_status_phase{phase=\"Running\", namespace=~\"$namespace\", namespace!~\"$exclude\"} == 1) and on (namespace, pod, container) (kube_pod_container_status_running{namespace=~\"$namespace\", namespace!~\"$exclude\"} == 1)))) + 1)) or (0 * (((max by (namespace, pod, container) ((kube_pod_container_status_ready{namespace=~\"$namespace\", namespace!~\"$exclude\"} == 0) and on (namespace, pod) (kube_pod_status_phase{phase=\"Running\", namespace=~\"$namespace\", namespace!~\"$exclude\"} == 1) and on (namespace, pod, container) (kube_pod_container_status_running{namespace=~\"$namespace\", namespace!~\"$exclude\"} == 1))) * on () group_left (url) topk(1, max by (url) (console_url))) or on (namespace, pod, container) (max by (namespace, pod, container) ((kube_pod_container_status_ready{namespace=~\"$namespace\", namespace!~\"$exclude\"} == 0) and on (namespace, pod) (kube_pod_status_phase{phase=\"Running\", namespace=~\"$namespace\", namespace!~\"$exclude\"} == 1) and on (namespace, pod, container) (kube_pod_container_status_running{namespace=~\"$namespace\", namespace!~\"$exclude\"} == 1)))) - 1)",
+              "expr": "label_replace((max by (namespace, pod, container) (count_over_time((max by (namespace, pod, container) ((kube_pod_container_status_ready{namespace=~\"$namespace\", namespace!~\"$exclude\"} == 0) and on (namespace, pod) (kube_pod_status_phase{phase=\"Running\", namespace=~\"$namespace\", namespace!~\"$exclude\"} == 1) and on (namespace, pod, container) (kube_pod_container_status_running{namespace=~\"$namespace\", namespace!~\"$exclude\"} == 1)))[1h:1m])) * on (namespace, pod, container) group_right () (0 * (((max by (namespace, pod, container) ((kube_pod_container_status_ready{namespace=~\"$namespace\", namespace!~\"$exclude\"} == 0) and on (namespace, pod) (kube_pod_status_phase{phase=\"Running\", namespace=~\"$namespace\", namespace!~\"$exclude\"} == 1) and on (namespace, pod, container) (kube_pod_container_status_running{namespace=~\"$namespace\", namespace!~\"$exclude\"} == 1))) * on () group_left (url) topk(1, max by (url) (console_url))) or on (namespace, pod, container) (max by (namespace, pod, container) ((kube_pod_container_status_ready{namespace=~\"$namespace\", namespace!~\"$exclude\"} == 0) and on (namespace, pod) (kube_pod_status_phase{phase=\"Running\", namespace=~\"$namespace\", namespace!~\"$exclude\"} == 1) and on (namespace, pod, container) (kube_pod_container_status_running{namespace=~\"$namespace\", namespace!~\"$exclude\"} == 1)))) + 1)) or (0 * (((max by (namespace, pod, container) ((kube_pod_container_status_ready{namespace=~\"$namespace\", namespace!~\"$exclude\"} == 0) and on (namespace, pod) (kube_pod_status_phase{phase=\"Running\", namespace=~\"$namespace\", namespace!~\"$exclude\"} == 1) and on (namespace, pod, container) (kube_pod_container_status_running{namespace=~\"$namespace\", namespace!~\"$exclude\"} == 1))) * on () group_left (url) topk(1, max by (url) (console_url))) or on (namespace, pod, container) (max by (namespace, pod, container) ((kube_pod_container_status_ready{namespace=~\"$namespace\", namespace!~\"$exclude\"} == 0) and on (namespace, pod) (kube_pod_status_phase{phase=\"Running\", namespace=~\"$namespace\", namespace!~\"$exclude\"} == 1) and on (namespace, pod, container) (kube_pod_container_status_running{namespace=~\"$namespace\", namespace!~\"$exclude\"} == 1)))) - 1), \"cluster\", \"${datasource:text}\", \"\", \"\")",
               "legendFormat": "",
               "range": false,
               "instant": true,
@@ -1854,7 +1932,7 @@
                 "type": "prometheus",
                 "uid": "${datasource}"
               },
-              "expr": "(max by (namespace, pod, container) (increase(kube_pod_container_status_restarts_total{namespace=~\"$namespace\", namespace!~\"$exclude\"}[1h])) * on (namespace, pod, container) group_right () (0 * (((max by (namespace, pod, container) ((kube_pod_container_status_ready{namespace=~\"$namespace\", namespace!~\"$exclude\"} == 0) and on (namespace, pod) (kube_pod_status_phase{phase=\"Running\", namespace=~\"$namespace\", namespace!~\"$exclude\"} == 1) and on (namespace, pod, container) (kube_pod_container_status_running{namespace=~\"$namespace\", namespace!~\"$exclude\"} == 1))) * on () group_left (url) topk(1, max by (url) (console_url))) or on (namespace, pod, container) (max by (namespace, pod, container) ((kube_pod_container_status_ready{namespace=~\"$namespace\", namespace!~\"$exclude\"} == 0) and on (namespace, pod) (kube_pod_status_phase{phase=\"Running\", namespace=~\"$namespace\", namespace!~\"$exclude\"} == 1) and on (namespace, pod, container) (kube_pod_container_status_running{namespace=~\"$namespace\", namespace!~\"$exclude\"} == 1)))) + 1)) or (0 * (((max by (namespace, pod, container) ((kube_pod_container_status_ready{namespace=~\"$namespace\", namespace!~\"$exclude\"} == 0) and on (namespace, pod) (kube_pod_status_phase{phase=\"Running\", namespace=~\"$namespace\", namespace!~\"$exclude\"} == 1) and on (namespace, pod, container) (kube_pod_container_status_running{namespace=~\"$namespace\", namespace!~\"$exclude\"} == 1))) * on () group_left (url) topk(1, max by (url) (console_url))) or on (namespace, pod, container) (max by (namespace, pod, container) ((kube_pod_container_status_ready{namespace=~\"$namespace\", namespace!~\"$exclude\"} == 0) and on (namespace, pod) (kube_pod_status_phase{phase=\"Running\", namespace=~\"$namespace\", namespace!~\"$exclude\"} == 1) and on (namespace, pod, container) (kube_pod_container_status_running{namespace=~\"$namespace\", namespace!~\"$exclude\"} == 1)))) - 1)",
+              "expr": "label_replace((max by (namespace, pod, container) (increase(kube_pod_container_status_restarts_total{namespace=~\"$namespace\", namespace!~\"$exclude\"}[1h])) * on (namespace, pod, container) group_right () (0 * (((max by (namespace, pod, container) ((kube_pod_container_status_ready{namespace=~\"$namespace\", namespace!~\"$exclude\"} == 0) and on (namespace, pod) (kube_pod_status_phase{phase=\"Running\", namespace=~\"$namespace\", namespace!~\"$exclude\"} == 1) and on (namespace, pod, container) (kube_pod_container_status_running{namespace=~\"$namespace\", namespace!~\"$exclude\"} == 1))) * on () group_left (url) topk(1, max by (url) (console_url))) or on (namespace, pod, container) (max by (namespace, pod, container) ((kube_pod_container_status_ready{namespace=~\"$namespace\", namespace!~\"$exclude\"} == 0) and on (namespace, pod) (kube_pod_status_phase{phase=\"Running\", namespace=~\"$namespace\", namespace!~\"$exclude\"} == 1) and on (namespace, pod, container) (kube_pod_container_status_running{namespace=~\"$namespace\", namespace!~\"$exclude\"} == 1)))) + 1)) or (0 * (((max by (namespace, pod, container) ((kube_pod_container_status_ready{namespace=~\"$namespace\", namespace!~\"$exclude\"} == 0) and on (namespace, pod) (kube_pod_status_phase{phase=\"Running\", namespace=~\"$namespace\", namespace!~\"$exclude\"} == 1) and on (namespace, pod, container) (kube_pod_container_status_running{namespace=~\"$namespace\", namespace!~\"$exclude\"} == 1))) * on () group_left (url) topk(1, max by (url) (console_url))) or on (namespace, pod, container) (max by (namespace, pod, container) ((kube_pod_container_status_ready{namespace=~\"$namespace\", namespace!~\"$exclude\"} == 0) and on (namespace, pod) (kube_pod_status_phase{phase=\"Running\", namespace=~\"$namespace\", namespace!~\"$exclude\"} == 1) and on (namespace, pod, container) (kube_pod_container_status_running{namespace=~\"$namespace\", namespace!~\"$exclude\"} == 1)))) - 1), \"cluster\", \"${datasource:text}\", \"\", \"\")",
               "legendFormat": "",
               "range": false,
               "instant": true,
@@ -1877,11 +1955,12 @@
                   "Value #B": "1h 內重啟"
                 },
                 "indexByName": {
-                  "namespace": 0,
-                  "pod": 1,
-                  "container": 2,
-                  "持續（近 1h 分鐘）": 3,
-                  "1h 內重啟": 4
+                  "cluster": 0,
+                  "namespace": 1,
+                  "pod": 2,
+                  "container": 3,
+                  "持續（近 1h 分鐘）": 4,
+                  "1h 內重啟": 5
                 }
               }
             }
@@ -1955,6 +2034,26 @@
                   {
                     "id": "decimals",
                     "value": 0
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "cluster"
+                },
+                "properties": [
+                  {
+                    "id": "custom.width",
+                    "value": 170
+                  },
+                  {
+                    "id": "custom.filterable",
+                    "value": true
+                  },
+                  {
+                    "id": "displayName",
+                    "value": "叢集"
                   }
                 ]
               },
@@ -2056,20 +2155,20 @@
             }
           },
           "gridPos": {
-            "h": 8,
-            "w": 12,
+            "h": 6,
+            "w": 24,
             "x": 0,
-            "y": 25
+            "y": 50
           }
         },
         {
-          "id": 17,
+          "id": 11,
           "type": "table",
           "title": "6 近 1 小時有重啟",
           "description": "**這是什麼**：近 1 小時有重啟的容器；原因 = 上次終止原因（Error、OOMKilled、Completed…）。\n\n**怎麼看**：「5 分鐘內」> 0 的就是上方紅色計數裡的容器；只有「1 小時內」有數字的是剛剛重啟過、目前已恢復。\n\n詳細原因請到 OCP console 查看該 Pod 的 Events（表格的 Pod 名稱可直接點過去）。",
           "datasource": {
-            "type": "prometheus",
-            "uid": "${datasource}"
+            "type": "datasource",
+            "uid": "-- Mixed --"
           },
           "targets": [
             {
@@ -2078,7 +2177,7 @@
                 "type": "prometheus",
                 "uid": "${datasource}"
               },
-              "expr": "(max by (namespace, pod, container) (increase(kube_pod_container_status_restarts_total{namespace=~\"$namespace\", namespace!~\"$exclude\"}[5m])) * on (namespace, pod, container) group_right () (0 * ((((max by (namespace, pod, container) (increase(kube_pod_container_status_restarts_total{namespace=~\"$namespace\", namespace!~\"$exclude\"}[1h]) > 0) * on (namespace, pod, container) group_left (reason) max by (namespace, pod, container, reason) (kube_pod_container_status_last_terminated_reason{namespace=~\"$namespace\", namespace!~\"$exclude\"} == 1)) or on (namespace, pod, container) label_replace(max by (namespace, pod, container) (increase(kube_pod_container_status_restarts_total{namespace=~\"$namespace\", namespace!~\"$exclude\"}[1h]) > 0), \"reason\", \"—\", \"\", \"\")) * on () group_left (url) topk(1, max by (url) (console_url))) or on (namespace, pod, container, reason) ((max by (namespace, pod, container) (increase(kube_pod_container_status_restarts_total{namespace=~\"$namespace\", namespace!~\"$exclude\"}[1h]) > 0) * on (namespace, pod, container) group_left (reason) max by (namespace, pod, container, reason) (kube_pod_container_status_last_terminated_reason{namespace=~\"$namespace\", namespace!~\"$exclude\"} == 1)) or on (namespace, pod, container) label_replace(max by (namespace, pod, container) (increase(kube_pod_container_status_restarts_total{namespace=~\"$namespace\", namespace!~\"$exclude\"}[1h]) > 0), \"reason\", \"—\", \"\", \"\"))) + 1)) or (0 * ((((max by (namespace, pod, container) (increase(kube_pod_container_status_restarts_total{namespace=~\"$namespace\", namespace!~\"$exclude\"}[1h]) > 0) * on (namespace, pod, container) group_left (reason) max by (namespace, pod, container, reason) (kube_pod_container_status_last_terminated_reason{namespace=~\"$namespace\", namespace!~\"$exclude\"} == 1)) or on (namespace, pod, container) label_replace(max by (namespace, pod, container) (increase(kube_pod_container_status_restarts_total{namespace=~\"$namespace\", namespace!~\"$exclude\"}[1h]) > 0), \"reason\", \"—\", \"\", \"\")) * on () group_left (url) topk(1, max by (url) (console_url))) or on (namespace, pod, container, reason) ((max by (namespace, pod, container) (increase(kube_pod_container_status_restarts_total{namespace=~\"$namespace\", namespace!~\"$exclude\"}[1h]) > 0) * on (namespace, pod, container) group_left (reason) max by (namespace, pod, container, reason) (kube_pod_container_status_last_terminated_reason{namespace=~\"$namespace\", namespace!~\"$exclude\"} == 1)) or on (namespace, pod, container) label_replace(max by (namespace, pod, container) (increase(kube_pod_container_status_restarts_total{namespace=~\"$namespace\", namespace!~\"$exclude\"}[1h]) > 0), \"reason\", \"—\", \"\", \"\"))) - 1)",
+              "expr": "label_replace((max by (namespace, pod, container) (increase(kube_pod_container_status_restarts_total{namespace=~\"$namespace\", namespace!~\"$exclude\"}[5m])) * on (namespace, pod, container) group_right () (0 * ((((max by (namespace, pod, container) (increase(kube_pod_container_status_restarts_total{namespace=~\"$namespace\", namespace!~\"$exclude\"}[1h]) > 0) * on (namespace, pod, container) group_left (reason) max by (namespace, pod, container, reason) (kube_pod_container_status_last_terminated_reason{namespace=~\"$namespace\", namespace!~\"$exclude\"} == 1)) or on (namespace, pod, container) label_replace(max by (namespace, pod, container) (increase(kube_pod_container_status_restarts_total{namespace=~\"$namespace\", namespace!~\"$exclude\"}[1h]) > 0), \"reason\", \"—\", \"\", \"\")) * on () group_left (url) topk(1, max by (url) (console_url))) or on (namespace, pod, container, reason) ((max by (namespace, pod, container) (increase(kube_pod_container_status_restarts_total{namespace=~\"$namespace\", namespace!~\"$exclude\"}[1h]) > 0) * on (namespace, pod, container) group_left (reason) max by (namespace, pod, container, reason) (kube_pod_container_status_last_terminated_reason{namespace=~\"$namespace\", namespace!~\"$exclude\"} == 1)) or on (namespace, pod, container) label_replace(max by (namespace, pod, container) (increase(kube_pod_container_status_restarts_total{namespace=~\"$namespace\", namespace!~\"$exclude\"}[1h]) > 0), \"reason\", \"—\", \"\", \"\"))) + 1)) or (0 * ((((max by (namespace, pod, container) (increase(kube_pod_container_status_restarts_total{namespace=~\"$namespace\", namespace!~\"$exclude\"}[1h]) > 0) * on (namespace, pod, container) group_left (reason) max by (namespace, pod, container, reason) (kube_pod_container_status_last_terminated_reason{namespace=~\"$namespace\", namespace!~\"$exclude\"} == 1)) or on (namespace, pod, container) label_replace(max by (namespace, pod, container) (increase(kube_pod_container_status_restarts_total{namespace=~\"$namespace\", namespace!~\"$exclude\"}[1h]) > 0), \"reason\", \"—\", \"\", \"\")) * on () group_left (url) topk(1, max by (url) (console_url))) or on (namespace, pod, container, reason) ((max by (namespace, pod, container) (increase(kube_pod_container_status_restarts_total{namespace=~\"$namespace\", namespace!~\"$exclude\"}[1h]) > 0) * on (namespace, pod, container) group_left (reason) max by (namespace, pod, container, reason) (kube_pod_container_status_last_terminated_reason{namespace=~\"$namespace\", namespace!~\"$exclude\"} == 1)) or on (namespace, pod, container) label_replace(max by (namespace, pod, container) (increase(kube_pod_container_status_restarts_total{namespace=~\"$namespace\", namespace!~\"$exclude\"}[1h]) > 0), \"reason\", \"—\", \"\", \"\"))) - 1), \"cluster\", \"${datasource:text}\", \"\", \"\")",
               "legendFormat": "",
               "range": false,
               "instant": true,
@@ -2090,7 +2189,7 @@
                 "type": "prometheus",
                 "uid": "${datasource}"
               },
-              "expr": "(max by (namespace, pod, container) (increase(kube_pod_container_status_restarts_total{namespace=~\"$namespace\", namespace!~\"$exclude\"}[1h])) * on (namespace, pod, container) group_right () (0 * ((((max by (namespace, pod, container) (increase(kube_pod_container_status_restarts_total{namespace=~\"$namespace\", namespace!~\"$exclude\"}[1h]) > 0) * on (namespace, pod, container) group_left (reason) max by (namespace, pod, container, reason) (kube_pod_container_status_last_terminated_reason{namespace=~\"$namespace\", namespace!~\"$exclude\"} == 1)) or on (namespace, pod, container) label_replace(max by (namespace, pod, container) (increase(kube_pod_container_status_restarts_total{namespace=~\"$namespace\", namespace!~\"$exclude\"}[1h]) > 0), \"reason\", \"—\", \"\", \"\")) * on () group_left (url) topk(1, max by (url) (console_url))) or on (namespace, pod, container, reason) ((max by (namespace, pod, container) (increase(kube_pod_container_status_restarts_total{namespace=~\"$namespace\", namespace!~\"$exclude\"}[1h]) > 0) * on (namespace, pod, container) group_left (reason) max by (namespace, pod, container, reason) (kube_pod_container_status_last_terminated_reason{namespace=~\"$namespace\", namespace!~\"$exclude\"} == 1)) or on (namespace, pod, container) label_replace(max by (namespace, pod, container) (increase(kube_pod_container_status_restarts_total{namespace=~\"$namespace\", namespace!~\"$exclude\"}[1h]) > 0), \"reason\", \"—\", \"\", \"\"))) + 1)) or (0 * ((((max by (namespace, pod, container) (increase(kube_pod_container_status_restarts_total{namespace=~\"$namespace\", namespace!~\"$exclude\"}[1h]) > 0) * on (namespace, pod, container) group_left (reason) max by (namespace, pod, container, reason) (kube_pod_container_status_last_terminated_reason{namespace=~\"$namespace\", namespace!~\"$exclude\"} == 1)) or on (namespace, pod, container) label_replace(max by (namespace, pod, container) (increase(kube_pod_container_status_restarts_total{namespace=~\"$namespace\", namespace!~\"$exclude\"}[1h]) > 0), \"reason\", \"—\", \"\", \"\")) * on () group_left (url) topk(1, max by (url) (console_url))) or on (namespace, pod, container, reason) ((max by (namespace, pod, container) (increase(kube_pod_container_status_restarts_total{namespace=~\"$namespace\", namespace!~\"$exclude\"}[1h]) > 0) * on (namespace, pod, container) group_left (reason) max by (namespace, pod, container, reason) (kube_pod_container_status_last_terminated_reason{namespace=~\"$namespace\", namespace!~\"$exclude\"} == 1)) or on (namespace, pod, container) label_replace(max by (namespace, pod, container) (increase(kube_pod_container_status_restarts_total{namespace=~\"$namespace\", namespace!~\"$exclude\"}[1h]) > 0), \"reason\", \"—\", \"\", \"\"))) - 1)",
+              "expr": "label_replace((max by (namespace, pod, container) (increase(kube_pod_container_status_restarts_total{namespace=~\"$namespace\", namespace!~\"$exclude\"}[1h])) * on (namespace, pod, container) group_right () (0 * ((((max by (namespace, pod, container) (increase(kube_pod_container_status_restarts_total{namespace=~\"$namespace\", namespace!~\"$exclude\"}[1h]) > 0) * on (namespace, pod, container) group_left (reason) max by (namespace, pod, container, reason) (kube_pod_container_status_last_terminated_reason{namespace=~\"$namespace\", namespace!~\"$exclude\"} == 1)) or on (namespace, pod, container) label_replace(max by (namespace, pod, container) (increase(kube_pod_container_status_restarts_total{namespace=~\"$namespace\", namespace!~\"$exclude\"}[1h]) > 0), \"reason\", \"—\", \"\", \"\")) * on () group_left (url) topk(1, max by (url) (console_url))) or on (namespace, pod, container, reason) ((max by (namespace, pod, container) (increase(kube_pod_container_status_restarts_total{namespace=~\"$namespace\", namespace!~\"$exclude\"}[1h]) > 0) * on (namespace, pod, container) group_left (reason) max by (namespace, pod, container, reason) (kube_pod_container_status_last_terminated_reason{namespace=~\"$namespace\", namespace!~\"$exclude\"} == 1)) or on (namespace, pod, container) label_replace(max by (namespace, pod, container) (increase(kube_pod_container_status_restarts_total{namespace=~\"$namespace\", namespace!~\"$exclude\"}[1h]) > 0), \"reason\", \"—\", \"\", \"\"))) + 1)) or (0 * ((((max by (namespace, pod, container) (increase(kube_pod_container_status_restarts_total{namespace=~\"$namespace\", namespace!~\"$exclude\"}[1h]) > 0) * on (namespace, pod, container) group_left (reason) max by (namespace, pod, container, reason) (kube_pod_container_status_last_terminated_reason{namespace=~\"$namespace\", namespace!~\"$exclude\"} == 1)) or on (namespace, pod, container) label_replace(max by (namespace, pod, container) (increase(kube_pod_container_status_restarts_total{namespace=~\"$namespace\", namespace!~\"$exclude\"}[1h]) > 0), \"reason\", \"—\", \"\", \"\")) * on () group_left (url) topk(1, max by (url) (console_url))) or on (namespace, pod, container, reason) ((max by (namespace, pod, container) (increase(kube_pod_container_status_restarts_total{namespace=~\"$namespace\", namespace!~\"$exclude\"}[1h]) > 0) * on (namespace, pod, container) group_left (reason) max by (namespace, pod, container, reason) (kube_pod_container_status_last_terminated_reason{namespace=~\"$namespace\", namespace!~\"$exclude\"} == 1)) or on (namespace, pod, container) label_replace(max by (namespace, pod, container) (increase(kube_pod_container_status_restarts_total{namespace=~\"$namespace\", namespace!~\"$exclude\"}[1h]) > 0), \"reason\", \"—\", \"\", \"\"))) - 1), \"cluster\", \"${datasource:text}\", \"\", \"\")",
               "legendFormat": "",
               "range": false,
               "instant": true,
@@ -2102,7 +2201,7 @@
                 "type": "prometheus",
                 "uid": "${datasource}"
               },
-              "expr": "(max by (namespace, pod, container) (kube_pod_container_status_restarts_total{namespace=~\"$namespace\", namespace!~\"$exclude\"}) * on (namespace, pod, container) group_right () (0 * ((((max by (namespace, pod, container) (increase(kube_pod_container_status_restarts_total{namespace=~\"$namespace\", namespace!~\"$exclude\"}[1h]) > 0) * on (namespace, pod, container) group_left (reason) max by (namespace, pod, container, reason) (kube_pod_container_status_last_terminated_reason{namespace=~\"$namespace\", namespace!~\"$exclude\"} == 1)) or on (namespace, pod, container) label_replace(max by (namespace, pod, container) (increase(kube_pod_container_status_restarts_total{namespace=~\"$namespace\", namespace!~\"$exclude\"}[1h]) > 0), \"reason\", \"—\", \"\", \"\")) * on () group_left (url) topk(1, max by (url) (console_url))) or on (namespace, pod, container, reason) ((max by (namespace, pod, container) (increase(kube_pod_container_status_restarts_total{namespace=~\"$namespace\", namespace!~\"$exclude\"}[1h]) > 0) * on (namespace, pod, container) group_left (reason) max by (namespace, pod, container, reason) (kube_pod_container_status_last_terminated_reason{namespace=~\"$namespace\", namespace!~\"$exclude\"} == 1)) or on (namespace, pod, container) label_replace(max by (namespace, pod, container) (increase(kube_pod_container_status_restarts_total{namespace=~\"$namespace\", namespace!~\"$exclude\"}[1h]) > 0), \"reason\", \"—\", \"\", \"\"))) + 1)) or (0 * ((((max by (namespace, pod, container) (increase(kube_pod_container_status_restarts_total{namespace=~\"$namespace\", namespace!~\"$exclude\"}[1h]) > 0) * on (namespace, pod, container) group_left (reason) max by (namespace, pod, container, reason) (kube_pod_container_status_last_terminated_reason{namespace=~\"$namespace\", namespace!~\"$exclude\"} == 1)) or on (namespace, pod, container) label_replace(max by (namespace, pod, container) (increase(kube_pod_container_status_restarts_total{namespace=~\"$namespace\", namespace!~\"$exclude\"}[1h]) > 0), \"reason\", \"—\", \"\", \"\")) * on () group_left (url) topk(1, max by (url) (console_url))) or on (namespace, pod, container, reason) ((max by (namespace, pod, container) (increase(kube_pod_container_status_restarts_total{namespace=~\"$namespace\", namespace!~\"$exclude\"}[1h]) > 0) * on (namespace, pod, container) group_left (reason) max by (namespace, pod, container, reason) (kube_pod_container_status_last_terminated_reason{namespace=~\"$namespace\", namespace!~\"$exclude\"} == 1)) or on (namespace, pod, container) label_replace(max by (namespace, pod, container) (increase(kube_pod_container_status_restarts_total{namespace=~\"$namespace\", namespace!~\"$exclude\"}[1h]) > 0), \"reason\", \"—\", \"\", \"\"))) - 1)",
+              "expr": "label_replace((max by (namespace, pod, container) (kube_pod_container_status_restarts_total{namespace=~\"$namespace\", namespace!~\"$exclude\"}) * on (namespace, pod, container) group_right () (0 * ((((max by (namespace, pod, container) (increase(kube_pod_container_status_restarts_total{namespace=~\"$namespace\", namespace!~\"$exclude\"}[1h]) > 0) * on (namespace, pod, container) group_left (reason) max by (namespace, pod, container, reason) (kube_pod_container_status_last_terminated_reason{namespace=~\"$namespace\", namespace!~\"$exclude\"} == 1)) or on (namespace, pod, container) label_replace(max by (namespace, pod, container) (increase(kube_pod_container_status_restarts_total{namespace=~\"$namespace\", namespace!~\"$exclude\"}[1h]) > 0), \"reason\", \"—\", \"\", \"\")) * on () group_left (url) topk(1, max by (url) (console_url))) or on (namespace, pod, container, reason) ((max by (namespace, pod, container) (increase(kube_pod_container_status_restarts_total{namespace=~\"$namespace\", namespace!~\"$exclude\"}[1h]) > 0) * on (namespace, pod, container) group_left (reason) max by (namespace, pod, container, reason) (kube_pod_container_status_last_terminated_reason{namespace=~\"$namespace\", namespace!~\"$exclude\"} == 1)) or on (namespace, pod, container) label_replace(max by (namespace, pod, container) (increase(kube_pod_container_status_restarts_total{namespace=~\"$namespace\", namespace!~\"$exclude\"}[1h]) > 0), \"reason\", \"—\", \"\", \"\"))) + 1)) or (0 * ((((max by (namespace, pod, container) (increase(kube_pod_container_status_restarts_total{namespace=~\"$namespace\", namespace!~\"$exclude\"}[1h]) > 0) * on (namespace, pod, container) group_left (reason) max by (namespace, pod, container, reason) (kube_pod_container_status_last_terminated_reason{namespace=~\"$namespace\", namespace!~\"$exclude\"} == 1)) or on (namespace, pod, container) label_replace(max by (namespace, pod, container) (increase(kube_pod_container_status_restarts_total{namespace=~\"$namespace\", namespace!~\"$exclude\"}[1h]) > 0), \"reason\", \"—\", \"\", \"\")) * on () group_left (url) topk(1, max by (url) (console_url))) or on (namespace, pod, container, reason) ((max by (namespace, pod, container) (increase(kube_pod_container_status_restarts_total{namespace=~\"$namespace\", namespace!~\"$exclude\"}[1h]) > 0) * on (namespace, pod, container) group_left (reason) max by (namespace, pod, container, reason) (kube_pod_container_status_last_terminated_reason{namespace=~\"$namespace\", namespace!~\"$exclude\"} == 1)) or on (namespace, pod, container) label_replace(max by (namespace, pod, container) (increase(kube_pod_container_status_restarts_total{namespace=~\"$namespace\", namespace!~\"$exclude\"}[1h]) > 0), \"reason\", \"—\", \"\", \"\"))) - 1), \"cluster\", \"${datasource:text}\", \"\", \"\")",
               "legendFormat": "",
               "range": false,
               "instant": true,
@@ -2126,13 +2225,14 @@
                   "Value #C": "累計"
                 },
                 "indexByName": {
-                  "namespace": 0,
-                  "pod": 1,
-                  "container": 2,
-                  "reason": 3,
-                  "5 分鐘內": 4,
-                  "1 小時內": 5,
-                  "累計": 6
+                  "cluster": 0,
+                  "namespace": 1,
+                  "pod": 2,
+                  "container": 3,
+                  "reason": 4,
+                  "5 分鐘內": 5,
+                  "1 小時內": 6,
+                  "累計": 7
                 }
               }
             }
@@ -2237,6 +2337,26 @@
                   {
                     "id": "decimals",
                     "value": 0
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "cluster"
+                },
+                "properties": [
+                  {
+                    "id": "custom.width",
+                    "value": 170
+                  },
+                  {
+                    "id": "custom.filterable",
+                    "value": true
+                  },
+                  {
+                    "id": "displayName",
+                    "value": "叢集"
                   }
                 ]
               },
@@ -2358,20 +2478,20 @@
             }
           },
           "gridPos": {
-            "h": 8,
-            "w": 12,
-            "x": 12,
-            "y": 25
+            "h": 6,
+            "w": 24,
+            "x": 0,
+            "y": 56
           }
         },
         {
-          "id": 18,
+          "id": 12,
           "type": "table",
           "title": "7 CrashLoop / OOM",
           "description": "**這是什麼**：CrashLoopBackOff 中，或上次終止是 OOMKilled 且 1 小時內有重啟的容器數。\n\n**怎麼看**：OOMKilled → 記憶體 Limit 太小或程式記憶體洩漏；CrashLoop → 看容器上一次的 log（oc logs --previous）。\n\n詳細原因請到 OCP console 查看該 Pod 的 Events（表格的 Pod 名稱可直接點過去）。",
           "datasource": {
-            "type": "prometheus",
-            "uid": "${datasource}"
+            "type": "datasource",
+            "uid": "-- Mixed --"
           },
           "targets": [
             {
@@ -2380,7 +2500,7 @@
                 "type": "prometheus",
                 "uid": "${datasource}"
               },
-              "expr": "(max by (namespace, pod, container) (increase(kube_pod_container_status_restarts_total{namespace=~\"$namespace\", namespace!~\"$exclude\"}[1h])) * on (namespace, pod, container) group_right () (0 * ((((max by (namespace, pod, container, reason) (kube_pod_container_status_waiting_reason{reason=~\"CrashLoopBackOff\", namespace=~\"$namespace\", namespace!~\"$exclude\"} == 1)) or (max by (namespace, pod, container, reason) (kube_pod_container_status_last_terminated_reason{reason=\"OOMKilled\", namespace=~\"$namespace\", namespace!~\"$exclude\"} == 1) and on (namespace, pod, container) max by (namespace, pod, container) (increase(kube_pod_container_status_restarts_total{namespace=~\"$namespace\", namespace!~\"$exclude\"}[1h]) > 0))) * on () group_left (url) topk(1, max by (url) (console_url))) or on (namespace, pod, container, reason) ((max by (namespace, pod, container, reason) (kube_pod_container_status_waiting_reason{reason=~\"CrashLoopBackOff\", namespace=~\"$namespace\", namespace!~\"$exclude\"} == 1)) or (max by (namespace, pod, container, reason) (kube_pod_container_status_last_terminated_reason{reason=\"OOMKilled\", namespace=~\"$namespace\", namespace!~\"$exclude\"} == 1) and on (namespace, pod, container) max by (namespace, pod, container) (increase(kube_pod_container_status_restarts_total{namespace=~\"$namespace\", namespace!~\"$exclude\"}[1h]) > 0)))) + 1)) or (0 * ((((max by (namespace, pod, container, reason) (kube_pod_container_status_waiting_reason{reason=~\"CrashLoopBackOff\", namespace=~\"$namespace\", namespace!~\"$exclude\"} == 1)) or (max by (namespace, pod, container, reason) (kube_pod_container_status_last_terminated_reason{reason=\"OOMKilled\", namespace=~\"$namespace\", namespace!~\"$exclude\"} == 1) and on (namespace, pod, container) max by (namespace, pod, container) (increase(kube_pod_container_status_restarts_total{namespace=~\"$namespace\", namespace!~\"$exclude\"}[1h]) > 0))) * on () group_left (url) topk(1, max by (url) (console_url))) or on (namespace, pod, container, reason) ((max by (namespace, pod, container, reason) (kube_pod_container_status_waiting_reason{reason=~\"CrashLoopBackOff\", namespace=~\"$namespace\", namespace!~\"$exclude\"} == 1)) or (max by (namespace, pod, container, reason) (kube_pod_container_status_last_terminated_reason{reason=\"OOMKilled\", namespace=~\"$namespace\", namespace!~\"$exclude\"} == 1) and on (namespace, pod, container) max by (namespace, pod, container) (increase(kube_pod_container_status_restarts_total{namespace=~\"$namespace\", namespace!~\"$exclude\"}[1h]) > 0)))) - 1)",
+              "expr": "label_replace((max by (namespace, pod, container) (increase(kube_pod_container_status_restarts_total{namespace=~\"$namespace\", namespace!~\"$exclude\"}[1h])) * on (namespace, pod, container) group_right () (0 * ((((max by (namespace, pod, container, reason) (kube_pod_container_status_waiting_reason{reason=~\"CrashLoopBackOff\", namespace=~\"$namespace\", namespace!~\"$exclude\"} == 1)) or (max by (namespace, pod, container, reason) (kube_pod_container_status_last_terminated_reason{reason=\"OOMKilled\", namespace=~\"$namespace\", namespace!~\"$exclude\"} == 1) and on (namespace, pod, container) max by (namespace, pod, container) (increase(kube_pod_container_status_restarts_total{namespace=~\"$namespace\", namespace!~\"$exclude\"}[1h]) > 0))) * on () group_left (url) topk(1, max by (url) (console_url))) or on (namespace, pod, container, reason) ((max by (namespace, pod, container, reason) (kube_pod_container_status_waiting_reason{reason=~\"CrashLoopBackOff\", namespace=~\"$namespace\", namespace!~\"$exclude\"} == 1)) or (max by (namespace, pod, container, reason) (kube_pod_container_status_last_terminated_reason{reason=\"OOMKilled\", namespace=~\"$namespace\", namespace!~\"$exclude\"} == 1) and on (namespace, pod, container) max by (namespace, pod, container) (increase(kube_pod_container_status_restarts_total{namespace=~\"$namespace\", namespace!~\"$exclude\"}[1h]) > 0)))) + 1)) or (0 * ((((max by (namespace, pod, container, reason) (kube_pod_container_status_waiting_reason{reason=~\"CrashLoopBackOff\", namespace=~\"$namespace\", namespace!~\"$exclude\"} == 1)) or (max by (namespace, pod, container, reason) (kube_pod_container_status_last_terminated_reason{reason=\"OOMKilled\", namespace=~\"$namespace\", namespace!~\"$exclude\"} == 1) and on (namespace, pod, container) max by (namespace, pod, container) (increase(kube_pod_container_status_restarts_total{namespace=~\"$namespace\", namespace!~\"$exclude\"}[1h]) > 0))) * on () group_left (url) topk(1, max by (url) (console_url))) or on (namespace, pod, container, reason) ((max by (namespace, pod, container, reason) (kube_pod_container_status_waiting_reason{reason=~\"CrashLoopBackOff\", namespace=~\"$namespace\", namespace!~\"$exclude\"} == 1)) or (max by (namespace, pod, container, reason) (kube_pod_container_status_last_terminated_reason{reason=\"OOMKilled\", namespace=~\"$namespace\", namespace!~\"$exclude\"} == 1) and on (namespace, pod, container) max by (namespace, pod, container) (increase(kube_pod_container_status_restarts_total{namespace=~\"$namespace\", namespace!~\"$exclude\"}[1h]) > 0)))) - 1), \"cluster\", \"${datasource:text}\", \"\", \"\")",
               "legendFormat": "",
               "range": false,
               "instant": true,
@@ -2392,7 +2512,7 @@
                 "type": "prometheus",
                 "uid": "${datasource}"
               },
-              "expr": "(max by (namespace, pod, container) (kube_pod_container_status_restarts_total{namespace=~\"$namespace\", namespace!~\"$exclude\"}) * on (namespace, pod, container) group_right () (0 * ((((max by (namespace, pod, container, reason) (kube_pod_container_status_waiting_reason{reason=~\"CrashLoopBackOff\", namespace=~\"$namespace\", namespace!~\"$exclude\"} == 1)) or (max by (namespace, pod, container, reason) (kube_pod_container_status_last_terminated_reason{reason=\"OOMKilled\", namespace=~\"$namespace\", namespace!~\"$exclude\"} == 1) and on (namespace, pod, container) max by (namespace, pod, container) (increase(kube_pod_container_status_restarts_total{namespace=~\"$namespace\", namespace!~\"$exclude\"}[1h]) > 0))) * on () group_left (url) topk(1, max by (url) (console_url))) or on (namespace, pod, container, reason) ((max by (namespace, pod, container, reason) (kube_pod_container_status_waiting_reason{reason=~\"CrashLoopBackOff\", namespace=~\"$namespace\", namespace!~\"$exclude\"} == 1)) or (max by (namespace, pod, container, reason) (kube_pod_container_status_last_terminated_reason{reason=\"OOMKilled\", namespace=~\"$namespace\", namespace!~\"$exclude\"} == 1) and on (namespace, pod, container) max by (namespace, pod, container) (increase(kube_pod_container_status_restarts_total{namespace=~\"$namespace\", namespace!~\"$exclude\"}[1h]) > 0)))) + 1)) or (0 * ((((max by (namespace, pod, container, reason) (kube_pod_container_status_waiting_reason{reason=~\"CrashLoopBackOff\", namespace=~\"$namespace\", namespace!~\"$exclude\"} == 1)) or (max by (namespace, pod, container, reason) (kube_pod_container_status_last_terminated_reason{reason=\"OOMKilled\", namespace=~\"$namespace\", namespace!~\"$exclude\"} == 1) and on (namespace, pod, container) max by (namespace, pod, container) (increase(kube_pod_container_status_restarts_total{namespace=~\"$namespace\", namespace!~\"$exclude\"}[1h]) > 0))) * on () group_left (url) topk(1, max by (url) (console_url))) or on (namespace, pod, container, reason) ((max by (namespace, pod, container, reason) (kube_pod_container_status_waiting_reason{reason=~\"CrashLoopBackOff\", namespace=~\"$namespace\", namespace!~\"$exclude\"} == 1)) or (max by (namespace, pod, container, reason) (kube_pod_container_status_last_terminated_reason{reason=\"OOMKilled\", namespace=~\"$namespace\", namespace!~\"$exclude\"} == 1) and on (namespace, pod, container) max by (namespace, pod, container) (increase(kube_pod_container_status_restarts_total{namespace=~\"$namespace\", namespace!~\"$exclude\"}[1h]) > 0)))) - 1)",
+              "expr": "label_replace((max by (namespace, pod, container) (kube_pod_container_status_restarts_total{namespace=~\"$namespace\", namespace!~\"$exclude\"}) * on (namespace, pod, container) group_right () (0 * ((((max by (namespace, pod, container, reason) (kube_pod_container_status_waiting_reason{reason=~\"CrashLoopBackOff\", namespace=~\"$namespace\", namespace!~\"$exclude\"} == 1)) or (max by (namespace, pod, container, reason) (kube_pod_container_status_last_terminated_reason{reason=\"OOMKilled\", namespace=~\"$namespace\", namespace!~\"$exclude\"} == 1) and on (namespace, pod, container) max by (namespace, pod, container) (increase(kube_pod_container_status_restarts_total{namespace=~\"$namespace\", namespace!~\"$exclude\"}[1h]) > 0))) * on () group_left (url) topk(1, max by (url) (console_url))) or on (namespace, pod, container, reason) ((max by (namespace, pod, container, reason) (kube_pod_container_status_waiting_reason{reason=~\"CrashLoopBackOff\", namespace=~\"$namespace\", namespace!~\"$exclude\"} == 1)) or (max by (namespace, pod, container, reason) (kube_pod_container_status_last_terminated_reason{reason=\"OOMKilled\", namespace=~\"$namespace\", namespace!~\"$exclude\"} == 1) and on (namespace, pod, container) max by (namespace, pod, container) (increase(kube_pod_container_status_restarts_total{namespace=~\"$namespace\", namespace!~\"$exclude\"}[1h]) > 0)))) + 1)) or (0 * ((((max by (namespace, pod, container, reason) (kube_pod_container_status_waiting_reason{reason=~\"CrashLoopBackOff\", namespace=~\"$namespace\", namespace!~\"$exclude\"} == 1)) or (max by (namespace, pod, container, reason) (kube_pod_container_status_last_terminated_reason{reason=\"OOMKilled\", namespace=~\"$namespace\", namespace!~\"$exclude\"} == 1) and on (namespace, pod, container) max by (namespace, pod, container) (increase(kube_pod_container_status_restarts_total{namespace=~\"$namespace\", namespace!~\"$exclude\"}[1h]) > 0))) * on () group_left (url) topk(1, max by (url) (console_url))) or on (namespace, pod, container, reason) ((max by (namespace, pod, container, reason) (kube_pod_container_status_waiting_reason{reason=~\"CrashLoopBackOff\", namespace=~\"$namespace\", namespace!~\"$exclude\"} == 1)) or (max by (namespace, pod, container, reason) (kube_pod_container_status_last_terminated_reason{reason=\"OOMKilled\", namespace=~\"$namespace\", namespace!~\"$exclude\"} == 1) and on (namespace, pod, container) max by (namespace, pod, container) (increase(kube_pod_container_status_restarts_total{namespace=~\"$namespace\", namespace!~\"$exclude\"}[1h]) > 0)))) - 1), \"cluster\", \"${datasource:text}\", \"\", \"\")",
               "legendFormat": "",
               "range": false,
               "instant": true,
@@ -2404,7 +2524,7 @@
                 "type": "prometheus",
                 "uid": "${datasource}"
               },
-              "expr": "(max by (namespace, pod, container) (kube_pod_container_resource_limits{resource=\"memory\", namespace=~\"$namespace\", namespace!~\"$exclude\"}) * on (namespace, pod, container) group_right () (0 * ((((max by (namespace, pod, container, reason) (kube_pod_container_status_waiting_reason{reason=~\"CrashLoopBackOff\", namespace=~\"$namespace\", namespace!~\"$exclude\"} == 1)) or (max by (namespace, pod, container, reason) (kube_pod_container_status_last_terminated_reason{reason=\"OOMKilled\", namespace=~\"$namespace\", namespace!~\"$exclude\"} == 1) and on (namespace, pod, container) max by (namespace, pod, container) (increase(kube_pod_container_status_restarts_total{namespace=~\"$namespace\", namespace!~\"$exclude\"}[1h]) > 0))) * on () group_left (url) topk(1, max by (url) (console_url))) or on (namespace, pod, container, reason) ((max by (namespace, pod, container, reason) (kube_pod_container_status_waiting_reason{reason=~\"CrashLoopBackOff\", namespace=~\"$namespace\", namespace!~\"$exclude\"} == 1)) or (max by (namespace, pod, container, reason) (kube_pod_container_status_last_terminated_reason{reason=\"OOMKilled\", namespace=~\"$namespace\", namespace!~\"$exclude\"} == 1) and on (namespace, pod, container) max by (namespace, pod, container) (increase(kube_pod_container_status_restarts_total{namespace=~\"$namespace\", namespace!~\"$exclude\"}[1h]) > 0)))) + 1)) or (0 * ((((max by (namespace, pod, container, reason) (kube_pod_container_status_waiting_reason{reason=~\"CrashLoopBackOff\", namespace=~\"$namespace\", namespace!~\"$exclude\"} == 1)) or (max by (namespace, pod, container, reason) (kube_pod_container_status_last_terminated_reason{reason=\"OOMKilled\", namespace=~\"$namespace\", namespace!~\"$exclude\"} == 1) and on (namespace, pod, container) max by (namespace, pod, container) (increase(kube_pod_container_status_restarts_total{namespace=~\"$namespace\", namespace!~\"$exclude\"}[1h]) > 0))) * on () group_left (url) topk(1, max by (url) (console_url))) or on (namespace, pod, container, reason) ((max by (namespace, pod, container, reason) (kube_pod_container_status_waiting_reason{reason=~\"CrashLoopBackOff\", namespace=~\"$namespace\", namespace!~\"$exclude\"} == 1)) or (max by (namespace, pod, container, reason) (kube_pod_container_status_last_terminated_reason{reason=\"OOMKilled\", namespace=~\"$namespace\", namespace!~\"$exclude\"} == 1) and on (namespace, pod, container) max by (namespace, pod, container) (increase(kube_pod_container_status_restarts_total{namespace=~\"$namespace\", namespace!~\"$exclude\"}[1h]) > 0)))) - 1)",
+              "expr": "label_replace((max by (namespace, pod, container) (kube_pod_container_resource_limits{resource=\"memory\", namespace=~\"$namespace\", namespace!~\"$exclude\"}) * on (namespace, pod, container) group_right () (0 * ((((max by (namespace, pod, container, reason) (kube_pod_container_status_waiting_reason{reason=~\"CrashLoopBackOff\", namespace=~\"$namespace\", namespace!~\"$exclude\"} == 1)) or (max by (namespace, pod, container, reason) (kube_pod_container_status_last_terminated_reason{reason=\"OOMKilled\", namespace=~\"$namespace\", namespace!~\"$exclude\"} == 1) and on (namespace, pod, container) max by (namespace, pod, container) (increase(kube_pod_container_status_restarts_total{namespace=~\"$namespace\", namespace!~\"$exclude\"}[1h]) > 0))) * on () group_left (url) topk(1, max by (url) (console_url))) or on (namespace, pod, container, reason) ((max by (namespace, pod, container, reason) (kube_pod_container_status_waiting_reason{reason=~\"CrashLoopBackOff\", namespace=~\"$namespace\", namespace!~\"$exclude\"} == 1)) or (max by (namespace, pod, container, reason) (kube_pod_container_status_last_terminated_reason{reason=\"OOMKilled\", namespace=~\"$namespace\", namespace!~\"$exclude\"} == 1) and on (namespace, pod, container) max by (namespace, pod, container) (increase(kube_pod_container_status_restarts_total{namespace=~\"$namespace\", namespace!~\"$exclude\"}[1h]) > 0)))) + 1)) or (0 * ((((max by (namespace, pod, container, reason) (kube_pod_container_status_waiting_reason{reason=~\"CrashLoopBackOff\", namespace=~\"$namespace\", namespace!~\"$exclude\"} == 1)) or (max by (namespace, pod, container, reason) (kube_pod_container_status_last_terminated_reason{reason=\"OOMKilled\", namespace=~\"$namespace\", namespace!~\"$exclude\"} == 1) and on (namespace, pod, container) max by (namespace, pod, container) (increase(kube_pod_container_status_restarts_total{namespace=~\"$namespace\", namespace!~\"$exclude\"}[1h]) > 0))) * on () group_left (url) topk(1, max by (url) (console_url))) or on (namespace, pod, container, reason) ((max by (namespace, pod, container, reason) (kube_pod_container_status_waiting_reason{reason=~\"CrashLoopBackOff\", namespace=~\"$namespace\", namespace!~\"$exclude\"} == 1)) or (max by (namespace, pod, container, reason) (kube_pod_container_status_last_terminated_reason{reason=\"OOMKilled\", namespace=~\"$namespace\", namespace!~\"$exclude\"} == 1) and on (namespace, pod, container) max by (namespace, pod, container) (increase(kube_pod_container_status_restarts_total{namespace=~\"$namespace\", namespace!~\"$exclude\"}[1h]) > 0)))) - 1), \"cluster\", \"${datasource:text}\", \"\", \"\")",
               "legendFormat": "",
               "range": false,
               "instant": true,
@@ -2428,13 +2548,14 @@
                   "Value #C": "記憶體 Limit"
                 },
                 "indexByName": {
-                  "namespace": 0,
-                  "pod": 1,
-                  "container": 2,
-                  "reason": 3,
-                  "1h 內重啟": 4,
-                  "累計重啟": 5,
-                  "記憶體 Limit": 6
+                  "cluster": 0,
+                  "namespace": 1,
+                  "pod": 2,
+                  "container": 3,
+                  "reason": 4,
+                  "1h 內重啟": 5,
+                  "累計重啟": 6,
+                  "記憶體 Limit": 7
                 }
               }
             }
@@ -2539,6 +2660,26 @@
                   {
                     "id": "decimals",
                     "value": 1
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "cluster"
+                },
+                "properties": [
+                  {
+                    "id": "custom.width",
+                    "value": 170
+                  },
+                  {
+                    "id": "custom.filterable",
+                    "value": true
+                  },
+                  {
+                    "id": "displayName",
+                    "value": "叢集"
                   }
                 ]
               },
@@ -2660,20 +2801,20 @@
             }
           },
           "gridPos": {
-            "h": 8,
-            "w": 12,
+            "h": 6,
+            "w": 24,
             "x": 0,
-            "y": 33
+            "y": 62
           }
         },
         {
-          "id": 19,
+          "id": 13,
           "type": "table",
           "title": "8 建立超過 5 分鐘",
           "description": "**這是什麼**：Pod 建立超過 5 分鐘，容器還在 ContainerCreating 的數量。\n\n**怎麼看**：常見：PVC 掛載失敗（FailedMount / FailedAttachVolume）、Secret / ConfigMap 不存在、CNI 網路配置失敗。\n\n詳細原因請到 OCP console 查看該 Pod 的 Events（表格的 Pod 名稱可直接點過去）。",
           "datasource": {
-            "type": "prometheus",
-            "uid": "${datasource}"
+            "type": "datasource",
+            "uid": "-- Mixed --"
           },
           "targets": [
             {
@@ -2682,7 +2823,7 @@
                 "type": "prometheus",
                 "uid": "${datasource}"
               },
-              "expr": "(max by (namespace, pod) (time() - kube_pod_created{namespace=~\"$namespace\", namespace!~\"$exclude\"}) * on (namespace, pod) group_right () (0 * (((max by (namespace, pod, container) (kube_pod_container_status_waiting_reason{reason=\"ContainerCreating\", namespace=~\"$namespace\", namespace!~\"$exclude\"} == 1) and on (namespace, pod) (time() - kube_pod_created{namespace=~\"$namespace\", namespace!~\"$exclude\"} > 300)) * on () group_left (url) topk(1, max by (url) (console_url))) or on (namespace, pod, container) (max by (namespace, pod, container) (kube_pod_container_status_waiting_reason{reason=\"ContainerCreating\", namespace=~\"$namespace\", namespace!~\"$exclude\"} == 1) and on (namespace, pod) (time() - kube_pod_created{namespace=~\"$namespace\", namespace!~\"$exclude\"} > 300))) + 1)) or (0 * (((max by (namespace, pod, container) (kube_pod_container_status_waiting_reason{reason=\"ContainerCreating\", namespace=~\"$namespace\", namespace!~\"$exclude\"} == 1) and on (namespace, pod) (time() - kube_pod_created{namespace=~\"$namespace\", namespace!~\"$exclude\"} > 300)) * on () group_left (url) topk(1, max by (url) (console_url))) or on (namespace, pod, container) (max by (namespace, pod, container) (kube_pod_container_status_waiting_reason{reason=\"ContainerCreating\", namespace=~\"$namespace\", namespace!~\"$exclude\"} == 1) and on (namespace, pod) (time() - kube_pod_created{namespace=~\"$namespace\", namespace!~\"$exclude\"} > 300))) - 1)",
+              "expr": "label_replace((max by (namespace, pod) (time() - kube_pod_created{namespace=~\"$namespace\", namespace!~\"$exclude\"}) * on (namespace, pod) group_right () (0 * (((max by (namespace, pod, container) (kube_pod_container_status_waiting_reason{reason=\"ContainerCreating\", namespace=~\"$namespace\", namespace!~\"$exclude\"} == 1) and on (namespace, pod) (time() - kube_pod_created{namespace=~\"$namespace\", namespace!~\"$exclude\"} > 300)) * on () group_left (url) topk(1, max by (url) (console_url))) or on (namespace, pod, container) (max by (namespace, pod, container) (kube_pod_container_status_waiting_reason{reason=\"ContainerCreating\", namespace=~\"$namespace\", namespace!~\"$exclude\"} == 1) and on (namespace, pod) (time() - kube_pod_created{namespace=~\"$namespace\", namespace!~\"$exclude\"} > 300))) + 1)) or (0 * (((max by (namespace, pod, container) (kube_pod_container_status_waiting_reason{reason=\"ContainerCreating\", namespace=~\"$namespace\", namespace!~\"$exclude\"} == 1) and on (namespace, pod) (time() - kube_pod_created{namespace=~\"$namespace\", namespace!~\"$exclude\"} > 300)) * on () group_left (url) topk(1, max by (url) (console_url))) or on (namespace, pod, container) (max by (namespace, pod, container) (kube_pod_container_status_waiting_reason{reason=\"ContainerCreating\", namespace=~\"$namespace\", namespace!~\"$exclude\"} == 1) and on (namespace, pod) (time() - kube_pod_created{namespace=~\"$namespace\", namespace!~\"$exclude\"} > 300))) - 1), \"cluster\", \"${datasource:text}\", \"\", \"\")",
               "legendFormat": "",
               "range": false,
               "instant": true,
@@ -2704,10 +2845,11 @@
                   "Value #A": "Pod 建立多久"
                 },
                 "indexByName": {
-                  "namespace": 0,
-                  "pod": 1,
-                  "container": 2,
-                  "Pod 建立多久": 3
+                  "cluster": 0,
+                  "namespace": 1,
+                  "pod": 2,
+                  "container": 3,
+                  "Pod 建立多久": 4
                 }
               }
             }
@@ -2750,6 +2892,26 @@
                   {
                     "id": "decimals",
                     "value": 0
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "cluster"
+                },
+                "properties": [
+                  {
+                    "id": "custom.width",
+                    "value": 170
+                  },
+                  {
+                    "id": "custom.filterable",
+                    "value": true
+                  },
+                  {
+                    "id": "displayName",
+                    "value": "叢集"
                   }
                 ]
               },
@@ -2851,77 +3013,13 @@
             }
           },
           "gridPos": {
-            "h": 8,
-            "w": 12,
-            "x": 12,
-            "y": 33
-          }
-        },
-        {
-          "id": 20,
-          "type": "timeseries",
-          "title": "各 Namespace 重啟次數（每 5 分鐘）",
-          "description": "**這是什麼**：每個時間點往前 5 分鐘內，該 Namespace 所有容器的重啟次數加總。\n\n**怎麼看**：持續有柱子的 Namespace 是一直在重啟；對照上方第 6、7 類明細找是哪個容器。\n\n詳細原因請到 OCP console 查看該 Pod 的 Events（表格的 Pod 名稱可直接點過去）。",
-          "datasource": {
-            "type": "prometheus",
-            "uid": "${datasource}"
-          },
-          "interval": "1m",
-          "targets": [
-            {
-              "refId": "A",
-              "datasource": {
-                "type": "prometheus",
-                "uid": "${datasource}"
-              },
-              "expr": "sum by (namespace) (increase(kube_pod_container_status_restarts_total{namespace=~\"$namespace\", namespace!~\"$exclude\"}[5m])) > 0",
-              "legendFormat": "{{namespace}}",
-              "range": true,
-              "instant": false
-            }
-          ],
-          "fieldConfig": {
-            "defaults": {
-              "unit": "none",
-              "decimals": 0,
-              "min": 0,
-              "custom": {
-                "drawStyle": "bars",
-                "lineWidth": 1,
-                "fillOpacity": 60,
-                "showPoints": "never",
-                "stacking": {
-                  "mode": "normal"
-                }
-              }
-            },
-            "overrides": []
-          },
-          "options": {
-            "legend": {
-              "displayMode": "table",
-              "placement": "right",
-              "calcs": [
-                "sum",
-                "max"
-              ],
-              "sortBy": "Total",
-              "sortDesc": true
-            },
-            "tooltip": {
-              "mode": "multi",
-              "sort": "desc"
-            }
-          },
-          "gridPos": {
-            "h": 8,
+            "h": 6,
             "w": 24,
             "x": 0,
-            "y": 41
+            "y": 68
           }
         }
-      ],
-      "repeat": "datasource"
+      ]
     }
   ]
 }

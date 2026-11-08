@@ -118,13 +118,20 @@ Request % = Request 加總 ÷ 可分配，差異只會來自下面幾個地方�
 
 ## Workload 異常狀態（所有叢集）
 
-一頁同時看所有叢集「哪個 namespace / pod 出了什麼問題」，不用一個個切資料來源。只用 kube-state-metrics，延遲約 1–2 分鐘；**原因訊息不在儀表板，到 OCP console 看該 Pod 的 Events**（表格的 Pod / Deployment 名稱點下去就是 Events 頁）。
+一頁同時看所有叢集「哪個 namespace / pod 出了什麼問題」，不用一個個切資料來源。只用 kube-state-metrics，延遲約 1–2 分鐘；**原因訊息不在儀表板，到 OCP console 看該 Pod 的 Events**（清單的「對象」點下去就是 Events 頁）。
 
 - **叢集名稱篩選（regex）**：資料來源名稱任一處符合就列入，例如 `prod`、`dev|uat`；預設 `.*`。只會列出名稱是 `Prometheus…OCP` 的資料來源。
-- **資料來源（可多選）**：預設 All = 篩選後的全部叢集。每個叢集自動產生一列：
-  - **① 叢集名稱**：8 個計數，紅色 = 目前有異常；「沒資料」= 查不到 kube-state-metrics。
-  - **② 明細：叢集名稱**（預設折疊，展開才查詢）：8 張明細表＋各 Namespace 重啟趨勢。
+- **資料來源（可多選）**：預設 All = 篩選後的全部叢集。所有面板都是 Mixed：每個叢集各查一次，結果合在同一張表，用「叢集」欄區分。
 - **Namespace / 排除的 Namespace**：regex 文字框（各叢集 namespace 不同，所以不用下拉選單）；預設排除 `openshift.*|kube-.*`。
+
+由上往下：
+
+1. **各叢集目前異常數**：每列一個叢集、每欄一類（下表 1–8）、加「合計」，紅色 = 有異常。叢集整列沒出現 = 查不到 kube-state-metrics。
+2. **異常清單（所有叢集）**：所有叢集、所有類別合在一張表，一列一個問題：叢集、類別、Namespace、對象（Pod / Deployment）、Container、原因、持續（近 1 小時內幾分鐘處於這個狀態）。
+3. **各 Namespace 重啟次數**：每 5 分鐘的重啟次數，圖例是「叢集 / Namespace」。
+4. **各類明細**（預設折疊，展開才查詢）：每類一張表，多了 image、Pending 多久、CPU / 記憶體 Request、副本數、累計重啟、記憶體 Limit 等欄位。
+
+資料來源篩選的 regex 要寫 `${ds_filter:raw}`：Grafana 預設會把 regex 裡的變數跳脫（`.*` 變成 `\.\*`），結果一個資料來源都比不到。
 
 | # | 計數 | 條件 |
 |---|---|---|
